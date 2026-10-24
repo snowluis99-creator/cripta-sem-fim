@@ -37,6 +37,7 @@ class NtfySignal {
   send(obj) {
     return fetch(`${NTFY}/${this.topic}`, { method: 'POST', body: JSON.stringify(obj) }).then((r) => r.ok).catch(() => false);
   }
+  beacon(obj) { try { navigator.sendBeacon(`${NTFY}/${this.topic}`, JSON.stringify(obj)); } catch (e) { /* tanto faz */ } }
   close() { if (this.es) this.es.close(); this.es = null; }
 }
 
@@ -62,6 +63,7 @@ class LocalSignal { // teste: abas do mesmo navegador
     new BroadcastChannel(this.name).postMessage(obj);
     return Promise.resolve(true);
   }
+  beacon(obj) { this.send(obj); }
   close() { if (this.ch) this.ch.close(); this.ch = null; }
 }
 
@@ -246,7 +248,10 @@ export class P2PRoom {
     this.adTimer = null;
     window.__p2p = this; // para os testes
     // Fechou a aba: avisa os outros na hora.
-    addEventListener('pagehide', () => { for (const m of this.meshes.values()) m.sendTo({ bye: 1 }); });
+    addEventListener('pagehide', () => {
+      for (const m of this.meshes.values()) m.sendTo({ bye: 1 });
+      if (this.mine.coop) this.lobby.beacon({ t: 'ad', from: this.me, p: {} }); // tira a sala da lista
+    });
     this.ready = this.lobby.listen((m, t) => this.onAd(m, t), LOBBY_TTL);
   }
 
