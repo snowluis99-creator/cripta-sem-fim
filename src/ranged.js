@@ -1,0 +1,78 @@
+// Ataques à distância: o Arqueiro (mantém distância, foge se o herói chega perto e atira com a besta)
+// e a saraivada de flechas do Guardião enfurecido. Sem aviso: só a pose de mirar.
+const rand = ([a, b]) => a + Math.random() * (b - a);
+
+// Tem caminho livre (sem obstáculo) até o herói?
+function clearShot(e, p, world) {
+  const dx = p.position.x - e.position.x, dz = p.position.z - e.position.z;
+  const n = Math.ceil(Math.hypot(dx, dz));
+  for (let i = 1; i < n; i++) {
+    if (world.blocked(e.position.x + (dx * i) / n, e.position.z + (dz * i) / n, 0.1)) return false;
+  }
+  return true;
+}
+
+// Movimento do Arqueiro enquanto persegue. Devolve true se começou a atirar.
+export function archerChase(e, dt, ctx, dist, dx, dz) {
+  const d = e.data, R = d.ranged, p = ctx.player;
+  const shot = clearShot(e, p, ctx.world);
+  if (e.cooldown <= 0 && dist <= R.max + 2 && shot) { startShot(e, R); return true; }
+  let mx = 0, mz = 0, run = false;
+  if (dist < R.flee) { mx = -dx / dist; mz = -dz / dist; run = true; }          // foge
+  else if (dist > R.max || !shot) { mx = dx / dist; mz = dz / dist; }           // chega mais perto
+  else { mx = (dz / dist) * 0.5 * e.strafe; mz = (-dx / dist) * 0.5 * e.strafe; } // anda de lado
+  const ml = Math.hypot(mx, mz);
+  if (ml > 0.05) {
+    const k = d.speed * (run ? 1.25 : 1) * (e.slow > 0 ? 0.45 : 1) * dt / Math.max(ml, 1);
+    const bx = e.position.x, bz = e.position.z;
+    e.position.x += mx * k; e.position.z += mz * k;
+    ctx.world.resolveCircle(e.position, d.radius);
+    // Encurralado na parede fugindo: troca o lado para onde anda.
+    if (run && Math.hypot(e.position.x - bx, e.position.z - bz) < k * 0.3) e.strafe *= -1;
+    e.anim.play(run ? 'Running_A' : d.anims.walk, { speed: run ? 1.1 : d.walkAnimSpeed });
+  } else e.anim.play(d.anims.idle);
+  return false;
+}
+
+function startShot(e, R) {
+  e.releaseToken();
+  e.setState('aim');
+  e.shot = R;
+  e.hitDone = false;
+  e.anim.play(R.aimClip, { fade: 0.12 });
+}
+
+// Saraivada do Guardião (quando o herói está longe).
+export function startVolley(e) {
+  startShot(e, e.data.volley);
+  e.cd.volley = rand(e.data.volley.cooldown);
+}
+
+// Estados 'aim' (mirando) e 'shot' (disparou). Devolve { target, turn } ou null.
+export function runRanged(e, dt, ctx, { toPlayer }) {
+  const R = e.shot;
+  if (e.state === 'aim') {
+    if (e.t >= R.aim) {
+      e.setState('shot');
+      e.anim.play(R.shootClip, { once: true, restart: true, speed: R.shootSpeed || 1, fade: 0.05 });
+      const s = e.data.scale || 1;
+      const n = R.count || 1;
+      for (let i = 0; i < n; i++) {
+        const a = e.facing + (n > 1 ? (i / (n - 1) - 0.5) * R.spread : 0);
+        const fx = e.position.x + Math.sin(a) * (0.9 * s), fz = e.position.z + Math.cos(a) * (0.9 * s);
+        ctx.combat.projectiles.fire(fx, fz, a, {
+          speed: R.speed, damage: Math.round(R.damage * (e.dmgScale || 1)), scale: R.scale || 1, height: 0.55 * s + 0.6, owner: e,
+          kind: R.kind, homing: R.homing, color: R.color,
+        });
+      }
+    }
+    return e.t < R.aim - 0.12 ? { target: toPlayer, turn: R.turn ?? 9 } : null; // trava a mira no fim
+  }
+  // 'shot': recuo do disparo.
+  if (e.t >= R.recover) {
+    if (!e.data.volley || e.shot !== e.data.volley) e.cooldown = rand(e.data.cooldown);
+    e.setState('chase');
+    e.anim.play(e.data.anims.idle, { fade: 0.15 });
+  }
+  return null;
+}
