@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { input } from './input.js';
 import { save } from './save.js';
+import { Predictor } from './predict.js';
 
 const tmp = new THREE.Vector3();
 
@@ -24,7 +25,9 @@ export class CoopClient {
     this.time = 0;
     const r = this.replica;
     r.spectator = this.spectator;
+    this.sq = 0;
     if (this.spectator) { this.hud.setSpectator(true); return; }
+    r.pred = new Predictor(r.world);
     r.onChoice = (id, options, title) => {
       this.ui.openChoice(options, r.me.blessings || {}, (b, i) => { this.pick = [id, i]; this.send(true); }, title);
     };
@@ -36,11 +39,22 @@ export class CoopClient {
   // Comandos deste computador (contadores sempre somando: nada se perde se um pacote não chegar).
   readInput() {
     const blocked = this.ui.modal;
+    let atk = false, dge = false, now = false;
+    const blk = !blocked && input.blocking();
     if (!blocked) {
-      if (input.attack()) this.cnt.atk++;
-      if (input.dodge()) this.cnt.dge++;
-      if (input.potion()) this.cnt.pot++;
-      if (input.interact()) this.cnt.use++;
+      if (input.attack()) { this.cnt.atk++; atk = true; }
+      if (input.dodge()) { this.cnt.dge++; dge = true; }
+      if (input.potion()) { this.cnt.pot++; now = true; }
+      if (input.interact()) { this.cnt.use++; now = true; }
+    }
+    // Botão apertado (ou bloqueio mudou) = manda já, sem esperar o próximo envio.
+    if (atk || dge || now || blk !== this.lastBlk) this.sendNow = true;
+    this.lastBlk = blk;
+    const pred = this.replica.pred;
+    if (pred) {
+      const m = blocked ? tmp.set(0, 0, 0) : input.moveDir(tmp);
+      const aim = blocked ? null : input.aimAngle(this.cam.camera, this.replica.me.position);
+      pred.input(m, aim, dge, atk, blk);
     }
     if ((this.hud.deathVisible || this.ui.winVisible) && input.retry()) this.cnt.rt++;
   }
@@ -52,8 +66,11 @@ export class CoopClient {
       this.net.send(this.net.a, { role: 'spec' });
       return;
     }
+    if (this.sendNow) { force = true; this.sendNow = false; }
     if (!force && this.sendT > 0) return;
     this.sendT = SEND_EVERY;
+    this.sq++;
+    if (this.replica.pred) this.replica.pred.sent(this.sq);
     const m = this.ui.modal ? tmp.set(0, 0, 0) : input.moveDir(tmp);
     const me = this.replica.me;
     const aim = this.ui.modal ? null : input.aimAngle(this.cam.camera, me.position);
@@ -63,6 +80,7 @@ export class CoopClient {
       in: [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, aim === null ? null : Math.round(aim * 100) / 100,
         !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt],
       pk: this.pick || 0,
+      sq: this.sq,
       sv: [save.data.soul, save.data.ups, save.data.runs, save.data.best],
     });
   }

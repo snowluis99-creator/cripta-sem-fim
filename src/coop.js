@@ -27,9 +27,11 @@ export class RemoteInput {
     this.pend = { atk: 0, dge: 0, pot: 0, use: 0 };
     this.now = { atk: false, dge: false, pot: false, use: false };
     this.retries = 0;
+    this.seq = 0; this.seqAt = 0;           // último envio recebido do Jogador 2 (e quando chegou)
   }
   // pkt.in = [mx, mz, aim, bloqueando, ataques, rolamentos, poções, usar, recomeçar] (contadores somam sempre)
-  apply(arr) {
+  apply(arr, sq, now = 0) {
+    if (Number.isFinite(sq) && sq !== this.seq) { this.seq = sq; this.seqAt = now; }
     if (!Array.isArray(arr) || arr.length < 9) return;
     const num = (v) => (Number.isFinite(v) ? v : 0);
     this.mx = Math.max(-1, Math.min(1, num(arr[0])));
@@ -135,7 +137,7 @@ export class CoopHost {
   receive(peer) {
     const pr = peer && peer.presence;
     if (!pr) return;
-    this.input.apply(pr.in);
+    this.input.apply(pr.in, pr.sq, this.time);
     // Progresso permanente do Jogador 2 (Ouro de Alma e melhorias): vale o que chegou primeiro; depois o anfitrião manda.
     const p2 = this.combat.players[1];
     if (p2 && !p2.saveData && Array.isArray(pr.sv)) {
@@ -201,10 +203,19 @@ export class CoopHost {
       om: this.team ? this.team.shapes.slice(0, 14) : 0,
       t: r2(this.simTime || 0),
       sp: this.net.spectators ? this.net.spectators() : 0,
+      p2: p2 ? this.predInfo(p2) : 0,
     };
     // Sala muito cheia: corta esqueletos de longe até caber.
     while (sizeOf({ role: 'host', s }) > 3900 && s.e.length) s.e.pop();
     return s;
+  }
+
+  // Para o Jogador 2 andar na hora na tela dele (predict.js): qual comando dele já foi usado aqui e se o herói está livre.
+  predInfo(p) {
+    const free = (p.state === 'idle' || p.state === 'run') && !p.frozen && !p.choosing ? 1 : 0;
+    const d = p.hero.dodge;
+    return [this.input.seq, r2(Math.max(0, this.time - this.input.seqAt)), free, r2(p.hero.moveSpeed * p.moveMul),
+      r2(d.distance * p.stats.dodgeMul), r2(d.time), p.dodgeCooldown <= 0 ? 1 : 0, r2(d.cooldown)];
   }
 
   fx() {

@@ -100,6 +100,7 @@ export class Replica {
       this.pickups.clear();
     }
     s.h.forEach((h, i) => { if (h) this.heroState[i] = h; });
+    if (this.pred && s.h[1]) this.pred.server(s.h[1][0], s.h[1][1], s.p2 || null);
     this.omens = s.om || [];
     this.applyEnemies(s.e || []);
     this.applyPickups(s.pk || []);
@@ -373,15 +374,20 @@ export class Replica {
       }
       if (p.shield !== sh) { p.shield = sh; shieldVisual(p); }
       if (p.weaponMul !== rm && p.syncWeaponSize) p.syncWeaponSize(rm);
-      if (this.snapHeroes) p.position.set(x, 0, z);
-      else { p.position.x += (x - p.position.x) * k; p.position.z += (z - p.position.z) * k; }
+      // Herói deste computador: responde na hora (predict.js); o anfitrião só corrige.
+      const pr = i === 1 && this.pred ? this.pred.drive(p, dt, f, this.snapHeroes) : null;
+      if (pr) p.facing += wrap(pr.facing - p.facing) * smooth(dt, pr.local ? 22 : 14);
+      else {
+        if (this.snapHeroes) p.position.set(x, 0, z);
+        else { p.position.x += (x - p.position.x) * k; p.position.z += (z - p.position.z) * k; }
+        p.facing += wrap(f - p.facing) * k;
+      }
       p.position.y += (y - p.position.y) * k; // levantado pelo Rei Skullbone
-      p.facing += wrap(f - p.facing) * k;
       p.group.rotation.y = p.facing;
       p.group.visible = !!vis;
-      syncAnim(p.anim, pid, clip, spd, once);
-      // Cambalhota: continua girando entre um pacote e outro.
-      if (roll >= 0) {
+      if (!pr || !pr.local) { if (!(pr && this.pred.adopt(p.anim, pid, clipNames[clip], spd))) syncAnim(p.anim, pid, clip, spd, once); }
+      // Cambalhota: continua girando entre um pacote e outro (a do Jogador 2 já gira aqui na hora).
+      if (pr && pr.roll) { /* rolamento feito aqui */ } else if (roll >= 0) {
         if (this.rolls[i] < 0 || Math.abs(this.rolls[i] - roll) > 0.35) this.rolls[i] = roll;
         this.rolls[i] += dt / p.hero.dodge.time;
         if (this.rolls[i] < 1) p.applyRoll(this.rolls[i]); else p.clearRoll();

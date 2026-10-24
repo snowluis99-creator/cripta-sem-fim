@@ -376,6 +376,8 @@ async function start() {
       const st = run.floor.steps, i = st.findIndex((o) => o[0].kind === 'boss');
       run.step = i + 1; run.enter(st[i][0], true);
     } };
+  Object.defineProperty(game, 'client', { get: () => client }); // testes do co-op
+  Object.defineProperty(game, 'coop', { get: () => coop });
   const selfTest = createSelfTest(state, game, () => DEBUG);
   Object.defineProperty(state, 'game', { value: game, enumerable: false }); // testes automáticos
 
