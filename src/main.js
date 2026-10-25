@@ -23,6 +23,8 @@ import { REWARD_MODELS, ownerRing } from './rewards.js';
 import { MERCHANT_MODELS } from './merchant.js';
 import { PROJECTILE_MODELS } from './projectiles.js';
 import { Menu } from './menu.js';
+import { PauseMenu } from './pause.js';
+import { settings } from './settings.js';
 import { Net, makeCode, PUBLIC_URL } from './net.js';
 import { CoopHost } from './coop.js';
 import { Replica } from './replica.js';
@@ -210,6 +212,39 @@ async function start() {
 
   // ---------- Menu e co-op ----------
   const menu = new Menu();
+
+  // Pausa (Esc / Start / botão ⚙). Sozinho congela o jogo; no co-op só abre o menu.
+  const pause = new PauseMenu();
+  state.pause = pause; // testes
+  const pauseOpts = () => ({
+    coop: mode === 'host' || mode === 'client',
+    canQuit: mode === 'solo' && !run.inTavern && !run.won,
+    canMenu: mode === 'solo',
+  });
+  const setPaused = (on) => {
+    document.body.classList.toggle('paused', on);
+    audio.setHold(on && mode === 'solo');
+    input.clear();
+  };
+  const openPause = () => { if (pause.visible) return; pause.open('pause', pauseOpts()); setPaused(true); };
+  pause.on.closed = () => setPaused(false);
+  const togglePause = () => { if (pause.visible) pause.back(); else if (mode !== 'menu') openPause(); };
+  addEventListener('keydown', (e) => { if (e.code === 'Escape' && !e.repeat && !selfTest.running) { e.preventDefault(); togglePause(); } });
+  pause.on.button = () => {
+    if (pause.visible) { pause.back(); return; }
+    if (mode === 'menu') pause.open('config', {}); else openPause();
+  };
+  // Desistir: o ouro vira Ouro de Alma (como se tivesse caído) e volta para a Taverna.
+  const giveUp = () => {
+    if (!run.inTavern && !run.won) run.bankSoul(false);
+    restart();
+  };
+  pause.on.quit = () => { setPaused(false); giveUp(); hud.banner('Você voltou para a Taverna', 'small'); };
+  pause.on.mainmenu = () => { setPaused(false); giveUp(); setMode('menu'); menu.show('main'); };
+  menu.on.config = () => pause.open('config', {});
+  menu.on.controls = () => pause.open('controls', {});
+  // Dicas de controle na tela (Configurações).
+  settings.onChange((st) => document.getElementById('controls').classList.toggle('off', !st.hints));
   const net = new Net();
   menu.setCoop(false, 'Procurando a conexão para 2 jogadores…');
   net.init().then((ok) => menu.setCoop(ok, ok ? '' : (PUBLIC_URL
@@ -457,8 +492,8 @@ async function start() {
     const n = `${h.combo.length}x = combo`, block = !h.noShield;
     const atk = h.caster ? 'magia' : 'atacar', blk = h.block && h.block.wall ? 'barreira' : 'bloquear';
     return d === 'pad'
-      ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span>`
-      : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span>`;
+      ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span><span><b>Start</b> pausa</span>`
+      : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span><span><b>Esc</b> pausa</span>`;
   };
   const updateHint = (h) => {
     const k = `${hintDev}|${h.id}|${h.weaponId}`;
@@ -472,7 +507,15 @@ async function start() {
     const elapsed = clock.getDelta();
     const realDt = Math.min(elapsed, 0.1);
     input.poll();
-    if (mode === 'client') {
+    // Start do controle: abre ou volta no menu de pausa (Esc é tratado na hora, no keydown).
+    if (!selfTest.running) {
+      if (input.pause()) togglePause();
+      else if (pause.visible) pause.nav(input.wasPressed);
+    }
+    if (pause.visible && mode === 'solo' && !selfTest.running) {
+      // Sozinho: tudo congelado, só desenha.
+      input.endFrame();
+    } else if (mode === 'client') {
       client.update(realDt);
       if (client.replica.me && !client.spectator) updateHint(client.replica.me.hero);
       input.endFrame();

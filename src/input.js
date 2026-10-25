@@ -55,7 +55,7 @@ function pollPad() {
   pad.buttons = gp.buttons.map((b) => b.pressed || b.value > 0.5);
   pad.lx = stick(gp.axes[0] || 0); pad.lz = stick(gp.axes[1] || 0);
   pad.rx = stick(gp.axes[2] || 0); pad.rz = stick(gp.axes[3] || 0);
-  const names = { 0: 'PadA', 1: 'PadB', 2: 'PadX', 3: 'PadY', 4: 'PadLB', 5: 'PadRB', 6: 'PadLT', 7: 'PadRT', 14: 'PadLeft', 15: 'PadRight' };
+  const names = { 0: 'PadA', 1: 'PadB', 2: 'PadX', 3: 'PadY', 4: 'PadLB', 5: 'PadRB', 6: 'PadLT', 7: 'PadRT', 8: 'PadBack', 9: 'PadStart', 12: 'PadUp', 13: 'PadDown', 14: 'PadLeft', 15: 'PadRight' };
   let active = Math.hypot(pad.lx, pad.lz) > 0 || Math.hypot(pad.rx, pad.rz) > 0;
   pad.buttons.forEach((b, i) => {
     if (b) active = true;
@@ -110,6 +110,7 @@ export const input = {
   potion: () => pressed.has('KeyQ') || pressed.has('PadY'),
   interact: () => pressed.has('KeyE') || pressed.has('PadY'),
   ultimate: () => pressed.has('KeyR') || pressed.has('PadRT'),
+  pause: () => pressed.has('PadStart'),
   retry: () => pressed.has('Enter') || pressed.has('KeyR') || pressed.has('PadA'),
   blocking: () => mouse.right || down.has('ShiftLeft') || down.has('KeyK') || padHeld(4) || padHeld(6),
   // Ponto do chão (y = 0) sob o mouse.
@@ -118,6 +119,8 @@ export const input = {
     ray.setFromCamera(ndc, camera);
     return ray.ray.intersectPlane(groundPlane, out);
   },
+  // Solta tudo (abrir a pausa: o herói não sai andando sozinho).
+  clear() { down.clear(); pressed.clear(); mouse.left = mouse.right = false; },
   // Chamar no fim de cada quadro.
   endFrame() { pressed.clear(); },
 };

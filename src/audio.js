@@ -1,11 +1,11 @@
 // Som do jogo: tudo sintetizado na hora com Web Audio (sem arquivos de som).
 // audio.play('nome', x, z) toca um efeito; o volume diminui com a distância até o herói deste computador.
-// Botão no canto da tela: tudo ligado -> só efeitos (sem música) -> mudo.
+// Volumes vêm das Configurações (settings.js): geral, música e efeitos (a voz do chefe segue os efeitos).
+import { settings } from './settings.js';
 
 const VOL = { master: 0.9, music: 0.36, sfx: 0.75, voice: 0.5 };
 // Ajuste fino de volume por efeito (os sopros e chiados saem mais baixos que os impactos).
 const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4 };
-const MODES = ['Som: tudo ligado', 'Som: sem música', 'Som: mudo'];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
 
@@ -20,13 +20,12 @@ export const audio = {
 
   // Liga o áudio no primeiro clique/tecla (o navegador não deixa tocar antes).
   boot() {
-    try { this.mode = clamp(+(localStorage.getItem('cripta.som') || 0), 0, 2); } catch (e) { /* sem localStorage */ }
     const start = () => {
       if (!this.ctx) this.create();
-      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended' && !this.hold) this.ctx.resume();
     };
     for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, start, { capture: true });
-    this.makeButton();
+    settings.onChange(() => this.applyMode());
   },
 
   create() {
@@ -57,6 +56,14 @@ export const audio = {
     this.readyCbs.forEach((cb) => cb(ctx));
   },
 
+  // Pausa (sozinho): congela música e sons onde estão.
+  setHold(on) {
+    this.hold = on;
+    if (!this.ctx) return;
+    if (on && this.ctx.state === 'running') this.ctx.suspend();
+    if (!on && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+
   onReady(cb) { if (this.ctx) cb(this.ctx); else this.readyCbs.push(cb); },
 
   impulse(sec, decay) {
@@ -69,29 +76,15 @@ export const audio = {
   },
 
   applyMode() {
+    const v = (k) => settings[k] / 100;
+    this.mode = settings.master <= 0 ? 2 : 0; // 2 = mudo (nem cria os sons)
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.master.gain.setTargetAtTime(this.mode === 2 ? 0 : VOL.master, t, 0.05);
-    this.musicBus.gain.setTargetAtTime(this.mode === 0 ? VOL.music : 0, t, 0.3);
-    if (this.btn) { this.btn.textContent = ['♫', '♪', '✕'][this.mode]; this.btn.title = MODES[this.mode]; }
-  },
-
-  makeButton() {
-    const b = document.createElement('button');
-    b.id = 'soundbtn';
-    b.addEventListener('pointerdown', (e) => e.stopPropagation());
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!this.ctx) this.create();
-      this.mode = (this.mode + 1) % 3;
-      try { localStorage.setItem('cripta.som', String(this.mode)); } catch (err) { /* nada */ }
-      this.applyMode();
-      b.blur();
-    });
-    document.body.appendChild(b);
-    this.btn = b;
-    b.textContent = ['♫', '♪', '✕'][this.mode];
-    b.title = MODES[this.mode];
+    // Curva ao quadrado: o controle fica mais natural para o ouvido.
+    this.master.gain.setTargetAtTime(VOL.master * v('master') ** 2, t, 0.05);
+    this.musicBus.gain.setTargetAtTime(VOL.music * v('music') ** 2, t, 0.3);
+    this.sfxBus.gain.setTargetAtTime(VOL.sfx * v('sfx') ** 2, t, 0.05);
+    this.voiceBus.gain.setTargetAtTime(VOL.voice * v('sfx') ** 2, t, 0.05);
   },
 
   // Fonte de ruído (já tocando a partir de t).

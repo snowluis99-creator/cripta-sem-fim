@@ -1,5 +1,6 @@
 // Câmera em 3/4 (vista de cima, inclinada), estilo Hades.
 import * as THREE from 'three';
+import { settings } from './settings.js';
 
 export const CAMERA_CONFIG = {
   fov: 40,
@@ -43,7 +44,7 @@ export function createCamera() {
       shakeAmp *= Math.exp(-14 * dt);
       place();
     },
-    shake(amount) { shakeAmp = Math.max(shakeAmp, amount); },
+    shake(amount) { if (settings.shake) shakeAmp = Math.max(shakeAmp, amount); }, // Configurações: tremida desligável
     setBaseZoom(z) { baseZoom = z; updateZoom(); place(); },
     // Espectador: afasta até a sala inteira (chão e topo das paredes do fundo) caber na tela, olhando o meio dela.
     // Devolve o ponto para onde a câmera deve olhar.

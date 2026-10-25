@@ -12,6 +12,7 @@ export class Menu {
           <button type="button" data-a="solo">Jogar sozinho</button>
           <button type="button" data-a="host">Criar sala (2 jogadores)</button>
           <button type="button" data-a="join">Entrar ou assistir a sala de um amigo</button>
+          <div class="row"><button type="button" class="ghost" data-a="config">⚙ Configurações</button><button type="button" class="ghost" data-a="controls">🎮 Controles</button></div>
           <p class="note"></p>
         </section>
         <section data-s="host">
@@ -36,7 +37,7 @@ export class Menu {
     document.body.appendChild(root);
     this.root = root;
     this.$ = (s) => root.querySelector(s);
-    this.on = {};          // solo, host, join(code), watch(code), back, msgok
+    this.on = {};          // solo, host, join(code), watch(code), back, msgok, config, controls
     root.addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
