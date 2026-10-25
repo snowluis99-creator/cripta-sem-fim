@@ -2,10 +2,10 @@
 // stats = números que o resto do jogo lê (dano, velocidade, etc.). Cada bênção pode ser pega várias vezes até "max".
 
 export const RARITY = {
-  common: { name: 'Comum', color: '#e9e4d8', weight: 55, price: 50 },
-  rare: { name: 'Rara', color: '#5fb0ff', weight: 30, price: 70 },
-  epic: { name: 'Épica', color: '#c27bff', weight: 12, price: 100 },
-  legendary: { name: 'Lendária', color: '#ffc24a', weight: 3, price: 150 },
+  common: { name: 'Comum', color: '#e9e4d8', weight: 55, price: 200 },
+  rare: { name: 'Rara', color: '#5fb0ff', weight: 30, price: 300 },
+  epic: { name: 'Épica', color: '#c27bff', weight: 12, price: 400 },
+  legendary: { name: 'Lendária', color: '#ffc24a', weight: 3, price: 500 },
 };
 const ORDER = ['common', 'rare', 'epic', 'legendary'];
 
@@ -135,6 +135,17 @@ export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math
     pool = pool.filter((_, j) => j !== i);
   }
   return picks;
+}
+
+// Mercador: uma bênção de cada raridade (comum, rara, épica, lendária). Pula a raridade que não tiver mais nenhuma disponível.
+export function rollShop(owned, rng = Math.random, noShield = false) {
+  const can = (b) => (owned[b.id] || 0) < b.max && !(noShield && b.shield);
+  const out = [];
+  for (const r of ORDER) {
+    const pool = BLESSINGS.filter((b) => b.rarity === r && can(b));
+    if (pool.length) out.push(pool[Math.floor(rng() * pool.length)]);
+  }
+  return out;
 }
 
 // Texto da carta: a descrição considerando o nível que o herói terá depois de pegar.

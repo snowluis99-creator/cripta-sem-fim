@@ -7,11 +7,12 @@
 //   por todos os lados, e andam juntos.
 // - Poção Compartilhada: a cura que sobra da poção vai para o parceiro.
 import * as THREE from 'three';
+import { BLOCK_WALK } from './animation.js';
 
 export const TEAM = {
   combo: { window: 0.45, maxDist: 7, faceDeg: 60, damage: 2 },
   spectral: { time: 15 },
-  back: { gap: 0.45, speed: 4.5 },   // gap = folga para "encostar"; speed = velocidade andando de costas
+  back: { gap: 0.45, speed: 4.5, anim: { f: 1.4, b: 1.4, l: 0.9, r: 0.9 } }, // anim = velocidade da animação de andar bloqueando,   // gap = folga para "encostar"; speed = velocidade andando de costas
 };
 
 const DEG = Math.PI / 180;
@@ -211,6 +212,9 @@ export class Teamwork {
 
   breakPair() {
     if (!this.pair) return;
+    for (const p of [this.pair.a, this.pair.b]) {
+      if (p.anim.currentName.startsWith('BlockWalk_') && p.state === 'block') p.anim.play(p.hero.anims.blocking, { fade: 0.2 });
+    }
     this.pair.a.backToBack = this.pair.b.backToBack = false;
     this.pair = null;
   }
@@ -240,6 +244,21 @@ export class Teamwork {
     const cx = (a.position.x + b.position.x) / 2, cz = (a.position.z + b.position.z) / 2;
     a.position.set(cx - P.ux * half, 0, cz - P.uz * half);
     b.position.set(cx + P.ux * half, 0, cz + P.uz * half);
+    // Animação: andam bloqueando (frente, de costas ou de lado conforme a direção de cada um).
+    this.pairAnim(a, tmpA); this.pairAnim(b, tmpA);
+  }
+
+  pairAnim(p, m) {
+    const cur = p.anim.currentName, blocking = p.hero.anims.blocking;
+    const isWalk = cur.startsWith('BlockWalk_');
+    if (cur !== blocking && !isWalk) return; // no meio de outra animação (ex.: escudo levando golpe)
+    if (m.lengthSq() < 0.04) { if (isWalk) p.anim.play(blocking, { fade: 0.2 }); return; }
+    const sf = Math.sin(p.facing), cf = Math.cos(p.facing);
+    const fwd = m.x * sf + m.z * cf, left = m.x * cf - m.z * sf;
+    let k;
+    if (Math.abs(fwd) >= Math.abs(left)) k = fwd > 0 ? 'f' : 'b'; else k = left > 0 ? 'l' : 'r';
+    const W = TEAM.back.anim[k];
+    p.anim.play(BLOCK_WALK[k].name, { fade: 0.2, speed: W * Math.min(1, m.length() + 0.3) });
   }
 
   // ----- Visão Espectral -----

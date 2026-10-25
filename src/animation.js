@@ -20,9 +20,34 @@ export function buildClipLibrary() {
       clips.set(clip.name, clip);
     }
   }
+  buildBlockWalk();
   clipNames.length = 0;
   clipNames.push(...[...clips.keys()].sort());
   return clips;
+}
+
+// Co-op "Costas com costas": andar bloqueando. Pernas (e quadril) do clipe de andar + resto do corpo
+// do clipe de bloqueio, num clipe só. Nomes fixos (entram na lista de clipes igual nos dois PCs).
+const LEG_RE = /^(hips|upperleg|lowerleg|foot|toes)/;
+export const BLOCK_WALK = {
+  f: { name: 'BlockWalk_F', walk: 'Walking_A' },
+  b: { name: 'BlockWalk_B', walk: 'Walking_Backwards' },
+  l: { name: 'BlockWalk_L', walk: 'Running_Strafe_Left' },
+  r: { name: 'BlockWalk_R', walk: 'Running_Strafe_Right' },
+};
+function buildBlockWalk() {
+  const block = clips.get('Melee_Blocking');
+  if (!block) return;
+  for (const k of Object.keys(BLOCK_WALK)) {
+    const walk = clips.get(BLOCK_WALK[k].walk);
+    if (!walk) continue;
+    const bone = (t) => t.name.split('.')[0];
+    const tracks = [
+      ...walk.tracks.filter((t) => LEG_RE.test(bone(t))).map((t) => t.clone()),
+      ...block.tracks.filter((t) => !LEG_RE.test(bone(t))).map((t) => t.clone().trim(0, walk.duration)),
+    ];
+    clips.set(BLOCK_WALK[k].name, new THREE.AnimationClip(BLOCK_WALK[k].name, walk.duration, tracks));
+  }
 }
 
 export function getClip(name) {

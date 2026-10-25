@@ -118,10 +118,24 @@ export function* duoTests(g, out, flags) {
   const x0 = player.position.x, x0b = p2.position.x;
   ri.mx = 1;
   yield 0.5;
+  const sa = player.anim.currentName, sb = p2.anim.currentName;
+  out(`  andando de lado: animação ${sa} / ${sb} ${ok(['BlockWalk_L', 'BlockWalk_R'].includes(sa) && ['BlockWalk_L', 'BlockWalk_R'].includes(sb) && sa !== sb)}`);
   ri.mx = 0;
   const d2 = Math.hypot(player.position.x - p2.position.x, player.position.z - p2.position.z);
   out(`  andaram juntos: ${(player.position.x - x0).toFixed(1)} e ${(p2.position.x - x0b).toFixed(1)} ${ok(player.position.x - x0 > 1.5 && p2.position.x - x0b > 1.5)} | continuam encostados ${ok(near(d2, 1.2, 0.08))}`);
+  // Na direção de um deles: um anda de frente, o outro de costas; parados, voltam à pose de bloqueio.
+  ri.mx = -Math.sin(player.facing); ri.mz = -Math.cos(player.facing);
+  yield 0.5;
+  const fa = player.anim.currentName, fb = p2.anim.currentName;
+  out(`  andando para a frente de um: ${fa} / ${fb} ${ok(fa === 'BlockWalk_B' && fb === 'BlockWalk_F')}`);
+  ri.mx = 0; ri.mz = 0;
+  yield 0.4;
+  out(`  parados: pose de bloqueio ${ok(player.anim.currentName === hero.anims.blocking && p2.anim.currentName === hero.anims.blocking)}`);
+  ri.mx = 1;
+  yield 0.4;
+  out('  -> andando juntos de lado: CONGELADO (X continua)');
   yield 'hold';
+  ri.mx = 0;
   ri.blk = false;
   yield 0.1;
   out(`  soltou o bloqueio: separam ${ok(!player.backToBack && !p2.backToBack)}`);

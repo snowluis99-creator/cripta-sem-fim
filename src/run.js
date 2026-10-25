@@ -9,7 +9,7 @@ import { buildRoom } from './dungeon/builder.js';
 import { generateFloor, NODE_INFO, FLOORS } from './dungeon/generator.js';
 import { repairShield } from './shield.js';
 import { updateSpikes } from './traps.js';
-import { rollBlessings, RARITY, BLESSINGS } from './blessings.js';
+import { rollBlessings, rollShop, RARITY, BLESSINGS } from './blessings.js';
 import { Pickup, iconFor } from './rewards.js';
 import { Merchant } from './merchant.js';
 import { Tavern } from './tavern.js';
@@ -17,8 +17,8 @@ import { save } from './save.js';
 import { WEAPON_PRICE, ownsWeapon, equippedWeapon, ownKey, eqKey, WEAPONS, HEROES, HERO_IDS, HERO_PRICE, HERO_SEL, heroKey, ownsHero, selectedHero } from './heroes.js';
 import { UnlockScene } from './unlock.js';
 
-const PRICES = { potion: 35 };
-const GOLD_REWARD = [25, 40];
+const PRICES = { potion: 150 };
+const GOLD_REWARD = [300, 300]; // sala do ouro
 const FADE = 0.35;
 export const PLAYER_COLORS = { 1: 0xffa040, 2: 0x4aa0ff };
 
@@ -323,11 +323,11 @@ export class Run {
     };
   }
 
-  // Depois do combate: três itens nas mesinhas (poção + duas bênçãos), se o mercador estiver vivo.
+  // Depois do combate: itens nas mesinhas (poção + uma bênção de cada raridade), se o mercador estiver vivo.
   // Co-op: cada jogador pode comprar cada item uma vez (com o próprio ouro).
   openShop() {
     if (!this.npc || !this.npc.alive) { this.hud.banner('O mercador está morto: sem trocas', 'small'); return; }
-    const offers = rollBlessings(this.player.blessings, 2, 'common', Math.random, this.player.hero.noShield);
+    const offers = rollShop(this.player.blessings, Math.random, this.player.hero.noShield);
     const tables = ROOMS.mercador.props.filter((p) => p[0] === 'table_small');
     const items = [{ item: 'potion' }, ...offers.map((b) => ({ item: 'blessing', blessing: b }))];
     items.forEach((it, i) => {

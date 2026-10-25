@@ -291,9 +291,13 @@ function* roomFlow(g, out) {
   out(`  sem itens durante o combate: ${!run.pickups.some((p) => p.kind === 'shop') ? '✔' : 'ERRO'}`);
   for (let i = 0; i < 4 && waves.active; i++) yield () => { killAll(); return !waves.active; };
   yield 1.2;
-  out(`  depois do combate: ${run.pickups.filter((p) => p.kind === 'shop').length === 3 ? '✔ 3 itens' : 'ERRO itens'} + bênção ${run.pickups.some((p) => p.kind === 'blessing') ? '✔' : 'ERRO'}`);
+  out(`  depois do combate: ${run.pickups.filter((p) => p.kind === 'shop').length === 5 ? '✔ 5 itens' : 'ERRO itens'} + bênção ${run.pickups.some((p) => p.kind === 'blessing') ? '✔' : 'ERRO'}`);
+  { const sh = run.pickups.filter((p) => p.kind === 'shop');
+    const tiers = sh.filter((p) => p.opts.blessing).map((p) => `${p.opts.blessing.rarity}:${p.opts.price}`).join(' ');
+    const pp = sh.find((p) => p.opts.item === 'potion');
+    out(`  uma de cada raridade: ${tiers === 'common:200 rare:300 epic:400 legendary:500' && pp && pp.opts.price === 150 ? '✔' : 'ERRO'} (${tiers}; poção ${pp && pp.opts.price})`); }
   run.pickups.filter((p) => p.kind === 'blessing').forEach((p) => { p.taken = true; run.removePickup(p); });
-  run.gold = 200; g.hud.setGold(200);
+  run.gold = 1000; g.hud.setGold(1000);
   const shop = run.pickups.find((p) => p.opts.item === 'potion');
   player.position.set(shop.pos.x, 0, shop.pos.z + 1.3);
   yield 0.2;
@@ -302,14 +306,14 @@ function* roomFlow(g, out) {
   const pot0 = player.potions;
   press('KeyE');
   yield 0.3;
-  out(`  comprou poção: ${player.potions === pot0 + 1 && run.gold === 165 ? '✔' : 'ERRO'} (poções ${player.potions}, ouro ${run.gold})`);
+  out(`  comprou poção: ${player.potions === pot0 + 1 && run.gold === 850 ? '✔' : 'ERRO'} (poções ${player.potions}, ouro ${run.gold})`);
   const sb = run.pickups.find((p) => p.opts.item === 'blessing');
   player.position.set(sb.pos.x, 0, sb.pos.z + 1.3);
   yield 0.2;
   const nb = Object.keys(player.blessings).length;
   press('KeyE');
   yield 0.3;
-  out(`  comprou bênção: ${Object.keys(player.blessings).length > nb || run.gold < 165 ? '✔' : 'ERRO'} (ouro ${run.gold})`); // pode ser uma que ele já tinha (acumula)
+  out(`  comprou bênção: ${Object.keys(player.blessings).length > nb || run.gold < 850 ? '✔' : 'ERRO'} (ouro ${run.gold})`); // pode ser uma que ele já tinha (acumula)
 
   out('9) Baú do tesouro (combate antes)');
   run.enter({ kind: 'treasure', reward: 'treasure', room: 'tesouro', waves: [[['minion', 1]]], level: 1 }, true);
