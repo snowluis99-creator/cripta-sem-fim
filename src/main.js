@@ -380,6 +380,7 @@ async function start() {
     } };
   Object.defineProperty(game, 'client', { get: () => client }); // testes do co-op
   Object.defineProperty(game, 'coop', { get: () => coop });
+  state.game = game; // testes automáticos
   const selfTest = createSelfTest(state, game, () => DEBUG);
   Object.defineProperty(state, 'game', { value: game, enumerable: false }); // testes automáticos
 

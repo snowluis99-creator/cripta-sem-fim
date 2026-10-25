@@ -1,6 +1,7 @@
 // Monta o andar: uma sequência de salas. Depois de cada sala o jogador escolhe uma entre 1 ou 2 portas;
 // o ícone em cima da porta mostra o que tem do outro lado (tipo de sala e recompensa).
 import { COMBAT_ROOMS, CRYPT_ROOMS, SHADOW_ROOMS } from './rooms.js';
+import { DIFF } from '../difficulty.js';
 
 // Ondas por dificuldade (0 = primeira sala). Cada onda = lista de [tipo, quantidade].
 // Arqueiros entram em todas as ondas, somados aos inimigos que já existiam.
@@ -35,9 +36,9 @@ const REAPER_WAVES = [[['reaper', 1]]];
 
 // Nome e vida/dano extras de cada andar.
 export const FLOORS = {
-  1: { name: 'A Masmorra', hp: 1, dmg: 1 },
-  2: { name: 'A Cripta', hp: 1.25, dmg: 1.15 },
-  3: { name: 'O Reino das Sombras', hp: 1.45, dmg: 1.25 },
+  1: { name: 'A Masmorra', hp: 1, dmg: DIFF.floorDmg[0] },
+  2: { name: 'A Cripta', hp: 1.25, dmg: DIFF.floorDmg[1] },
+  3: { name: 'O Reino das Sombras', hp: 1.45, dmg: DIFF.floorDmg[2] },
 };
 
 // Tipos de porta: o que o ícone mostra.

@@ -215,7 +215,7 @@ function* abilityTests(g, out, flags, setup) {
   yield () => combat.hazards.circles.length > 0;
   const hr = handY(boss, 'handslot.r'), hl = handY(boss, 'handslot.l');
   out(`  mão direita ${hr.toFixed(1)} x esquerda ${hl.toFixed(1)}: ${hr > hl + 1.2 && hr > 2.3 ? '✔ direita levantada' : 'ERRO'}`);
-  out(`  conjurou círculos: ${combat.hazards.circles.length} ✔ | parado: ${Math.hypot(boss.position.x - bx0, boss.position.z - bz0) < 0.05 ? '✔' : 'ERRO'} | mão levantada: ${boss.anim.currentName === 'Ranged_Magic_Raise' ? '✔' : 'ERRO'} | vida ${boss.maxHp} ${boss.maxHp === 480 ? '✔' : 'ERRO'} -> CONGELADO (T continua)`);
+  out(`  conjurou círculos: ${combat.hazards.circles.length} ✔ | parado: ${Math.hypot(boss.position.x - bx0, boss.position.z - bz0) < 0.05 ? '✔' : 'ERRO'} | mão levantada: ${boss.anim.currentName === 'Ranged_Magic_Raise' ? '✔' : 'ERRO'} | vida ${boss.maxHp} ${boss.maxHp === 912 ? '✔' : 'ERRO'} -> CONGELADO (T continua)`);
   yield 'hold';
   yield () => player.state === 'rooted';
   out(`  herói preso: ${player.state === 'rooted' ? '✔' : 'ERRO'}`);

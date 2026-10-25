@@ -1,3 +1,4 @@
+import { DIFF } from './difficulty.js';
 // A partida (uma descida): monta cada sala, tranca as portas, roda as ondas, dá a recompensa
 // e leva os heróis para a sala escolhida. Também cuida do mercador, do baú e da cama de descanso.
 // Co-op: cada jogador tem as próprias bênçãos, poções e ouro; as recompensas saem em dobro (uma para cada,
@@ -201,7 +202,7 @@ export class Run {
       bounds: built, delay: node.kind === 'boss' ? 2.0 : 1.3,
       hpScale: node.kind === 'boss' ? 1 : (node.kind === 'elite' ? 1.15 : 1 + (node.level || 0) * 0.04) * F.hp,
       dmgScale: F.dmg,
-      mult: this.coop ? 2 : 1, bossMul: this.coop ? 2 : 1, // co-op: dobro de esqueletos e chefe com dobro de vida
+      mult: this.coop ? DIFF.coopWaveMult : DIFF.waveMult, bossMul: this.coop ? DIFF.coopBossMul : 1, // difficulty.js (modo brutal)
     });
     this.combat.hazards.bounds = built; // magias do Necromante usam o tamanho da sala
     if (node.kind === 'boss') this.hud.banner(node.intro || 'O chefe desperta…', 'big');

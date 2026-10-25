@@ -3,9 +3,9 @@
 export class CollisionWorld {
   constructor() { this.rects = []; }
 
-  addRect(minX, minZ, maxX, maxZ) { this.rects.push({ minX, minZ, maxX, maxZ }); }
+  addRect(minX, minZ, maxX, maxZ) { this.version = (this.version || 0) + 1; this.rects.push({ minX, minZ, maxX, maxZ }); }
 
-  clear() { this.rects.length = 0; this.bounds = null; }
+  clear() { this.version = (this.version || 0) + 1; this.rects.length = 0; this.bounds = null; }
 
   // Limites da sala (parte de dentro das paredes). Ninguém pode ficar fora disso (nem com salto, investida ou cena).
   setBounds(halfW, halfD, wallHalf) { this.bounds = { x: halfW - wallHalf, z: halfD - wallHalf }; }

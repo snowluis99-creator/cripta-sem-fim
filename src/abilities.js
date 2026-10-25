@@ -327,5 +327,6 @@ export function raiseRightArm(e) {
 // Recarga das habilidades (fora delas).
 export function tickCooldowns(e, dt) {
   if (!e.cd || ABILITY_STATES.has(e.state)) return;
-  for (const k in e.cd) e.cd[k] -= dt;
+  const k2 = dt * (e.data.abilityRate || 1); // dificuldade: habilidades mais frequentes
+  for (const k in e.cd) e.cd[k] -= k2;
 }

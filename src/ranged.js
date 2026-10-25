@@ -1,5 +1,6 @@
 // Ataques à distância: o Arqueiro (mantém distância, foge se o herói chega perto e atira com a besta)
 // e a saraivada de flechas do Guardião enfurecido. Sem aviso: só a pose de mirar.
+import { stepToward, fleePoint, aimAngle, targetBusy } from './brain.js';
 const rand = ([a, b]) => a + Math.random() * (b - a);
 
 // Tem caminho livre (sem obstáculo) até o herói?
@@ -13,24 +14,23 @@ function clearShot(e, p, world) {
 }
 
 // Movimento do Arqueiro enquanto persegue. Devolve true se começou a atirar.
+// Cérebro (brain.js): foge para um lugar livre, dá a volta nos obstáculos para ter linha de tiro
+// e, com mira livre, anda de lado mantendo distância.
 export function archerChase(e, dt, ctx, dist, dx, dz) {
   const d = e.data, R = d.ranged, p = ctx.player;
   const shot = clearShot(e, p, ctx.world);
+  if (targetBusy(p)) e.cooldown -= dt; // herói ocupado: atira mais cedo
   if (e.cooldown <= 0 && dist <= R.max + 2 && shot) { startShot(e, R); return true; }
-  let mx = 0, mz = 0, run = false;
-  if (dist < R.flee) { mx = -dx / dist; mz = -dz / dist; run = true; }          // foge
-  else if (dist > R.max || !shot) { mx = dx / dist; mz = dz / dist; }           // chega mais perto
-  else { mx = (dz / dist) * 0.5 * e.strafe; mz = (-dx / dist) * 0.5 * e.strafe; } // anda de lado
-  const ml = Math.hypot(mx, mz);
-  if (ml > 0.05) {
-    const k = d.speed * (run ? 1.25 : 1) * (e.slow > 0 ? 0.45 : 1) * dt / Math.max(ml, 1);
-    const bx = e.position.x, bz = e.position.z;
-    e.position.x += mx * k; e.position.z += mz * k;
-    ctx.world.resolveCircle(e.position, d.radius);
-    // Encurralado na parede fugindo: troca o lado para onde anda.
-    if (run && Math.hypot(e.position.x - bx, e.position.z - bz) < k * 0.3) e.strafe *= -1;
-    e.anim.play(run ? 'Running_A' : d.anims.walk, { speed: run ? 1.1 : d.walkAnimSpeed });
-  } else e.anim.play(d.anims.idle);
+  let tx = null, tz = null, run = false;
+  if (dist < R.flee) {
+    const f = fleePoint(e, ctx, dist);
+    if (f) { tx = f.x; tz = f.z; run = true; }
+    else { tx = e.position.x + (dz / dist) * 3 * e.strafe; tz = e.position.z - (dx / dist) * 3 * e.strafe; run = true; } // encurralado: escapa de lado
+  } else if (dist > R.max || !shot) { tx = p.position.x; tz = p.position.z; }      // chega mais perto / procura mira
+  else { tx = e.position.x + (dz / dist) * 2 * e.strafe; tz = e.position.z - (dx / dist) * 2 * e.strafe; } // anda de lado
+  const moved = tx !== null && stepToward(e, ctx, dt, tx, tz, run ? 1.25 : 1);
+  if (moved) e.anim.play(run ? 'Running_A' : d.anims.walk, { speed: run ? 1.1 : d.walkAnimSpeed });
+  else e.anim.play(d.anims.idle);
   return false;
 }
 
@@ -66,7 +66,9 @@ export function runRanged(e, dt, ctx, { toPlayer }) {
         });
       }
     }
-    return e.t < R.aim - 0.12 ? { target: toPlayer, turn: R.turn ?? 9 } : null; // trava a mira no fim
+    // Mira onde o herói vai estar (projéteis que seguem o herói miram menos na frente).
+    const aim = R.homing ? toPlayer : aimAngle(e, ctx.player, R.speed);
+    return e.t < R.aim - 0.12 ? { target: aim, turn: R.turn ?? 9 } : null; // trava a mira no fim
   }
   // 'shot': recuo do disparo.
   if (e.t >= R.recover) {

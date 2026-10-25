@@ -6,6 +6,8 @@ import { makeCharacter, attachWeapon, makeFlashable, setFlash } from './characte
 import { makeIceBlock } from './magic.js';
 import { tryAbility, runAbility, initAbilities, hideTelegraphs, tickCooldowns, startRage, raiseRightArm, ABILITY_STATES } from './abilities.js';
 import { archerChase } from './ranged.js';
+import { applyDifficulty } from './difficulty.js';
+import { meleeMove, leadAngle, targetBusy } from './brain.js';
 import { checkPhase } from './necro.js';
 import { voiceState, voiceHit, voiceTick } from './voice.js';
 import { GHOST_STATES, HIDDEN_STATES, setGhost, shadowTick } from './shadow.js';
@@ -291,6 +293,7 @@ export const ENEMIES = {
     ],
   },
 };
+applyDifficulty(ENEMIES); // modo brutal (difficulty.js)
 // Cópia falsa do Ceifador: igual por fora, some com 1 golpe e depois de "life" segundos. Machuca menos.
 ENEMIES.reaperClone = {
   ...ENEMIES.reaper, name: 'Cópia Sombria', hp: 1, damage: 12, boss: false, final: false, phases: undefined,
@@ -530,32 +533,26 @@ export class Enemy {
         if (this.abilities && tryAbility(this, ctx, dist)) break;
         if (d.ranged) { archerChase(this, dt, ctx, dist, dx, dz); break; }
         const slot = combat.attackers < combat.maxAttackers;
-        if (slot && this.cooldown <= 0 && dist <= d.attackRange && Math.abs(wrap(toPlayer - this.facing)) < 0.6) {
+        // Herói ocupado (atacando, bebendo, tomando dano): a recarga anda mais rápido (punição).
+        if (targetBusy(p)) this.cooldown -= dt * 1.2;
+        const ready = slot && this.cooldown <= 0;
+        // Andar com o cérebro (brain.js): contorna obstáculos, cerca o herói e evita o escudo.
+        const canHit = meleeMove(this, dt, ctx, dist, ready);
+        const aimAt = leadAngle(this, p, 0.25);
+        if (ready && canHit && dist <= d.attackRange && Math.abs(wrap(aimAt - this.facing)) < 0.7) {
           this.hasToken = true; combat.attackers++;
           this.startAttack();
           break;
         }
-        // Sem vaga para atacar: espera rodeando a uma distância segura.
-        const ready = slot && this.cooldown <= 0;
-        // Sem limite de atacantes: entre um golpe e outro ficam colados, prontos para atacar de novo.
-        const want = ready ? d.attackRange * 0.8 : (combat.maxAttackers === Infinity ? d.attackRange + 0.5 : 3.4);
-        let mx = 0, mz = 0;
-        if (dist > want + 0.2) { mx = dx / dist; mz = dz / dist; }
-        else if (dist < want - 0.6) { mx = -dx / dist * 0.5; mz = -dz / dist * 0.5; }
-        if (!ready && dist < 5) { mx += (dz / dist) * 0.35 * this.strafe; mz += (-dx / dist) * 0.35 * this.strafe; }
-        const ml = Math.hypot(mx, mz);
-        if (ml > 0.05) {
-          const k = d.speed * (this.slow > 0 ? 0.45 : 1) * dt / Math.max(ml, 1);
-          this.position.x += mx * k;
-          this.position.z += mz * k;
-          this.anim.play(d.anims.walk, { speed: d.walkAnimSpeed * (this.slow > 0 ? 0.5 : 1) });
-        } else this.anim.play(d.anims.idle);
+        // Perto: já vira para onde o herói vai estar.
+        if (dist < d.attackRange + 2) target = aimAt;
+        else if (this.moveAng != null && this.nav && !this.nav.direct) target = this.moveAng; // contornando: olha para onde anda
         break;
       }
       case 'attack': {
         const a = this.atk;
         const pr = this.anim.progress();
-        if (pr < a.aim) { target = toPlayer; turn = d.turnSpeed * 1.5; }
+        if (pr < a.aim) { target = leadAngle(this, p, 0.2); turn = d.turnSpeed * 1.5; }
         // Olhos acendem em vermelho enquanto ele prepara o golpe (aviso para o jogador).
         const glow = pr < a.hit ? pr / a.hit : Math.max(0, 1 - (pr - a.hit) * 6);
         if (a.glow !== false) setFlash(this.eyes, glow * 3, 1, 0.1, 0.05);

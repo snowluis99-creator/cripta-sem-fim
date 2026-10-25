@@ -1,5 +1,6 @@
 // Combate: quem acerta quem, dano, empurrão, pausa no impacto (hitstop), números de dano e tremida.
 import * as THREE from 'three';
+import { tactics } from './brain.js';
 import { Enemy } from './enemies.js';
 import { Hazards } from './hazards.js';
 import { Projectiles } from './projectiles.js';
@@ -107,6 +108,17 @@ export class Combat {
     if (m && m.ally && m.alive && m.state !== 'leave' && m.state !== 'gone' && !e.data.boss) alive.push(m);
     if (alive.length <= 1) return alive[0] || this.players[0];
     e.retarget = (e.retarget || 0) - dt;
+    // Chefe no co-op: não fica preso num herói só. A cada 4–6 s troca para o outro
+    // (de preferência o mais machucado), para os dois precisarem se defender.
+    if (e.data.boss) {
+      const cur = e.target;
+      if (cur && alive.includes(cur) && e.retarget > 0) return cur;
+      e.retarget = 4 + Math.random() * 2;
+      const others = alive.filter((p) => p !== cur && !p.ally);
+      if (!others.length) return cur && alive.includes(cur) ? cur : alive[0];
+      const frac = (p) => (p.hp ?? 1) / (p.maxHp || 1);
+      return others.reduce((a, b) => (frac(a) <= frac(b) ? a : b));
+    }
     const cur = e.target;
     if (cur && alive.includes(cur) && e.retarget > 0) return cur;
     e.retarget = 1 + Math.random();
@@ -553,8 +565,9 @@ export class Combat {
       }
     }
     for (let i = this.graves.length - 1; i >= 0; i--) if ((this.graves[i].age += dt) > 14) this.graves.splice(i, 1);
+    for (const e of this.enemies) if (e.alive) e.target = this.pickTarget(e, dt);
+    tactics(this, dt); // brain.js: velocidade dos heróis e vagas do cerco
     for (const e of this.enemies) {
-      if (e.alive) e.target = this.pickTarget(e, dt);
       ctx.player = e.target || this.player;
       e.update(dt, ctx);
     }

@@ -57,7 +57,7 @@ export class WaveManager {
   }
 
   // Co-op: o dobro de esqueletos (os chefes continuam um só, mas com o dobro de vida).
-  count(type, n) { return ENEMIES[type]?.boss ? n : n * (this.opts?.mult || 1); }
+  count(type, n) { return ENEMIES[type]?.boss ? n : Math.max(n, Math.round(n * (this.opts?.mult || 1))); }
 
   // Herói de referência para o nascimento: um dos heróis vivos, sorteado (co-op).
   anchor() {
