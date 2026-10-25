@@ -13,12 +13,13 @@ import { audio } from './audio.js';
 import { sayLine } from './voice.js';
 import { trySpell, runSpell, SPELL_STATES, SPELL_KEYS } from './necro.js';
 import { tryShadow, runShadow, SHADOW_STATES, SHADOW_KEYS } from './shadow.js';
+import { tryToss, runToss, TOSS_STATES } from './toss.js';
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const rand = ([a, b]) => a + Math.random() * (b - a);
 
 // Estados controlados por este arquivo (o resto fica em enemies.js).
-export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'rage', ...SPELL_STATES, ...SHADOW_STATES]);
+export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'roll', 'reload', 'grab', 'rage', ...TOSS_STATES, ...SPELL_STATES, ...SHADOW_STATES]);
 
 // Avisos antigos (anéis e faixas no chão) foram removidos; nada a esconder.
 export function hideTelegraphs() {}
@@ -29,7 +30,7 @@ function eyes(e, v) { if (e.eyes.length) setFlash(e.eyes, v, 1, 0.1, 0.05); }
 export function initAbilities(e) {
   const d = e.data;
   e.cd = {};
-  for (const k of ['leap', 'charge', 'spin', 'summon', 'cast', 'volley', ...SPELL_KEYS, ...SHADOW_KEYS]) if (d[k]) e.cd[k] = rand(d[k].first || [0, 0]);
+  for (const k of ['leap', 'charge', 'spin', 'summon', 'cast', 'volley', 'toss', ...SPELL_KEYS, ...SHADOW_KEYS]) if (d[k]) e.cd[k] = rand(d[k].first || [0, 0]);
 }
 
 // Chamado enquanto o inimigo persegue o herói. Devolve true se começou uma habilidade.
@@ -43,6 +44,7 @@ export function tryAbility(e, ctx, dist) {
     cd.summon = 3;
   }
   if (d.cast && cd.cast <= 0 && dist > 2.5) return start(e, 'cast');
+  if (tryToss(e, ctx, dist)) return true;
   if (trySpell(e, ctx, dist)) return true;
   if (tryShadow(e, ctx, dist)) return true;
   if (d.leap && cd.leap <= 0 && dist >= d.leap.range[0] && dist <= d.leap.range[1]) return startLeap(e, ctx);
@@ -89,14 +91,40 @@ export function spotBehind(p, world, dist, r) {
   return null;
 }
 
+// Destino do salto: um lugar livre num círculo em volta do herói (de preferência atrás dele),
+// longe dos outros esqueletos e de onde os outros estão caindo — assim eles cercam em roda em vez de empilhar.
+export function leapSpot(e, ctx, dist) {
+  const p = ctx.player, w = ctx.world, r = e.data.radius + 0.1, back = p.facing + Math.PI;
+  const others = [];
+  for (const o of ctx.combat.enemies) {
+    if (o === e || !o.alive) continue;
+    others.push(o.state === 'leap' && o.leapTo ? o.leapTo : o.position);
+  }
+  const gap = (e.data.radius + 0.6) * 2; // espaço livre entre um e outro
+  let best = null, bs = -Infinity;
+  for (let i = 0; i < 24; i++) {
+    const a = back + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 12);
+    for (const k of [1, 0.8, 0.6]) {
+      const x = p.position.x + Math.sin(a) * dist * k, z = p.position.z + Math.cos(a) * dist * k;
+      if (w.blocked(x, z, r)) continue;
+      let sc = -Math.abs(wrap(a - back)) * 0.8 - (1 - k) * 2;
+      for (const o of others) { const dd = Math.hypot(o.x - x, o.z - z); if (dd < gap) sc -= (gap - dd) * 6; }
+      if (sc > bs) { bs = sc; best = { x, z }; }
+      break;
+    }
+  }
+  return best;
+}
+
 function startLeap(e, ctx) {
   const L = e.data.leap;
-  const spot = spotBehind(ctx.player, ctx.world, L.behind, e.data.radius + 0.1);
+  const spot = leapSpot(e, ctx, L.behind);
   if (!spot) { e.cd.leap = 1; return false; }
   start(e, 'leap');
   audio.play('swingHeavy', e.position.x, e.position.z);
   e.leapFrom = { x: e.position.x, z: e.position.z };
   e.leapTo = spot;
+  e.leapHero = { x: ctx.player.position.x, z: ctx.player.position.z }; // onde o herói estava quando ele pulou
   e.anim.play('Jump_Full_Short', { once: true, restart: true, speed: 1.17 / L.time * 0.85, fade: 0.08 });
   return true;
 }
@@ -111,12 +139,16 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       const L = d.leap, k = Math.min(1, e.t / L.time);
       // Recalcula o destino no começo do salto se o herói se mexeu muito (continua caindo nas costas dele).
       if (k < 0.35) {
-        const s = spotBehind(p, ctx.world, L.behind, d.radius + 0.1);
+        const s = leapSpot(e, ctx, L.behind);
         if (s) e.leapTo = s;
       }
       e.position.x = e.leapFrom.x + (e.leapTo.x - e.leapFrom.x) * k;
       e.position.z = e.leapFrom.z + (e.leapTo.z - e.leapFrom.z) * k;
       e.group.position.y = L.height * 4 * k * (1 - k);
+      // Encostou no herói durante o salto (baixo, não por cima da cabeça): agarra e imobiliza.
+      // (só se o herói se mexeu para dentro do salto: parado, o esqueleto passa por cima e cai nas costas).
+      const moved = e.leapHero ? Math.hypot(p.position.x - e.leapHero.x, p.position.z - e.leapHero.z) : 0;
+      if (L.grab && k > 0.12 && e.group.position.y < 1.1 && moved > 0.6 && canGrab(e, p)) { startGrab(e, ctx, p); return { target: toPlayer, turn: 20 }; }
       if (k >= 1) {
         e.group.position.y = 0;
         combat.vfx.dust(e.position, new THREE.Vector3(0, 0, 0), 5);
@@ -124,6 +156,23 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
         e.anim.play(d.anims.idle, { fade: 0.08 });
       }
       return { target: toPlayer, turn: 14 };
+    }
+    case 'grab': {
+      // Segurando o herói: fica colado nas costas/lado dele até soltar.
+      const G = d.leap, h = e.grabbed;
+      if (h && h.state !== 'dead') {
+        const ang = Math.atan2(e.position.x - h.position.x, e.position.z - h.position.z);
+        const R = d.radius + h.hero.radius - 0.15;
+        e.position.x = h.position.x + Math.sin(ang) * R; e.position.z = h.position.z + Math.cos(ang) * R;
+      }
+      if (e.t >= G.grab || !h || h.state === 'dead') {
+        releaseGrab(e);
+        // Solta e já emenda o golpe rápido (sem a preparação inteira: dá tempo de rolar ao ser solto).
+        e.setState('leapWind');
+        e.t = Math.max(0, d.leap.wind - (G.afterGrab ?? 0.2));
+        e.anim.play(d.anims.idle, { fade: 0.08 });
+      }
+      return { target: toPlayer, turn: 20 };
     }
     case 'leapWind': {
       if (e.t >= d.leap.wind) {
@@ -263,8 +312,9 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       if (e.t >= Cs.time) { e.setState('chase'); e.anim.play(d.anims.idle, { fade: 0.2 }); }
       return null; // parado, com a mão direita levantada
     }
-    case 'aim': case 'shot': return runRanged(e, dt, ctx, { toPlayer });
+    case 'aim': case 'shot': case 'roll': case 'reload': return runRanged(e, dt, ctx, { toPlayer, dist });
     case 'tpOut': case 'tpIn': case 'revive': case 'rain': case 'ring': case 'nova': return runSpell(e, dt, ctx, { dist, toPlayer });
+    case 'tossGrab': case 'tossThrow': case 'held': case 'thrown': return runToss(e, dt, ctx, { dist, toPlayer });
     case 'vanish': case 'stalk': case 'ambushWind': case 'shadeOut': case 'shadeIn': case 'clones': case 'reap': return runShadow(e, dt, ctx, { dist, toPlayer });
     // --- Guardião se enfurecendo: cresce até o dobro do tamanho ---
     case 'rage': {
@@ -278,6 +328,37 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
     }
     default: return null;
   }
+}
+
+// ---------- Agarrão (salto do Lacaio que encosta no herói) ----------
+function canGrab(e, p) {
+  if (!p || !p.hero || p.state === 'dead' || p.state === 'rooted' || p.state === 'cine' || p.invulnerable) return false;
+  if ((p.grabImmune || 0) > 0) return false; // acabou de ser solto: não emenda outro agarrão
+  return Math.hypot(p.position.x - e.position.x, p.position.z - e.position.z) < e.data.radius + p.hero.radius + 0.15;
+}
+
+function startGrab(e, ctx, p) {
+  const G = e.data.leap;
+  e.group.position.y = 0;
+  e.setState('grab');
+  e.grabbed = p;
+  e.cd.leap = rand(G.cooldown);
+  p.root(G.grab, 'grab');
+  p.grabImmune = G.grab + 1.6;
+  e.anim.play('Interact', { once: true, restart: true, speed: 1.6, fade: 0.06 }); // braços para a frente, segurando
+  const c = ctx.combat;
+  c.text.add('Agarrado!', p.position, 'hurt', 3.2);
+  c.vfx.dust(e.position, new THREE.Vector3(0, 0, 0), 4);
+  if (c.shakeFor) c.shakeFor(p, 0.2); else c.cam.shake(0.2);
+  audio.play('swingHeavy', e.position.x, e.position.z);
+  if (c.log) c.log({ type: 'grab', enemy: e });
+}
+
+// Solta o herói (acabou o tempo, ou o esqueleto apanhou/morreu).
+export function releaseGrab(e) {
+  const h = e.grabbed;
+  e.grabbed = null;
+  if (h && h.state === 'rooted' && h.rootKind === 'grab') h.rootTime = Math.min(h.rootTime, 0);
 }
 
 // Metade da vida: o Guardião se enfurece (dobra de tamanho, habilidades mais fortes + as dos outros esqueletos).

@@ -4,8 +4,9 @@ import * as THREE from 'three';
 import { Animator } from './animation.js';
 import { makeCharacter, attachWeapon, makeFlashable, setFlash } from './characters.js';
 import { makeIceBlock } from './magic.js';
-import { tryAbility, runAbility, initAbilities, hideTelegraphs, tickCooldowns, startRage, raiseRightArm, ABILITY_STATES } from './abilities.js';
-import { archerChase } from './ranged.js';
+import { tryAbility, runAbility, initAbilities, hideTelegraphs, tickCooldowns, startRage, raiseRightArm, ABILITY_STATES, releaseGrab } from './abilities.js';
+import { archerChase, startRoll } from './ranged.js';
+import { dropHeld } from './toss.js';
 import { applyDifficulty } from './difficulty.js';
 import { meleeMove, leadAngle, targetBusy } from './brain.js';
 import { checkPhase } from './necro.js';
@@ -39,6 +40,7 @@ export const ENEMIES = {
     contact: 5,          // dano ao encostar no herói
     // Salto pelas costas: pula para trás do herói, prepara (olhos + anel vermelho) e dá um golpe rápido.
     leap: { range: [2.6, 7], cooldown: [3.5, 5.5], first: [1.0, 2.5], time: 0.5, height: 1.8, behind: 1.9, wind: 0.5,
+      grab: 0.6, afterGrab: 0.2, // encostou no herói durante o salto: agarra 0,6 s e emenda o golpe
       attack: { clip: 'Melee_1H_Attack_Slice_Horizontal', speed: 2.4, hit: 0.24, aim: 0.02, end: 0.62, reach: 2.4, arc: 160, lunge: 0.5, damage: 9, glow: false } },
     knockback: 1,        // quanto é empurrado pelos golpes
     stagger: 0.4,        // tempo atordoado ao levar um golpe
@@ -67,7 +69,7 @@ export const ENEMIES = {
     knockback: 0.35,
     stagger: 1.0,        // só o golpe forte atordoa (quebra a guarda)
     staggerOnlyHeavy: true,
-    shield: { arc: 130 }, // bloqueia golpes que vêm deste ângulo à frente dele
+    shield: { arc: 130, bash: { time: 0.6, push: 9 } }, // bloqueia golpes deste ângulo; bash = rebate o herói (desequilibrado 0,6 s)
     anims: SKELETON_ANIMS,
   },
   // Arqueiro: fica longe, foge se o herói chega perto e atira com a besta (ranged.js).
@@ -86,7 +88,10 @@ export const ENEMIES = {
     cooldown: [1.4, 2.2], // tempo entre um tiro e outro
     contact: 4,
     // min/max = distância que ele gosta de ficar; flee = perto disso ele foge; aim = tempo mirando antes do tiro.
-    ranged: { max: 12, flee: 5, aim: 0.55, aimClip: 'Ranged_2H_Aiming', shootClip: 'Ranged_2H_Shoot', recover: 0.45, speed: 19, damage: 9 },
+    // keep = distância que ele tenta manter (anda de costas, mirando); back = velocidade andando para trás enquanto mira.
+    // roll = no 1º golpe que recebe: rola para longe e recarrega a besta.
+    ranged: { max: 13, keep: 9, flee: 4.5, back: 1.6, aim: 0.55, aimClip: 'Ranged_2H_Aiming', shootClip: 'Ranged_2H_Shoot', recover: 0.45, speed: 19, damage: 9,
+      roll: { dist: 4.5, time: 0.45, reload: 1.1, clip: 'Ranged_2H_Reload' } },
     knockback: 1.1,
     stagger: 0.45,
     staggerOnlyHeavy: false,
@@ -115,6 +120,9 @@ export const ENEMIES = {
     spin: { range: 4.2, radius: 4.4, cooldown: [4, 6], first: [2, 3], wind: 0.6, speed: 1.15, hit: 0.35, damage: 26, push: 12 },
     summon: { cooldown: [12, 15], first: [6, 7], time: 1.8, list: [['minion', 3]], cap: 6 },
     cast: { cooldown: [6, 8], first: [3, 4], time: 1.4, count: 3, radius: 1.6, warn: 0.9, life: 5, root: 1.6 },
+    // Arremesso: pega um esqueleto perto dele e joga no herói (toss.js). reach = até onde ele alcança um esqueleto.
+    toss: { cooldown: [6, 9], first: [3, 5], reach: 6, minDist: 3.5, maxDist: 16, pull: 0.45, release: 0.42, throwSpeed: 1.25,
+      flight: 0.7, height: 3.2, radius: 1.9, damage: 20, push: 11, stun: 0.7 },
     knockback: 0.12,
     stagger: 0.8,
     staggerOnlyHeavy: true,
@@ -131,6 +139,8 @@ export const ENEMIES = {
         summon: { cooldown: [14, 17], first: [8, 9], time: 1.8, list: [['minion', 3], ['archer', 1]], cap: 7 },
         // Círculos cobrindo 3/4 do chão da sala (80% das casas da grade ≈ 75% da área).
         cast: { cooldown: [10, 13], first: [5, 6], time: 1.4, fill: 0.8, radius: 2.3, warn: 0.35, life: 4, root: 1.3 },
+        toss: { cooldown: [5, 7], first: [2, 3], reach: 10, minDist: 4, maxDist: 22, pull: 0.4, release: 0.42, throwSpeed: 1.25,
+          flight: 0.75, height: 5, radius: 2.4, damage: 28, push: 14, stun: 0.7 },
         // Habilidades dos outros esqueletos:
         leap: { range: [4, 14], cooldown: [6, 9], first: [2, 3], time: 0.7, height: 4, behind: 4.2, wind: 0.35,
           attack: { clip: 'Melee_1H_Attack_Slice_Horizontal', speed: 1.7, hit: 0.24, aim: 0.02, end: 0.62, reach: 6.0, arc: 170, lunge: 0.8, damage: 28, glow: false } },
@@ -160,7 +170,7 @@ export const ENEMIES = {
     attack: { clip: 'Melee_1H_Attack_Chop', speed: 1.0, hit: 0.59, aim: 0.3, end: 0.9, reach: 2.3, arc: 110, lunge: 0.5 },
     cooldown: [2.2, 3.0],
     contact: 4,
-    ranged: { max: 10, flee: 4.5, aim: 0.7, aimClip: 'Ranged_Magic_Spellcasting', shootClip: 'Ranged_Magic_Shoot', recover: 0.5,
+    ranged: { max: 11, keep: 8, flee: 4.5, back: 1.2, aim: 0.7, aimClip: 'Ranged_Magic_Spellcasting', shootClip: 'Ranged_Magic_Shoot', recover: 0.5,
       speed: 8, damage: 11, kind: 'orb', homing: 1.1, color: 0x9a50ff },
     // Revive: levanta até "max" esqueletos caídos perto dele (cada esqueleto só pode ser revivido uma vez).
     revive: { cooldown: [7, 10], first: [3, 5], range: 16, max: 2, time: 1.4 },
@@ -378,13 +388,15 @@ export class Enemy {
     m.opacity += (want - m.opacity) * Math.min(1, dt * 10);
     this.bubble.visible = m.opacity > 0.01;
   }
-  get targetable() { return this.alive && this.state !== 'rage' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
+  get targetable() { return this.alive && this.state !== 'rage' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
 
   setState(s) {
     if (this.tele) hideTelegraphs(this);
     // Espada de esqueletos: se o giro for interrompido (ou ele morrer), ela se desmancha.
     if (this.boneSword && s !== 'spinGather' && s !== 'spin') { this.boneSword.shatter(); this.boneSword = null; }
     if (this.state === 'leap') this.position.y = 0; // interrompido no meio do salto: volta ao chão
+    if (this.state === 'grab' && s !== 'grab') releaseGrab(this); // apanhou/morreu agarrando: solta o herói
+    if (this.tossing && s !== 'tossGrab' && s !== 'tossThrow') dropHeld(this); // Rei interrompido: larga o esqueleto
     // Saiu da sombra/invisibilidade (inclusive acertado no meio): volta a aparecer.
     if (this.alpha !== undefined && this.alpha < 1 && !GHOST_STATES.has(s)) setGhost(this, 1);
     if (HIDDEN_STATES.has(this.state) && !HIDDEN_STATES.has(s)) this.group.position.y = 0;
@@ -411,7 +423,10 @@ export class Enemy {
     if (this.hp <= 0) { this.die(); return true; }
     if (this.data.voice) voiceHit(this, heavy);
     if (noStagger) return false;
-    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin'; // chefe não para o golpe especial
+    // Arqueiro: no 1º golpe que leva, rola para longe e recarrega a besta.
+    const R = this.data.ranged;
+    if (R && R.roll && !this.rolledOnce && this.abilities && this.state !== 'spawn') { this.rolledOnce = true; startRoll(this, dirX, dirZ); return false; }
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll'; // chefe não para o golpe especial
     if (!armor && (heavy || !this.data.staggerOnlyHeavy)) {
       this.releaseToken();
       this.setState('hurt');
@@ -439,6 +454,7 @@ export class Enemy {
 
   die() {
     this.releaseToken();
+    if (this.state === 'held' || this.state === 'thrown') this.position.y = 0;
     if (this.frozenT > 0) { this.frozenT = 0; if (this.iceBlock) this.iceBlock.visible = false; setFlash(this.bodyMats, 0); }
     this.setState('dead');
     this.flash = 1;

@@ -8,7 +8,7 @@
 // - Mira: arqueiros, magos e saraivadas atiram onde o herói VAI estar (velocidade do herói).
 const CELL = 0.5;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-const BUSY = new Set(['attack', 'drink', 'hurt', 'rooted', 'emote']);
+const BUSY = new Set(['attack', 'drink', 'hurt', 'rooted', 'stagger', 'emote']);
 
 class NavGrid {
   constructor(world, clearance) {

@@ -308,9 +308,15 @@ export function* m4Tests(g, out, flags) {
   nc.cd.rain = 99;
   yield 2.0;
   combat.projectiles.clear();
+  // Conta os orbes disparados (os que saem perto de uma parede somem na hora; contar a lista falhava às vezes).
+  let fired = 0;
+  const fire0 = combat.projectiles.fire;
+  combat.projectiles.fire = function (...a) { if (a[3] && a[3].owner === nc) fired++; return fire0.apply(this, a); };
+  yield () => nc.state === 'chase';
   nc.cd.ring = 0;
-  yield () => combat.projectiles.list.length >= 14;
-  out(`  anel de orbes: ${combat.projectiles.list.length} ${ok(combat.projectiles.list.length >= 14)}`);
+  yield () => fired >= 14;
+  combat.projectiles.fire = fire0;
+  out(`  anel de orbes: ${fired} ${ok(fired >= 14)}`);
   nc.cd.ring = 99;
   yield 1.5;
   // Fase 3: cresce e explode de perto.

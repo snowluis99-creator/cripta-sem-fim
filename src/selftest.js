@@ -35,6 +35,7 @@ function* script(g, out, flags) {
   out(`  início: herói (${player.position.x.toFixed(1)}, ${player.position.z.toFixed(1)}) ${player.state} virado ${Math.round(player.facing * 57.3)}° | lacaio (${m.position.x.toFixed(1)}, ${m.position.z.toFixed(1)}) ${m.state}`);
   press('KeyJ'); yield 0.22; press('KeyJ'); yield 0.25; press('KeyJ');
   yield () => !m.alive;
+  if (m.alive) { press('KeyJ'); yield () => !m.alive; } // dano varia ±10%: às vezes falta um golpe
   out(m.alive ? '  ERRO: o lacaio não morreu' : `  morreu ✔ (vida final ${m.hp})`);
   yield 1.8;
   out('  -> ossos no chão: CONGELADO (T continua)');
@@ -48,11 +49,14 @@ function* script(g, out, flags) {
   yield 0.3;
   press('KeyJ'); yield 0.3;
   out('  -> golpe no escudo: CONGELADO (T continua)');
+  out(`  escudo rebateu o herói: ${flags.last('bashed') ? '✔' : 'ERRO'}`);
   yield 'hold';
-  yield 0.6; flags.events.length = 0;
+  yield 1.0; flags.events.length = 0; // o herói fica desequilibrado 0,6 s
+  player.position.set(-1.2, 0, 1); player.facing = Math.PI / 2; // foi empurrado para trás
   press('KeyJ'); yield 0.7;
   out(`  de frente: ${flags.last('blocked') ? 'bloqueou ✔' : 'ERRO: não bloqueou'} (vida ${w.hp}/${w.maxHp})`);
-  w.facing = Math.PI / 2; flags.events.length = 0;
+  yield 0.6; w.facing = Math.PI / 2; flags.events.length = 0;
+  player.position.set(-1.2, 0, 1); player.facing = Math.PI / 2;
   press('KeyJ'); yield 0.7;
   out(`  pelas costas: ${flags.last('hit') ? 'acertou ✔' : 'ERRO: não acertou'} (vida ${w.hp}/${w.maxHp})`);
   w.facing = -Math.PI / 2; flags.events.length = 0;

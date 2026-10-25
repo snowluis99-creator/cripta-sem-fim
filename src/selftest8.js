@@ -113,6 +113,7 @@ export function* mageTests(g, out, flags) {
     player.iframes = 99;
     yield () => atk.state === 'attack';
     const s0 = atk.state, a0 = atk.anim.currentName, z0 = atk.position.z;
+    player.facing = Math.atan2(atk.position.x - player.position.x, atk.position.z - player.position.z); // a IA nova cerca pelos lados: mira nele
     combat.playerStrike(player, player.hero.combo[2]);
     yield 0.25;
     out(`  magia não interrompe o ataque (${s0} -> ${atk.state}) ${ok(atk.hp < 9999 && atk.state !== 'hurt' && (atk.state === 'attack' || atk.anim.currentName === a0 || atk.state === 'chase'))} | sem empurrão ${ok(atk.position.z - z0 < 0.3, (atk.position.z - z0).toFixed(2))}`);

@@ -351,10 +351,26 @@ export class Player {
     this.anim.play(h.anims.hit, { once: true, speed: 1.6, fade: 0.05, restart: true });
   }
 
+  // Escudo do Guerreiro rebateu o golpe: o herói é jogado para trás e fica sem defesa por "time" segundos.
+  // (nx, nz) = direção do herói para o esqueleto.
+  staggerBack(nx, nz, time, push) {
+    if (this.state === 'dead' || this.state === 'rooted' || this.state === 'cine') return false;
+    this.combo = 0;
+    this.clearRoll();
+    this.setGlow(0);
+    this.vel.set(-nx, 0, -nz).multiplyScalar(push);
+    this.staggerTime = time;
+    this.setState('stagger');
+    this.anim.play(this.hero.anims.hit, { once: true, speed: 1.1, fade: 0.05, restart: true });
+    return true;
+  }
+
   // Círculo do Guardião: fica imóvel e sem defesa (não anda, não ataca, não rola, não bloqueia).
-  root(t) {
+  // kind = 'grab': agarrado por um Lacaio (pisca em vermelho em vez de roxo).
+  root(t, kind = 'circle') {
     if (this.state === 'dead') return;
     this.rootTime = t;
+    this.rootKind = kind;
     this.combo = 0;
     this.clearRoll();
     this.setGlow(0);
@@ -497,6 +513,7 @@ export class Player {
   clearRoll() { this.model.rotation.x = 0; this.model.position.set(0, 0, 0); }
 
   update(dt, camera, world) {
+    if (this.grabImmune > 0) this.grabImmune -= dt;
     this.updateBody(dt, camera, world);
     if (this.weapon && this.weapon.userData.flail) updateFlail(this.weapon, dt);
     this.pulseGold();
@@ -536,7 +553,7 @@ export class Player {
 
     // Esquiva tem prioridade sobre tudo (menos outra esquiva).
     if (this.state === 'cine') { this.anim.update(dt); return; } // a cena controla o herói
-    if (input.dodge() && this.state !== 'dodge' && this.state !== 'rooted' && this.dodgeCooldown <= 0) this.startDodge();
+    if (input.dodge() && this.state !== 'dodge' && this.state !== 'rooted' && this.state !== 'stagger' && this.dodgeCooldown <= 0) this.startDodge();
 
     switch (this.state) {
       case 'idle':
@@ -614,8 +631,21 @@ export class Player {
         // Preso: pisca em roxo até soltar.
         this.rootTime -= dt;
         this.vel.set(0, 0, 0);
-        setFlash(this.bodyMats, 0.35 + 0.25 * Math.sin(this.stateTime * 18), 0.55, 0.15, 1);
+        if (this.rootKind === 'grab') setFlash(this.bodyMats, 0.3 + 0.25 * Math.sin(this.stateTime * 24), 1, 0.25, 0.15);
+        else setFlash(this.bodyMats, 0.35 + 0.25 * Math.sin(this.stateTime * 18), 0.55, 0.15, 1);
         if (this.rootTime <= 0) {
+          setFlash(this.bodyMats, 0);
+          this.setState(moving ? 'run' : 'idle');
+          this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 });
+        }
+        turnRate = 0;
+        break;
+      }
+      case 'stagger': {
+        // Golpe batido no escudo do Guerreiro: desequilibrado, sem defesa nem rolamento por um instante.
+        const k = Math.max(0, 1 - this.stateTime / this.staggerTime);
+        setFlash(this.bodyMats, 0.35 * k, 1, 0.85, 0.3);
+        if (this.stateTime >= this.staggerTime) {
           setFlash(this.bodyMats, 0);
           this.setState(moving ? 'run' : 'idle');
           this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 });

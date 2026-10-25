@@ -18,6 +18,7 @@ const tmp = new THREE.Vector3();
 // Esbarrão perdoado (Manopla): grace = tempo em que o mesmo encostão não conta; window = até quando um 2º machuca.
 const BUMP = { grace: 0.5, window: 1.6, push: 3 };
 
+const NO_BODY = new Set(['spawn', 'leap', 'held', 'thrown']); // sem corpo (não empurra nem é empurrado)
 export const FEEL = {
   hitstop: 0.055,       // pausa num golpe normal (s)
   hitstopHeavy: 0.11,   // pausa no golpe forte
@@ -310,6 +311,14 @@ export class Combat {
       // Escudo do Guerreiro: sem dano. Magia não para o esqueleto (ele segue andando com o escudo levantado).
       if (!opts.spell) e.blockHit(nx, nz);
       audio.play('block', e.position.x, e.position.z);
+      // Guerreiro: o escudo rebate o golpe e joga o herói para trás, sem defesa por um instante (e ele aproveita).
+      const bash = e.data.shield && e.data.shield.bash;
+      if (bash && !opts.spell && p.staggerBack && p.staggerBack(nx, nz, bash.time, bash.push)) {
+        e.cooldown = Math.min(e.cooldown, 0.1);
+        this.text.add('Desequilibrado!', p.position, 'hurt', 3.2);
+        this.shakeFor(p, 0.18);
+        if (this.log) this.log({ type: 'bashed', enemy: e });
+      }
       this.vfx.sparks(chest.set(e.position.x - nx * 0.6, 1.2, e.position.z - nz * 0.6), 0xcfe4ff, 8);
       this.text.add('Bloqueou!', e.position, 'block');
       this.addHitstop(0.04);
@@ -493,15 +502,20 @@ export class Combat {
 
   // Corpos se empurrando (sem ficar uns dentro dos outros).
   separate() {
-    const list = this.enemies.filter((e) => e.alive && e.state !== 'spawn' && e.state !== 'leap');
+    const list = this.enemies.filter((e) => e.alive && !NO_BODY.has(e.state));
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       for (let j = i + 1; j < list.length; j++) {
         const b = list[j];
         const dx = b.position.x - a.position.x, dz = b.position.z - a.position.z;
-        const min = a.data.radius + b.data.radius;
-        const d2 = dx * dx + dz * dz;
-        if (d2 >= min * min || d2 < 1e-6) continue;
+        const min = (a.data.radius + b.data.radius) * 1.08; // um pouco de folga: dois esqueletos nunca parecem um só
+        let d2 = dx * dx + dz * dz;
+        if (d2 >= min * min) continue;
+        if (d2 < 1e-6) { // exatamente no mesmo lugar: separa para um lado qualquer
+          const ang = (i * 2.39996 + j) % (Math.PI * 2);
+          b.position.x += Math.sin(ang) * min * 0.5; b.position.z += Math.cos(ang) * min * 0.5;
+          continue;
+        }
         const d = Math.sqrt(d2), push = (min - d) / 2;
         a.position.x -= (dx / d) * push; a.position.z -= (dz / d) * push;
         b.position.x += (dx / d) * push; b.position.z += (dz / d) * push;
@@ -515,7 +529,7 @@ export class Combat {
         const d2 = dx * dx + dz * dz;
         if (d2 >= min * min || d2 < 1e-6) continue;
         // Encostar num esqueleto machuca (pouco).
-        if (a.abilities && a.data.contact && a.state !== 'leap' && a.state !== 'attack' && a.targetable && !p.invulnerable) { // atacando: quem machuca é o golpe
+        if (a.abilities && a.data.contact && a.state !== 'attack' && a.state !== 'grab' && a.targetable && !p.invulnerable) { // atacando: quem machuca é o golpe
           if (!this.bumpForgiven(p, a)) this.hitPlayer(a, Math.round(a.data.contact * a.dmgScale), { contact: true, push: 6, noRepel: true, target: p });
         }
         const d = Math.sqrt(d2), push = min - d;
@@ -542,7 +556,7 @@ export class Combat {
   separateMerchant() {
     const m = this.merchant;
     if (!m || !m.alive || m.ally) return; // contratado: anda e rola, ninguém fica preso nele
-    const bodies = this.enemies.filter((e) => e.alive && e.state !== 'spawn' && e.state !== 'leap')
+    const bodies = this.enemies.filter((e) => e.alive && !NO_BODY.has(e.state))
       .map((e) => ({ pos: e.position, r: e.data.radius }));
     for (const p of this.players) if (p.state !== 'dodge') bodies.push({ pos: p.position, r: p.hero.radius });
     for (const b of bodies) {
