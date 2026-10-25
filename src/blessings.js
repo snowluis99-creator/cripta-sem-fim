@@ -6,6 +6,8 @@ export const RARITY = {
   rare: { name: 'Rara', color: '#5fb0ff', weight: 30, price: 300 },
   epic: { name: 'Épica', color: '#c27bff', weight: 12, price: 400 },
   legendary: { name: 'Lendária', color: '#ffc24a', weight: 3, price: 500 },
+  // Arriscada: sempre a 4ª carta (borda vermelha). Muito forte, mas com uma contrapartida. Não é vendida.
+  risky: { name: 'Arriscada', color: '#ff4a4a', weight: 0, price: 0 },
 };
 const ORDER = ['common', 'rare', 'epic', 'legendary'];
 
@@ -18,6 +20,8 @@ export function baseStats() {
     chain: 0, boneBlast: 0, roomHeal: 0, spectral: false, fury: false, reaper: false, reaperStacks: 0,
     // Escudo (quebra depois de 10 bloqueios):
     shieldBonus: 0, parry: false, forge: false, shards: false, mithril: 0,
+    // Bênçãos arriscadas e ultimate:
+    potionMul: 1, ultNeed: 10,
   };
 }
 
@@ -116,13 +120,42 @@ export const BLESSINGS = [
     desc: () => 'Ao morrer, volta uma vez com metade da vida.',
     apply: (s) => { s.phoenix += 1; } },
 ];
+// ---- Arriscadas (sempre a 4ª opção): forte + contrapartida (risk = o texto da contrapartida) ----
+export const RISKY = [
+  { id: 'r_pacto', name: 'Pacto de Sangue', icon: '♆', rarity: 'risky', max: 1,
+    desc: () => '+50% de dano.', risk: '−30 de vida máxima.',
+    apply: (s) => { s.damageMul += 0.5; s.bonusHp -= 30; } },
+  { id: 'r_furia', name: 'Fúria Cega', icon: '⚡', rarity: 'risky', max: 1,
+    desc: () => 'Golpes 30% mais rápidos.', risk: 'Recebe 30% mais dano.',
+    apply: (s) => { s.attackSpeed += 0.3; s.damageTaken *= 1.3; } },
+  { id: 'r_pesada', name: 'Lâmina Pesada', icon: '✠', rarity: 'risky', max: 1,
+    desc: () => '+50% de dano.', risk: 'Golpes 25% mais lentos.',
+    apply: (s) => { s.damageMul += 0.5; s.attackSpeed -= 0.25; } },
+  { id: 'r_fantasma', name: 'Passos Fantasmas', icon: '☁', rarity: 'risky', max: 1,
+    desc: () => 'Anda 25% mais rápido e rola o dobro da distância.', risk: '−25% de dano.',
+    apply: (s) => { s.speedMul += 0.25; s.dodgeMul += 1; s.damageMul -= 0.25; } },
+  { id: 'r_vampira', name: 'Alma Vampira', icon: '♁', rarity: 'risky', max: 1,
+    desc: () => 'Cura 5 de vida a cada inimigo derrotado.', risk: 'As poções curam só metade.',
+    apply: (s) => { s.lifeOnKill += 5; s.potionMul *= 0.5; } },
+  { id: 'r_ceifador', name: 'Pacto do Ceifador', icon: '⌛', rarity: 'risky', max: 1,
+    desc: () => 'A ultimate carrega com 6 inimigos derrotados (em vez de 10).', risk: '−20 de vida máxima.',
+    apply: (s) => { s.ultNeed = 6; s.bonusHp -= 20; } },
+];
+BLESSINGS.push(...RISKY);
+
+// A 4ª carta: uma arriscada que o herói ainda não tem (null se já tem todas).
+export function rollRisky(owned, rng = Math.random) {
+  const pool = RISKY.filter((b) => (owned[b.id] || 0) < b.max);
+  return pool.length ? pool[Math.floor(rng() * pool.length)] : null;
+}
+
 export const BLESSING_BY_ID = Object.fromEntries(BLESSINGS.map((b) => [b.id, b]));
 
 // Sorteia "count" bênçãos diferentes que o herói ainda pode pegar. minRarity: raridade mínima (baú, guardião).
 // noShield: herói com arma de duas mãos (as bênçãos de escudo não aparecem).
 export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math.random, noShield = false) {
   const min = ORDER.indexOf(minRarity);
-  const can = (b) => (owned[b.id] || 0) < b.max && !(noShield && b.shield);
+  const can = (b) => b.rarity !== 'risky' && (owned[b.id] || 0) < b.max && !(noShield && b.shield);
   let pool = BLESSINGS.filter((b) => can(b) && ORDER.indexOf(b.rarity) >= min);
   if (pool.length < count) pool = BLESSINGS.filter(can);
   const picks = [];
@@ -151,5 +184,5 @@ export function rollShop(owned, rng = Math.random, noShield = false) {
 // Texto da carta: a descrição considerando o nível que o herói terá depois de pegar.
 export function describe(b, owned) {
   const n = (owned[b.id] || 0) + 1;
-  return b.desc(n);
+  return b.desc(n) + (b.risk ? `<span class="risk">⚠ ${b.risk}</span>` : '');
 }

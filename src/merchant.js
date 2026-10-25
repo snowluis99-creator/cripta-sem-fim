@@ -26,6 +26,7 @@ export class Merchant {
     group.position.set(x, 0, z);
     scene.add(group);
     this.group = group;
+    this.model = model;
     this.position = group.position;
     attachWeapon(model, 'handslot.r', MERCHANT.weapon);
     this.anim = new Animator(model);
@@ -45,6 +46,15 @@ export class Merchant {
   }
 
   get radius() { return MERCHANT.radius; }
+
+  setFlashLevel(v) { setFlash(this.flashMats, v); }
+  // Cambalhota (mercador contratado; igual à do herói).
+  applyRoll(t) {
+    const c = 0.9, k = Math.min(Math.max(t, 0), 1), e = k * k * (3 - 2 * k), a = e * Math.PI * 2;
+    this.model.rotation.x = a;
+    this.model.position.set(0, c - c * Math.cos(a) - Math.sin(k * Math.PI) * 0.35, -c * Math.sin(a));
+  }
+  clearRoll() { this.model.rotation.x = 0; this.model.position.set(0, 0, 0); }
 
   // Alguém bateu no mercador. attacker = 'player' ou o esqueleto.
   hit(dmg, attacker) {

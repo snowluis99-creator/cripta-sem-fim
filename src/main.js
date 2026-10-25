@@ -28,6 +28,7 @@ import { CoopHost } from './coop.js';
 import { Replica } from './replica.js';
 import { CoopClient } from './client.js';
 import { Teamwork } from './teamwork.js';
+import { Ultimates } from './ultimate.js';
 import { audio } from './audio.js';
 import { Music } from './music.js';
 import './voice.js';
@@ -114,6 +115,7 @@ async function start() {
   const ui = new Ui();
   const run = new Run({ scene, player, combat, waves, world, vfx, debris, hud, ui, cam });
   const team = new Teamwork({ scene, combat, run, hud, vfx, cam, world }); // jogadas em dupla (co-op)
+  const ult = new Ultimates({ combat, vfx, hud, run, flash: (c, t) => team.flash(c, t) }); // ultimate (R / RT)
   let mode = 'menu';           // menu | solo | host | client
   let coop = null;             // CoopHost (anfitrião)
   let client = null;           // CoopClient (Jogador 2)
@@ -369,7 +371,7 @@ async function start() {
   const clock = new THREE.Clock();
   let fpsAcc = 0, fpsFrames = 0;
   // Testes automáticos: recomeçam direto na masmorra (sem Taverna e sem melhorias).
-  const game = { player, combat, waves, hud, debris, cam, renderer, scene, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; },
+  const game = { player, combat, waves, hud, debris, cam, renderer, scene, ult, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; },
     // Teste: vai direto para a sala do chefe do andar n.
     gotoBoss: (n) => {
       run.nextFloor(n);
@@ -400,6 +402,7 @@ async function start() {
       if (god) for (const p of players) if (p.state !== 'dead') p.hp = Math.max(p.hp, 60);
       for (const p of players) { p.update(sim, cam.camera, world); iceTrail(p, sim); }
       team.update(sim);
+      ult.update(sim);
       combat.update(sim);
       waves.update(sim);
       run.update(sim, simTime);
@@ -417,6 +420,7 @@ async function start() {
     hud.setPotions(player.potions, Math.max(1, hero.potions)); // pelo menos 1 frasco (vazio) no HUD
     hud.setGold(player.gold);
     hud.setShield(player.shield, shieldMax(player));
+    hud.setUlt(player.ult, player.ultNeed, input.device === 'pad' ? 'RT' : 'R');
     updateHint(player.hero);
     hud.setSoul(save.data.soul, run.inTavern);
     hud.update(dt, player.hp / player.maxHp);
@@ -452,8 +456,8 @@ async function start() {
     const n = `${h.combo.length}x = combo`, block = !h.noShield;
     const atk = h.caster ? 'magia' : 'atacar', blk = h.block && h.block.wall ? 'barreira' : 'bloquear';
     return d === 'pad'
-      ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>Analógico dir.</b> mirar</span>`
-      : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span>`;
+      ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span>`
+      : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span>`;
   };
   const updateHint = (h) => {
     const k = `${hintDev}|${h.id}|${h.weaponId}`;

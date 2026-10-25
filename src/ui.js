@@ -84,7 +84,7 @@ export class Ui {
       const lvl = owned[b.id] || 0;
       const card = document.createElement('button');
       card.type = 'button';
-      card.className = 'card';
+      card.className = b.rarity === 'risky' ? 'card risky' : 'card';
       card.style.setProperty('--rc', r.color);
       card.innerHTML = `<span class="num">${i + 1}</span><span class="ico">${b.icon}</span><span class="nm">${b.name}</span>`
         + `<span class="rar">${r.name}${lvl ? ` · nível ${lvl + 1}` : ''}</span><span class="ds">${describe(b, owned)}</span>`;
@@ -93,7 +93,7 @@ export class Ui {
       cards.appendChild(card);
     });
     this.$('.choice .hint').innerHTML = input.device === 'pad'
-      ? 'Analógico escolhe · <b>A</b> confirma' : 'Clique, ou <b>1</b> <b>2</b> <b>3</b>, ou setas + <b>Enter</b>';
+      ? 'Analógico escolhe · <b>A</b> confirma' : `Clique, ou ${options.map((_, i) => `<b>${i + 1}</b>`).join(' ')}, ou setas + <b>Enter</b>`;
     this.choice = { options, index: 0, onPick };
     this.highlight(0);
     this.choiceEl.classList.add('show');

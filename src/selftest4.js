@@ -26,7 +26,7 @@ export function* m4Tests(g, out, flags) {
   out('20) Bênçãos (30 no total)');
   fresh();
   const sede = BLESSING_BY_ID.sede;
-  out(`  total ${BLESSINGS.length}: ${ok(BLESSINGS.length === 30)} | Sede de Sangue lendária, máx. 1: ${ok(sede.rarity === 'legendary' && sede.max === 1)}`);
+  out(`  total ${BLESSINGS.length} (30 + 6 arriscadas): ${ok(BLESSINGS.length === 36)} | Sede de Sangue lendária, máx. 1: ${ok(sede.rarity === 'legendary' && sede.max === 1)}`);
 
   // Lâmina Longa: alcança um esqueleto a 3,6.
   let e = dummy(0, 2 - 3.6);

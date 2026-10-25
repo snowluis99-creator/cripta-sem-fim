@@ -108,7 +108,7 @@ export class Pickup {
           this.group.add(this.eqRing);
           break;
         }
-        if (opts.item === 'hero') { this.body = new THREE.Group(); this.float = false; break; } // cadeira de herói (Taverna)
+        if (opts.item === 'hero' || opts.item === 'hire') { this.body = new THREE.Group(); this.float = false; break; } // cadeira de herói (Taverna) / contratar o mercador (é ele mesmo)
         this.body = opts.item === 'potion' ? model('dungeon/bottle_B_green.gltf', 0.9) : orb(opts.color ?? 0xc27bff, 0.55);
         this.base = opts.item === 'potion' ? 1.0 : 1.55; break;
       default: this.body = new THREE.Group();

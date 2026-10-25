@@ -24,8 +24,8 @@ export class RemoteInput {
   reset() {
     this.mx = 0; this.mz = 0; this.aim = null; this.blk = false;
     this.last = null;                       // últimos contadores recebidos
-    this.pend = { atk: 0, dge: 0, pot: 0, use: 0 };
-    this.now = { atk: false, dge: false, pot: false, use: false };
+    this.pend = { atk: 0, dge: 0, pot: 0, use: 0, ult: 0 };
+    this.now = { atk: false, dge: false, pot: false, use: false, ult: false };
     this.retries = 0;
     this.seq = 0; this.seqAt = 0;           // último envio recebido do Jogador 2 (e quando chegou)
   }
@@ -38,9 +38,9 @@ export class RemoteInput {
     this.mz = Math.max(-1, Math.min(1, num(arr[1])));
     this.aim = Number.isFinite(arr[2]) ? arr[2] : null;
     this.blk = !!arr[3];
-    const c = { atk: num(arr[4]), dge: num(arr[5]), pot: num(arr[6]), use: num(arr[7]), rt: num(arr[8]) };
+    const c = { atk: num(arr[4]), dge: num(arr[5]), pot: num(arr[6]), use: num(arr[7]), rt: num(arr[8]), ult: num(arr[9]) };
     if (this.last) {
-      for (const k of ['atk', 'dge', 'pot', 'use']) this.pend[k] = Math.min(3, this.pend[k] + Math.max(0, c[k] - this.last[k]));
+      for (const k of ['atk', 'dge', 'pot', 'use', 'ult']) this.pend[k] = Math.min(3, this.pend[k] + Math.max(0, c[k] - this.last[k]));
       this.retries += Math.max(0, c.rt - this.last.rt);
     }
     this.last = c;
@@ -63,6 +63,7 @@ export class RemoteInput {
   dodge() { return this.now.dge; }
   potion() { return this.now.pot; }
   interact() { return this.now.use; }
+  ultimate() { return this.now.ult; }
   blocking() { return this.blk; }
 }
 
@@ -188,10 +189,11 @@ export class CoopHost {
       e: this.combat.enemies.map((e) => this.enemyEntry(e)),
       pk: run.pickups.filter((p) => p.kind !== 'bed').map((p) => [p.id, PICKUP_KINDS.indexOf(p.kind), r2(p.pos.x), r2(p.pos.z),
         p.opts.color ?? 0, p.opts.ringColor ?? -1, p.opts.item === 'potion' ? 1 : 0, p.opts.price || 0, p.opts.size || 1,
-        (p.boughtBy && p2 && p.boughtBy.has(p2)) || p.taken ? 1 : 0, p.opts.gold === false ? 0 : 1, p.opts.item === 'weapon' ? `w${p.opts.slot}` : p.opts.item === 'hero' ? 'h' : 0,
+        (p.boughtBy && p2 && p.boughtBy.has(p2)) || p.taken ? 1 : 0, p.opts.gold === false ? 0 : 1, p.opts.item === 'weapon' ? `w${p.opts.slot}` : p.opts.item === 'hero' ? 'h' : p.opts.item === 'hire' ? 'm' : 0,
         p.opts.item === 'weapon' && p2 && p2.weaponId === (WEAPONS[p2.heroId][p.opts.slot] || {}).id ? 1 : 0]),
       mc: run.npc ? [r2(run.npc.position.x), r2(run.npc.position.z), r2(run.npc.group.rotation.y), run.npc.anim.playId, clipIdx(run.npc.anim),
-        r2(run.npc.anim.netSpeed), run.npc.anim.netOnce ? 1 : 0, r1(run.npc.flash), run.npc.alive ? 1 : 0] : 0,
+        r2(run.npc.anim.netSpeed), run.npc.anim.netOnce ? 1 : 0, r1(run.npc.flash), run.npc.alive ? 1 : 0, run.npc.ally ? r2(run.npc.rollK || 0) : -1] : 0,
+      ul: this.combat.players.map((p) => [p.ult || 0, p.ultNeed, r2(p.ultTime || 0)]),
       mm: this.hud.mm || 0,
       wv: this.hud.waveEl.textContent,
       bs: this.hud.boss ? [this.hud.boss.data.name, Math.max(0, Math.round(this.hud.boss.hp)), this.hud.boss.maxHp] : 0,

@@ -15,6 +15,7 @@ export class Hud {
       <div class="hp">
         <div class="hp-bar"><div class="hp-ghost"></div><div class="hp-fill"></div><span class="hp-text"></span></div>
         <div class="shield" title="Escudo: cada bloqueio gasta 1"><span class="si">⛉</span><span class="pips"></span></div>
+        <div class="ult" title="Ultimate: derrote inimigos para encher"><b class="key uk">R</b><div class="ub"><div class="uf"></div></div><span class="ut"></span></div>
         <div class="potions"><span class="flasks"></span><b class="key">Q</b><span class="gold"><i></i><span class="gv">0</span></span><span class="soul" title="Ouro de Alma"><i></i><span class="sv">0</span></span></div>
         <div class="bless"></div>
         <div class="ally"><span class="an"></span><div class="ab"><div class="af"></div></div><span class="at"></span></div>
@@ -120,6 +121,18 @@ export class Hud {
   shieldWarn() {
     const el = this.$('.shield');
     el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+  }
+
+  // Ultimate: barra que enche com inimigos derrotados. key = tecla mostrada (R ou RT).
+  setUlt(n, need, key = 'R') {
+    const k = `${n}|${need}|${key}`;
+    if (k === this.ultShown) return;
+    this.ultShown = k;
+    const el = this.$('.ult'), full = n >= need;
+    el.classList.toggle('full', full);
+    this.$('.uf').style.width = `${Math.min(1, n / Math.max(1, need)) * 100}%`;
+    this.$('.uk').textContent = key;
+    this.$('.ut').textContent = full ? 'Ultimate pronta!' : `${n}/${need}`;
   }
 
   setPotions(n, max) {

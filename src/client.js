@@ -17,7 +17,7 @@ export class CoopClient {
     this.spectator = !!g.spectator;
     this.fitKey = '';
     this.look = new THREE.Vector3();
-    this.cnt = { atk: 0, dge: 0, pot: 0, use: 0, rt: 0 };
+    this.cnt = { atk: 0, dge: 0, pot: 0, use: 0, rt: 0, ult: 0 };
     this.pick = 0;
     this.sendT = 0;
     this.lastA = null; this.lastB = null;
@@ -46,6 +46,7 @@ export class CoopClient {
       if (input.dodge()) { this.cnt.dge++; dge = true; }
       if (input.potion()) { this.cnt.pot++; now = true; }
       if (input.interact()) { this.cnt.use++; now = true; }
+      if (input.ultimate() && !this.hud.deathVisible) { this.cnt.ult++; now = true; }
     }
     // Botão apertado (ou bloqueio mudou) = manda já, sem esperar o próximo envio.
     if (atk || dge || now || blk !== this.lastBlk) this.sendNow = true;
@@ -78,7 +79,7 @@ export class CoopClient {
     this.net.send(this.net.a, {
       role: 'guest',
       in: [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, aim === null ? null : Math.round(aim * 100) / 100,
-        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt],
+        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt, c.ult],
       pk: this.pick || 0,
       sq: this.sq,
       sv: [save.data.soul, save.data.ups, save.data.runs, save.data.best],

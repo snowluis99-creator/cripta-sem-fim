@@ -109,6 +109,7 @@ export const input = {
   dodge: () => pressed.has('Space') || pressed.has('PadA') || pressed.has('PadB'),
   potion: () => pressed.has('KeyQ') || pressed.has('PadY'),
   interact: () => pressed.has('KeyE') || pressed.has('PadY'),
+  ultimate: () => pressed.has('KeyR') || pressed.has('PadRT'),
   retry: () => pressed.has('Enter') || pressed.has('KeyR') || pressed.has('PadA'),
   blocking: () => mouse.right || down.has('ShiftLeft') || down.has('KeyK') || padHeld(4) || padHeld(6),
   // Ponto do chão (y = 0) sob o mouse.

@@ -101,13 +101,16 @@ export class Combat {
 
   // Quem o esqueleto persegue: o herói mais perto (troca de alvo só de vez em quando, com folga).
   pickTarget(e, dt) {
-    const alive = this.alivePlayers;
+    const alive = [...this.alivePlayers];
+    // Mercador contratado: os esqueletos comuns também vão atrás dele (chefes não).
+    const m = this.merchant;
+    if (m && m.ally && m.alive && m.state !== 'leave' && m.state !== 'gone' && !e.data.boss) alive.push(m);
     if (alive.length <= 1) return alive[0] || this.players[0];
     e.retarget = (e.retarget || 0) - dt;
     const cur = e.target;
     if (cur && alive.includes(cur) && e.retarget > 0) return cur;
     e.retarget = 1 + Math.random();
-    const dist = (p) => Math.hypot(p.position.x - e.position.x, p.position.z - e.position.z);
+    const dist = (p) => Math.hypot(p.position.x - e.position.x, p.position.z - e.position.z) + (p.ally ? 1.5 : 0);
     let best = alive.reduce((a, b) => (dist(a) <= dist(b) ? a : b));
     if (cur && alive.includes(cur) && dist(cur) < dist(best) + 2.5) best = cur;
     return best;
@@ -252,7 +255,7 @@ export class Combat {
     this.endCounter(p, hits);
     // O Mercador também apanha do herói (e revida).
     const m = this.merchant;
-    if (m && m.alive && !(h.single && only)) {
+    if (m && m.alive && !m.ally && !(h.single && only)) { // contratado: os heróis não acertam nele
       const dx = m.position.x - p.position.x, dz = m.position.z - p.position.z;
       const dist = Math.hypot(dx, dz) || 0.001;
       const inArc = dist <= range + m.radius && Math.abs(wrap(Math.atan2(dx, dz) - p.facing)) <= arc;
@@ -341,6 +344,8 @@ export class Combat {
     this.kills++;
     by = by || e.lastHitBy || this.player;
     const st = by.stats;
+    // Ultimate: cada inimigo derrotado pelo herói enche 1 (não conta durante a ultimate dele).
+    if (by.hero && !e.noUltCharge && !(by.ultTime > 0) && !by.ultCasting && by.state !== 'dead') by.ult = Math.min(by.ultNeed, (by.ult || 0) + 1);
     if (st.reaper && st.reaperStacks < 25) st.reaperStacks++;
     // Restos que o Mago Esqueleto pode reviver (só uma vez por esqueleto; chefes não).
     if (!e.revived && !e.data.boss && !e.noGrave) this.graves.push({ type: e.type, x: e.position.x, z: e.position.z, age: 0, hpScale: e.hpScale, dmgScale: e.dmgScale });
@@ -348,7 +353,7 @@ export class Combat {
     // Chefe morreu: os esqueletos invocados desmoronam juntos.
     if (e.data.final || e.data.finale) {
       this.graves.length = 0;
-      for (const o of this.enemies) if (o !== e && o.alive) { o.noGrave = true; o.blasted = true; o.die(); this.killed(o, 0, 1, by); }
+      for (const o of this.enemies) if (o !== e && o.alive) { o.noGrave = true; o.blasted = true; o.noUltCharge = true; o.die(); this.killed(o, 0, 1, by); }
       this.projectiles.clear();
       this.hazards.clear();
     }
@@ -388,12 +393,19 @@ export class Combat {
     this.text.add(String(dmg), e.position, 'dmg');
     this.vfx.sparks(new THREE.Vector3(e.position.x, 1.2, e.position.z), 0x7dff8a, 8);
     if (this.log) this.log({ type: 'merchantShot', enemy: e, dmg, died });
+    if (died) e.noUltCharge = true; // abate do mercador não enche a ultimate
     if (died) this.killed(e, nx, nz, e.lastHitBy);
   }
 
   // Dano no herói vindo do inimigo (golpe, investida, giro, encostar, flecha). opts: { push, noRepel, contact, unDodgeable }
   // opts.target = qual herói (co-op); sem ele, o alvo do esqueleto.
   hitPlayer(e, base, opts = {}) {
+    // Esqueleto mirando o mercador contratado: o golpe vai nele (se estiver perto), nunca no herói longe.
+    if (!opts.target && e.target && e.target.ally) {
+      const m = e.target;
+      if (m.alive && Math.hypot(m.position.x - e.position.x, m.position.z - e.position.z) < (e.data.attackRange || 2) + 3) m.hit(Math.round(base * (opts.contact ? 0.5 : 1)), e);
+      return false;
+    }
     const p = opts.target || (e.target && this.players.includes(e.target) ? e.target : this.player);
     if (p.state === 'dead') return false;
     // unDodgeable (giro do Guardião enfurecido): rolar não salva, só o escudo.
@@ -517,7 +529,7 @@ export class Combat {
   // Ninguém atravessa o Mercador (ele é empurrado por ninguém: fica no lugar).
   separateMerchant() {
     const m = this.merchant;
-    if (!m) return;
+    if (!m || !m.alive || m.ally) return; // contratado: anda e rola, ninguém fica preso nele
     const bodies = this.enemies.filter((e) => e.alive && e.state !== 'spawn' && e.state !== 'leap')
       .map((e) => ({ pos: e.position, r: e.data.radius }));
     for (const p of this.players) if (p.state !== 'dodge') bodies.push({ pos: p.position, r: p.hero.radius });

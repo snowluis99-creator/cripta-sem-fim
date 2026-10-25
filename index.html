@@ -42,6 +42,13 @@
   #hud .shield .pips b { margin-left:4px; font-size:11px; }
   #hud .shield.shake { animation:shake .35s; }
   #hud .potions { display:flex; align-items:center; gap:6px; }
+  #hud .ult { display:flex; align-items:center; gap:6px; font:bold 12px Georgia, serif; color:#ffe2a8; text-shadow:0 1px 2px #000; }
+  #hud .ult .ub { width:min(150px, 34vw); height:9px; background:#160c0c; border:1px solid #6a5a44; border-radius:5px; overflow:hidden; }
+  #hud .ult .uf { height:100%; width:0; background:linear-gradient(90deg, #8a5cff, #ffd24a); transition:width .2s; }
+  #hud .ult .ut { font-weight:normal; color:#bfae90; }
+  #hud .ult.full .ub { border-color:#ffd24a; box-shadow:0 0 10px rgba(255,210,74,.8); }
+  #hud .ult.full .ut { color:#ffd24a; font-weight:bold; animation:lowhp .6s infinite alternate; }
+  #hud.spec .ult { display:none !important; }
   #hud .flasks { display:flex; gap:2px; }
   #hud .flask svg { display:block; filter:drop-shadow(0 1px 2px #000); }
   #hud .flask.empty { opacity:.28; filter:grayscale(1); }
@@ -167,6 +174,10 @@
   #ui .card .nm { font-size:19px; color:#fff3dc; }
   #ui .card .rar { font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--rc); }
   #ui .card .ds { font-size:14px; line-height:1.4; color:#d8cbb2; }
+  #ui .card .risk { display:block; margin-top:6px; color:#ff7a6a; font-size:13px; }
+  #ui .card.risky { border-color:#ff3b3b; background:linear-gradient(#2a0f0c, #120605);
+    box-shadow:0 0 16px rgba(255,40,40,.45), 0 6px 20px rgba(0,0,0,.6); }
+  #ui .card.risky .ico { border-color:#ff3b3b; color:#ff6a5a; }
   #ui .choice .hint { margin:4px 0 0; color:var(--muted); font-size:13px; }
   #ui .choice .hint b { font:12px ui-monospace, Consolas, monospace; color:var(--ember); border:1px solid #4a3a28; border-radius:3px; padding:0 4px; font-weight:normal; }
   @media (max-width:700px) { #ui .card { width:min(300px, 86vw); min-height:0; flex-direction:row; flex-wrap:wrap; text-align:left; gap:4px 10px; padding:10px 12px; }

@@ -142,7 +142,7 @@ export class Projectiles {
         if (a.hits === 'spell') { // magia da Maga: para no 1º esqueleto (ou no mercador)
           const e = c.enemies.find((en) => en.targetable && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
           const m = c.merchant;
-          if (!e && m && m.alive && Math.hypot(m.position.x - a.x, m.position.z - a.z) < m.radius + a.r) {
+          if (!e && m && m.alive && !m.ally && Math.hypot(m.position.x - a.x, m.position.z - a.z) < m.radius + a.r) {
             m.hit(Math.round(a.damage * a.owner.stats.damageMul), a.owner); this.remove(i); done = true; continue;
           }
           if (e) { boltImpact(c, a, e); this.removeA(a); done = true; }

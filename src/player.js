@@ -14,7 +14,7 @@ import { updateFlail } from './flail.js';
 // Quando o herói está "congelado" (troca de sala, menus) ele ignora os controles.
 const NO_INPUT = {
   moveDir: (out) => out.set(0, 0, 0), attack: () => false, dodge: () => false, potion: () => false, blocking: () => false,
-  interact: () => false, aimAngle: () => null,
+  interact: () => false, aimAngle: () => null, ultimate: () => false,
 };
 
 // Co-op: cor da capa do Jogador 2 (para diferenciar os dois cavaleiros).
@@ -129,6 +129,7 @@ export class Player {
     this.noPotion = false;     // perto de algo para interagir: Y do controle interage em vez de beber
     this.hp = hero.maxHp;
     this.potions = hero.potions;
+    this.ult = 0; this.ultTime = 0;  // ultimate (ultimate.js)
     this.onDeath = null;      // chamado quando a vida chega a zero
     this.onHeal = null;       // (player, quanto curou)
     this.onPotionFail = null; // sem poção ou vida cheia
@@ -238,7 +239,9 @@ export class Player {
     this.spectralGlow.visible = m.opacity > 0.01;
   }
 
-  get maxHp() { return this.hero.maxHp + this.stats.bonusHp; }
+  get maxHp() { return Math.max(10, this.hero.maxHp + this.stats.bonusHp); }
+  // Ultimate: quantos inimigos derrotados enchem a barra (Pacto do Ceifador: 6).
+  get ultNeed() { return this.stats.ultNeed || 10; }
   // Bênçãos com efeito por tempo/condição (M4).
   get lowHp() { return this.hp < this.maxHp * 0.4; }
   get atkSpeed() { return this.stats.attackSpeed + (this.reflexTime > 0 ? 0.3 : 0); }
@@ -254,6 +257,7 @@ export class Player {
   addBlessing(b) {
     this.blessings[b.id] = (this.blessings[b.id] || 0) + 1;
     b.apply(this.stats, this);
+    if (this.hp > this.maxHp) this.hp = this.maxHp; // bênção arriscada pode tirar vida máxima
     this.syncWeaponSize();
   }
 
@@ -285,7 +289,7 @@ export class Player {
     if (this.state !== 'dead') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0, restart: true }); }
   }
 
-  get invulnerable() { return this.state === 'dodge' || this.iframes > 0 || this.state === 'dead' || this.state === 'cine'; }
+  get invulnerable() { return this.state === 'dodge' || this.iframes > 0 || this.ultTime > 0 || this.state === 'dead' || this.state === 'cine'; }
 
   // Cena (morte do Rei Skullbone): sem controle e sem levar dano; quem mexe no herói é a cena.
   enterCine() {
@@ -413,6 +417,7 @@ export class Player {
     this.hp = this.maxHp;
     this.iframes = 0; this.vel.set(0, 0, 0); this.hurtFlash = 0; this.combo = 0;
     this.reflexTime = 0; this.counterReady = false; this.spectralCd = 0; this.backToBack = false;
+    this.ult = 0; this.ultTime = 0; this.ultCasting = false;
     this.shield = shieldMax(this); this.forgeT = 0; shieldVisual(this);
     this.facing = Math.PI;
     this.clearRoll();
@@ -632,7 +637,7 @@ export class Player {
           this.drank = true;
           this.potions--;
           audio.play('potion', this.position.x, this.position.z);
-          const before = this.hp, total = h.potionHeal + this.stats.potionBonus;
+          const before = this.hp, total = Math.round((h.potionHeal + this.stats.potionBonus) * this.stats.potionMul);
           this.hp = Math.min(this.maxHp, this.hp + total);
           if (this.onHeal && this.hp > before) this.onHeal(this, this.hp - before);
           // Co-op: a cura que sobrou vai para o parceiro.

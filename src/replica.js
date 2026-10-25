@@ -26,6 +26,8 @@ import { save } from './save.js';
 import { WEAPONS, heroWith, ownsHero } from './heroes.js';
 import { UnlockScene } from './unlock.js';
 import { updateFlail } from './flail.js';
+import { tickDome } from './ultimate.js';
+import { input } from './input.js';
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (dt, k = 14) => 1 - Math.exp(-k * dt);
@@ -105,6 +107,7 @@ export class Replica {
     this.applyEnemies(s.e || []);
     this.applyPickups(s.pk || []);
     this.applyMerchant(s.mc);
+    this.ultState = s.ul || [];
     const mm = JSON.stringify(s.mm || 0);
     if (mm !== this.mm && s.mm) { this.mm = mm; this.hud.setMinimap(...s.mm); }
     this.hud.setWave(s.wv || '');
@@ -265,7 +268,7 @@ export class Replica {
         const kind = PICKUP_KINDS[ki];
         if (!kind) continue;
         const isW = typeof wid === 'string' && wid[0] === 'w';
-        const opts = { color: color || undefined, size, item: isPotion ? 'potion' : isW ? 'weapon' : wid === 'h' ? 'hero' : 'blessing', gold: gold ? undefined : false };
+        const opts = { color: color || undefined, size, item: isPotion ? 'potion' : isW ? 'weapon' : wid === 'h' ? 'hero' : wid === 'm' ? 'hire' : 'blessing', gold: gold ? undefined : false };
         if (isW) { // suporte de armas: mostra a arma do herói deste jogador
           const me = this.heroes[1], slot = +wid.slice(1);
           opts.slot = slot;
@@ -293,9 +296,12 @@ export class Replica {
 
   applyMerchant(m) {
     if (!m) { if (this.npc) { this.scene.remove(this.npc.group); this.npc = null; } return; }
-    const [x, z, rot, pid, clip, spd, once, flash, alive] = m;
+    const [x, z, rot, pid, clip, spd, once, flash, alive, roll = -1] = m;
     if (!this.npc) { this.npc = new Merchant(this.scene, this.shim, x, z); this.npc.anim.syncId = -1; }
     this.npc.group.rotation.y = rot;
+    // Mercador contratado (luta do chefe): anda e rola.
+    this.npc.position.x += (x - this.npc.position.x) * 0.5; this.npc.position.z += (z - this.npc.position.z) * 0.5;
+    if (roll > 0) this.npc.applyRoll(roll); else this.npc.clearRoll();
     syncAnim(this.npc.anim, pid, clip, spd, once);
     this.npc.flash = flash;
     this.npc.alive = !!alive;
@@ -397,6 +403,8 @@ export class Replica {
       p.hp = hp; p.potions = pot; p.gold = gold;
       p.stats.spectral = !!spec; p.spectralCd = 0;
       p.updateSpectral(dt);
+      const us = (this.ultState || [])[i];
+      tickDome(p, !!(us && us[2] > 0) && !dead, dt);
       p.netDead = !!dead;
       p.anim.update(dt);
       if (p.weapon && p.weapon.userData.flail) updateFlail(p.weapon, dt);
@@ -416,6 +424,8 @@ export class Replica {
       this.hud.setPotions(mine[15], 1);
       this.hud.setGold(mine[16]);
       if (mine[22] !== undefined) this.hud.setShield(mine[22], mine[23]);
+      const um = (this.ultState || [])[1];
+      if (um) this.hud.setUlt(um[0], um[1], input.device === 'pad' ? 'RT' : 'R');
       if (mine[26] !== undefined) save.adopt(mine[26], mine[27], mine[28], mine[29]);
       this.hud.setSoul(save.data.soul, this.inTavern);
       const bk = mine[20] || '';

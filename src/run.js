@@ -9,9 +9,10 @@ import { buildRoom } from './dungeon/builder.js';
 import { generateFloor, NODE_INFO, FLOORS } from './dungeon/generator.js';
 import { repairShield } from './shield.js';
 import { updateSpikes } from './traps.js';
-import { rollBlessings, rollShop, RARITY, BLESSINGS } from './blessings.js';
+import { rollBlessings, rollShop, rollRisky, RARITY, BLESSINGS } from './blessings.js';
 import { Pickup, iconFor } from './rewards.js';
 import { Merchant } from './merchant.js';
+import { Mercenary, ALLY } from './ally.js';
 import { Tavern } from './tavern.js';
 import { save } from './save.js';
 import { WEAPON_PRICE, ownsWeapon, equippedWeapon, ownKey, eqKey, WEAPONS, HEROES, HERO_IDS, HERO_PRICE, HERO_SEL, heroKey, ownsHero, selectedHero } from './heroes.js';
@@ -39,7 +40,7 @@ export function decorateDoors(scene, ui, built, infos) {
 
 // Uma linha sobre cada herói (aviso da cadeira na Taverna).
 function heroDesc(h) {
-  return h === 'mage' ? 'Ataca de longe com magia; barreira mágica para bloquear. Menos vida (80).'
+  return h === 'mage' ? 'Ataca de longe com magia; barreira mágica para bloquear. Menos vida (50).'
     : 'Corpo a corpo com escudo. 100 de vida.';
 }
 
@@ -81,6 +82,7 @@ export class Run {
     this.step = 0;
     this.history = [];
     this.pendingChoice = null;
+    this.hired = false;       // mercador contratado para a próxima luta de chefe
     this.banked = false;
     for (const p of this.players) { this.equipSaved(p); p.reset(0, 0); }
     this.enter({ kind: 'tavern', room: 'taverna' }, true);
@@ -204,6 +206,7 @@ export class Run {
     this.combat.hazards.bounds = built; // magias do Necromante usam o tamanho da sala
     if (node.kind === 'boss') this.hud.banner(node.intro || 'O chefe desperta…', 'big');
     if (node.kind === 'merchant') this.addMerchant();
+    if ((node.kind === 'boss' || node.kind === 'elite') && this.hired) this.addAlly(built);
     if (node.kind === 'rest') this.addBed();
     if (node.kind === 'tavern') this.tavern.build((p) => this.addPickup(p), this.world, this.player.heroId, (h) => ownsHero(save.data.ups, h));
     if (!this.waves.active) this.openDoors(false); // salas sem combate: pode sair quando quiser
@@ -262,6 +265,7 @@ export class Run {
 
   roomCleared() {
     const n = this.node, at = this.built.reward;
+    if (this.npc && this.npc.ally) this.npc.leave(); // luta acabou: o mercador contratado vai embora
     if (n.kind === 'boss' && this.floorNum >= 3) { this.victory(); return; } // o Ceifador: fim da partida
     this.hud.banner('Sala limpa!', 'big');
     audio.play('clear', null, null);
@@ -323,6 +327,15 @@ export class Run {
     };
   }
 
+  // Mercador contratado entra na sala do chefe junto com os heróis.
+  addAlly(built) {
+    this.hired = false;
+    this.npc = new Mercenary(this.scene, this.combat, built.entrance.x + (this.coop ? 2.6 : 1.8), built.entrance.z - 1.2, this.world);
+    this.npc.group.rotation.y = Math.PI;
+    this.npc.onGone = () => { if (this.npc && this.npc.state === 'gone') { this.scene.remove(this.npc.group); this.npc = null; this.combat.merchant = null; } };
+    this.hud.banner('O mercador luta com vocês!', 'small');
+  }
+
   // Depois do combate: itens nas mesinhas (poção + uma bênção de cada raridade), se o mercador estiver vivo.
   // Co-op: cada jogador pode comprar cada item uma vez (com o próprio ouro).
   openShop() {
@@ -339,6 +352,11 @@ export class Run {
       p.boughtBy = new Set();
       p.label = this.ui.addLabel(`<span class="price">${price}</span>`, pos.clone().setY(2.6), 'tag');
     });
+    // Contratar o mercador para a próxima luta de chefe (fala com ele).
+    const hp = new THREE.Vector3(this.npc.position.x, 0, this.npc.position.z);
+    const h = this.addPickup(new Pickup('shop', hp, { item: 'hire', price: ALLY.price, color: 0x7dff8a, radius: 1.9, prompt: '' }));
+    h.boughtBy = new Set();
+    h.label = this.ui.addLabel(`<span class="price">${ALLY.price}</span>`, hp.clone().setY(3.0), 'tag');
   }
 
   // Texto do aviso "E — ..." para um jogador (o item do mercador mostra o nível dele).
@@ -360,6 +378,7 @@ export class Run {
       return `Comprar ${name} · <span class="soulp">${WEAPON_PRICE}</span><br><small>${w.desc}</small>`;
     }
     if (it.item === 'potion') return `Comprar Poção · ${it.price} ouro`;
+    if (it.item === 'hire') return `Contratar o mercador · ${it.price} ouro<br><small>Ele luta ao seu lado contra o próximo chefe: flechas, rolamentos e uma saraivada a cada minuto.</small>`;
     const b = it.blessing;
     return `Comprar <i style="color:${RARITY[b.rarity].color}">${b.name}</i> · ${it.price} ouro<br><small>${b.desc((owned[b.id] || 0) + 1)}</small>`;
   }
@@ -423,7 +442,13 @@ export class Run {
         audio.play('gold', p.pos.x, p.pos.z);
         if (pl === this.player) this.hud.setGold(pl.gold);
         if (p.opts.item === 'potion') { pl.potions++; this.combat.text.add('+1 poção', pl.position, 'heal'); }
-        else this.grantBlessing(p.opts.blessing, pl);
+        else if (p.opts.item === 'hire') {
+          this.hired = true;
+          for (const o of this.players) p.boughtBy.add(o); // vale para os dois (co-op)
+          this.hud.banner('Mercador contratado para o chefe!', 'small');
+          this.combat.text.add('Combinado!', this.npc ? this.npc.position : p.pos, 'gold', 3.4);
+          if (this.combat.log) this.combat.log({ type: 'hired' });
+        } else this.grantBlessing(p.opts.blessing, pl);
         this.vfx.burst(p.pos, p.opts.color);
         p.boughtBy.add(pl);
         // Some quando todos (vivos) já compraram.
@@ -517,6 +542,8 @@ export class Run {
   // Escolha de bênção. Jogador 1: menu nesta tela. Jogador 2 (co-op): o menu abre no computador dele.
   offerBlessings(minRarity, pos, after, title, pl = this.player) {
     const options = rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero.noShield);
+    const risky = rollRisky(pl.blessings);
+    if (risky && options.length) options.push(risky); // 4ª carta: arriscada (borda vermelha)
     if (!options.length) { if (after) after(); return; }
     pl.choosing = true;
     if (pl.remote) {
