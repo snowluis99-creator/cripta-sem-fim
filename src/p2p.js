@@ -12,6 +12,7 @@ const LOBBY_EVERY = 100;   // s: o anfitrião repete o anúncio da sala
 const LOBBY_TTL = 240;     // s: anúncio mais velho que isso some da lista
 const PEER_SILENT = 30;    // s sem notícia = jogador saiu
 const CONNECT_TIMEOUT = 40; // s para a conexão direta abrir
+const MAX_QUEUE = 12000;  // bytes esperando para sair; mais que isso = pula o envio (evita atraso acumulado)
 const RESEND_EVERY = 1;    // s: repete a própria presença (mensagens podem se perder)
 
 const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -187,9 +188,16 @@ class Mesh {
     }
   }
 
+  // Internet mais lenta que o jogo: os pacotes ficariam numa fila e o atraso cresceria sem parar.
+  // Com fila cheia, pula este envio (o próximo leva o estado mais novo, que é o que importa).
   sendTo(obj) {
     const txt = JSON.stringify(obj);
-    for (const L of this.links.values()) if (L.dc && L.dc.readyState === 'open') { try { L.dc.send(txt); L.sent = (L.sent || 0) + 1; } catch (e) { L.err = String(e); } }
+    const must = !!obj.bye;
+    for (const L of this.links.values()) {
+      if (!L.dc || L.dc.readyState !== 'open') continue;
+      if (!must && L.dc.bufferedAmount > MAX_QUEUE) { L.skipped = (L.skipped || 0) + 1; continue; }
+      try { L.dc.send(txt); L.sent = (L.sent || 0) + 1; } catch (e) { L.err = String(e); }
+    }
   }
 
   tick() {
