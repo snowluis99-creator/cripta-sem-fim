@@ -15,6 +15,8 @@ export class Hud {
       <div class="hp">
         <div class="hp-bar"><div class="hp-ghost"></div><div class="hp-fill"></div><span class="hp-text"></span></div>
         <div class="shield" title="Escudo: cada bloqueio gasta 1"><span class="si">⛉</span><span class="pips"></span></div>
+        <div class="ammo" title="Munição: o que você arremessou fica no chão até ser pego"><span class="ai"></span><span class="apips"></span><b class="ast"></b></div>
+        <div class="smoke" title="Bomba de fumaça (botão direito)"><span class="sic">☁</span><span class="stx"></span></div>
         <div class="ult" title="Ultimate: derrote inimigos para encher"><b class="key uk">R</b><div class="ub"><div class="uf"></div></div><span class="ut"></span></div>
         <div class="potions"><span class="flasks"></span><b class="key">Q</b><span class="gold"><i></i><span class="gv">0</span></span><span class="soul" title="Ouro de Alma"><i></i><span class="sv">0</span></span></div>
         <div class="bless"></div>
@@ -124,6 +126,37 @@ export class Hud {
   }
 
   // Ultimate: barra que enche com inimigos derrotados. key = tecla mostrada (R ou RT).
+  // Ladino: kunais/virotes na mão. info = { n, max, kind, stack } ou null (arma sem munição).
+  setAmmo(info) {
+    const key = info ? `${info.n}|${info.max}|${info.kind}|${info.stack}` : '';
+    if (key === this.ammoShown) return;
+    this.ammoShown = key;
+    const el = this.$('.ammo');
+    el.style.display = info ? 'flex' : 'none';
+    if (!info) return;
+    el.classList.toggle('empty', info.n <= 0);
+    this.$('.ai').textContent = info.kind === 'kunai' ? '✧' : '➹';
+    let html = '';
+    for (let i = 0; i < info.max; i++) html += `<i class="${i < info.n ? 'on' : ''}"></i>`;
+    this.$('.apips').innerHTML = html + (info.n <= 0 ? '<b>pegue do chão</b>' : '');
+    this.$('.ast').textContent = info.stack > 0 ? `corrente ×${info.stack + 1}` : '';
+  }
+  ammoWarn() {
+    const el = this.$('.ammo');
+    el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+  }
+  // Bomba de fumaça: cd < 0 = arma sem fumaça; 0 = pronta; > 0 = segundos para recarregar.
+  setSmoke(cd, hidden) {
+    const key = cd < 0 ? '' : `${Math.ceil(cd)}|${hidden ? 1 : 0}`;
+    if (key === this.smokeShown) return;
+    this.smokeShown = key;
+    const el = this.$('.smoke');
+    el.style.display = cd < 0 ? 'none' : 'flex';
+    if (cd < 0) return;
+    el.classList.toggle('ready', cd <= 0);
+    this.$('.stx').textContent = hidden ? 'invisível!' : cd <= 0 ? 'fumaça pronta' : `fumaça em ${Math.ceil(cd)} s`;
+  }
+
   setUlt(n, need, key = 'R') {
     const k = `${n}|${need}|${key}`;
     if (k === this.ultShown) return;
@@ -176,7 +209,7 @@ export class Hud {
   // Minimapa: as salas do andar em fila (visitadas com ícone, a atual em destaque, as próximas vazias).
   setMinimap(history, total, current, floorNum = 1) {
     this.mm = [history.slice(), total, current, floorNum]; // co-op: vai para o outro computador
-    const ICON = { blessing: '✦', gold: '●', potion: '♥', treasure: '▣', merchant: '$', rest: '☾', elite: '☠', boss: '♛' };
+    const ICON = { blessing: '✦', gold: '●', potion: '♥', ult: '★', treasure: '▣', merchant: '$', rest: '☾', elite: '☠', boss: '♛' };
     if (!floorNum) { this.mapEl.innerHTML = '<span class="fl">Taverna</span>'; return; }
     let html = `<span class="fl">A${floorNum}</span>`;
     for (let i = 0; i < total; i++) {

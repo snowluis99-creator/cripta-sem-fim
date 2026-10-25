@@ -1,7 +1,8 @@
 // Teste automático, parte 9: ultimate, bênçãos arriscadas e mercador contratado para o chefe.
 // Tecla Y = tudo; tecla 9 = só esta parte.
 import { WEAPONS } from './heroes.js';
-import { BLESSING_BY_ID, RISKY, rollShop } from './blessings.js';
+import { BLESSING_BY_ID, RISKY, rollShop, rollBlessings } from './blessings.js';
+import { generateFloor } from './dungeon/generator.js';
 import { ULT } from './ultimate.js';
 import { ALLY } from './ally.js';
 
@@ -185,5 +186,99 @@ export function* newTests(g, out, flags) {
   fresh();
   run.enter({ kind: 'elite', reward: 'elite', room: 'salao', waves: [[['minion', 1]]], level: 5 }, true);
   out(`  sem contratar: luta sozinho ${ok(!run.npc)}`);
+  combat.clear();
+
+  // ---------------- 43) Arqueiro: cambalhota até as costas do herói ----------------
+  out('43) Arqueiro: 1º golpe -> cambalhota até as costas do herói, pulo para longe, recarrega e atira');
+  fresh();
+  yield 0.2;
+  const ar = combat.spawn('archer', 0, 3.2, { awake: true, facing: Math.PI }); // com habilidades (o boneco passivo não rola)
+  yield () => ar.state !== 'spawn';
+  combat.damageEnemy(player, ar, { damage: 5, heavy: false }, 0, 1);
+  const rv = flags.last('archerRoll');
+  out(`  rolou ${ok(ar.state === 'roll' && !!rv)} | destino nas costas do herói ${ok(rv && rv.to.z < -1.5, rv && `z ${rv.to.z.toFixed(1)}`)} | rolando não leva golpe ${ok(!ar.targetable)}`);
+  yield 0.24;
+  out(`  cambalhota de verdade (corpo girando) ${ok(Math.abs(ar.model.rotation.x) > 1, ar.model.rotation.x.toFixed(2))}`);
+  out('  -> arqueiro rolando: CONGELADO (T continua)');
+  yield 'hold';
+  yield () => ar.state === 'hop';
+  const hv = flags.last('archerHop');
+  const far = hv ? Math.hypot(hv.to.x - player.position.x, hv.to.z - player.position.z) : 0;
+  out(`  pulou para longe: ${far.toFixed(1)} do herói ${ok(far > 5)} | corpo desvirou ${ok(ar.model.rotation.x === 0)}`);
+  yield 0.27;
+  out(`  no ar ${ok(ar.group.position.y > 0.8, ar.group.position.y.toFixed(2))}`);
+  out('  -> arqueiro pulando: CONGELADO (T continua)');
+  yield 'hold';
+  yield () => ar.state === 'reload';
+  out(`  recarregando no chão ${ok(ar.group.position.y === 0)}`);
+  yield () => ar.state === 'aim' || ar.state === 'shot';
+  out(`  voltou a atirar ${ok(true)}`);
+  combat.damageEnemy(player, ar, { damage: 1, heavy: false }, 0, 1);
+  out(`  2º golpe: não rola de novo ${ok(ar.state !== 'roll')}`);
+  combat.clear();
+
+  // ---------------- 44) Sala Bênção da Ultimate ----------------
+  out('44) Sala "Bênção da Ultimate"');
+  let ults = 0;
+  for (let i = 0; i < 30; i++) for (const n of generateFloor(1 + (i % 3)).steps.flat()) if (n.reward === 'ult') ults++;
+  out(`  porta aparece às vezes: ${ults} em 30 andares ${ok(ults > 8 && ults < 45)}`);
+  out(`  outras escolhas e o mercador nunca dão bênção da ultimate ${ok(rollBlessings({}, 40).every((b) => !b.ult) && rollShop({}).every((b) => !b.ult))}`);
+  fresh();
+  waves.paused = false;
+  run.enter({ kind: 'combat', reward: 'ult', room: 'entrada', waves: [[['minion', 1]]], level: 1 }, true);
+  for (let i = 0; i < 4 && waves.active; i++) yield () => { combat.enemies.forEach((e) => e.alive && killBy(e)); return !waves.active; };
+  yield 0.6;
+  const uo = run.pickups.find((p) => p.kind === 'blessing' && p.opts.ult);
+  const no = run.pickups.filter((p) => p.kind === 'blessing' && !p.opts.ult);
+  out(`  sala limpa: orbe laranja da ultimate ${ok(!!uo)} + bênção normal ${ok(no.length === combat.players.length, `${no.length}`)}`);
+  if (uo) run.take(uo, player);
+  yield 0.4;
+  const uc = ui.choice ? ui.choice.options : [];
+  out(`  3 cartas ${ok(uc.length === 3)} | todas da ultimate ${ok(uc.every((b) => b.ult))} | pelo menos 1 do Cavaleiro ${ok(uc.some((b) => b.hero === 'knight'))} | nenhuma da Maga ${ok(uc.every((b) => b.hero !== 'mage'))}`);
+  out('  -> cartas da ultimate: CONGELADO (T continua)');
+  yield 'hold';
+  const up = uc[0];
+  press('Digit1');
+  yield 0.2;
+  out(`  escolheu ${up && up.name} ${ok(up && player.blessings[up.id] === 1)}`);
+  // Efeitos — Cavaleiro.
+  fresh();
+  yield 0.2;
+  for (const id of ['u_carga', 'u_eterna', 'u_furia', 'u_ardente', 'u_cura', 'u_onda', 'u_eco']) player.addBlessing(BLESSING_BY_ID[id]);
+  out(`  Carga Rápida: barra de ${player.ultNeed} ${ok(player.ultNeed === 8)}`);
+  const near = dummy(2, 0.5, 'warrior'); near.hp = near.maxHp = 999;
+  const nearHp = near.hp;
+  player.hp = 40; player.ult = player.ultNeed;
+  press('KeyR');
+  yield 0.05;
+  out(`  domo ${player.ultTime.toFixed(1)} s ${ok(player.ultTime > 4.3)} | cura 25 ${ok(player.hp === 65, `${player.hp}`)} | explosão: -${nearHp - near.hp} ${ok(nearHp - near.hp >= 25)} | barra já em ${player.ult} ${ok(player.ult === 4)}`);
+  const furyHp = near.hp;
+  near.position.set(0, 0, 1.6); player.facing = 0;
+  combat.damageEnemy(player, near, { damage: 10, heavy: false }, 0, 1);
+  out(`  Fúria Dourada: golpe de 10 tirou ${furyHp - near.hp} ${ok(furyHp - near.hp >= 14)}`);
+  yield () => flags.last('domeBurn');
+  out(`  Domo Ardente queima quem está perto ${ok(!!flags.last('domeBurn'))}`);
+  yield 0.2;
+  out('  -> domo ardente: CONGELADO (T continua)');
+  yield 'hold';
+  combat.clear();
+  // Efeitos — Maga.
+  fresh();
+  player.setHero('mage', WEAPONS.mage[0].id);
+  yield 0.2;
+  for (const id of ['u_dupla', 'u_gelida', 'u_forte']) player.addBlessing(BLESSING_BY_ID[id]);
+  const mf = [dummy(-7, -6, 'warrior'), dummy(7, 5, 'warrior')];
+  mf.forEach((e) => { e.hp = e.maxHp = 999; });
+  player.ult = player.ultNeed;
+  flags.events.length = 0;
+  press('KeyR');
+  yield () => flags.events.filter((e) => e.type === 'ultStrike').length >= 2;
+  yield 0.05;
+  const lostM = 999 - mf[0].hp;
+  out(`  Chuva Dupla: caiu 2 vezes ${ok(flags.events.filter((e) => e.type === 'ultStrike').length === 2)} | Tempestade: ${lostM} de dano (2×27) ${ok(lostM === 54)} | Chuva Gélida: congelou ${ok(mf.every((e) => e.frozenT > 0))}`);
+  yield 0.2;
+  out('  -> chuva gélida: CONGELADO (T continua)');
+  yield 'hold';
+  player.setHero('knight', WEAPONS.knight[0].id);
   combat.clear();
 }

@@ -19,7 +19,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const rand = ([a, b]) => a + Math.random() * (b - a);
 
 // Estados controlados por este arquivo (o resto fica em enemies.js).
-export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'roll', 'reload', 'grab', 'rage', ...TOSS_STATES, ...SPELL_STATES, ...SHADOW_STATES]);
+export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'roll', 'hop', 'reload', 'grab', 'rage', ...TOSS_STATES, ...SPELL_STATES, ...SHADOW_STATES]);
 
 // Avisos antigos (anéis e faixas no chão) foram removidos; nada a esconder.
 export function hideTelegraphs() {}
@@ -312,7 +312,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       if (e.t >= Cs.time) { e.setState('chase'); e.anim.play(d.anims.idle, { fade: 0.2 }); }
       return null; // parado, com a mão direita levantada
     }
-    case 'aim': case 'shot': case 'roll': case 'reload': return runRanged(e, dt, ctx, { toPlayer, dist });
+    case 'aim': case 'shot': case 'roll': case 'hop': case 'reload': return runRanged(e, dt, ctx, { toPlayer, dist });
     case 'tpOut': case 'tpIn': case 'revive': case 'rain': case 'ring': case 'nova': return runSpell(e, dt, ctx, { dist, toPlayer });
     case 'tossGrab': case 'tossThrow': case 'held': case 'thrown': return runToss(e, dt, ctx, { dist, toPlayer });
     case 'vanish': case 'stalk': case 'ambushWind': case 'shadeOut': case 'shadeIn': case 'clones': case 'reap': return runShadow(e, dt, ctx, { dist, toPlayer });

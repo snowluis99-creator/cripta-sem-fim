@@ -18,7 +18,7 @@ const tmp = new THREE.Vector3();
 // Esbarrão perdoado (Manopla): grace = tempo em que o mesmo encostão não conta; window = até quando um 2º machuca.
 const BUMP = { grace: 0.5, window: 1.6, push: 3 };
 
-const NO_BODY = new Set(['spawn', 'leap', 'held', 'thrown']); // sem corpo (não empurra nem é empurrado)
+const NO_BODY = new Set(['spawn', 'leap', 'held', 'thrown', 'roll', 'hop']); // sem corpo (não empurra nem é empurrado)
 export const FEEL = {
   hitstop: 0.055,       // pausa num golpe normal (s)
   hitstopHeavy: 0.11,   // pausa no golpe forte
@@ -103,7 +103,9 @@ export class Combat {
 
   // Quem o esqueleto persegue: o herói mais perto (troca de alvo só de vez em quando, com folga).
   pickTarget(e, dt) {
-    const alive = [...this.alivePlayers];
+    // Ladino invisível (bomba de fumaça): os esqueletos procuram outro alvo, se houver.
+    const seen = this.alivePlayers.filter((p) => !(p.stealth > 0));
+    const alive = [...(seen.length ? seen : this.alivePlayers)];
     // Mercador contratado: os esqueletos comuns também vão atrás dele (chefes não).
     const m = this.merchant;
     if (m && m.ally && m.alive && m.state !== 'leave' && m.state !== 'gone' && !e.data.boss) alive.push(m);
@@ -231,6 +233,7 @@ export class Combat {
   playerStrike(p, step) {
     const h = p.hero;
     if (step.cast) { castSpell(this, p, step); return; } // Maga: a magia sai daqui (magic.js)
+    if (step.throw) { if (this.rogue) this.rogue.fire(p, step); return; } // Ladino: kunai / virote (rogue.js)
     const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
     const st = p.stats;
     const range = h.attackRange * st.rangeMul;
@@ -262,10 +265,11 @@ export class Combat {
         && Math.abs(wrap(Math.atan2(dx, dz) - p.facing)) <= arc;
       const inBlast = step.heavy && Math.hypot(e.position.x - impact.x, e.position.z - impact.z) <= heavyRadius + e.data.radius;
       if (!inArc && !inBlast) continue;
-      const r = this.damageEnemy(p, e, step, dx / dist, dz / dist);
+      const r = this.damageEnemy(p, e, step, dx / dist, dz / dist, { noStagger: !!h.noStagger });
       if (r) { hits++; if (r === 'kill') kills++; }
     }
     this.endCounter(p, hits);
+    p.sneakCrit = false; p.parryCrit = false; // ataque furtivo / contra-golpe da Rapieira: vale só para este golpe
     // O Mercador também apanha do herói (e revida).
     const m = this.merchant;
     if (m && m.alive && !m.ally && !(h.single && only)) { // contratado: os heróis não acertam nele
@@ -313,7 +317,7 @@ export class Combat {
       audio.play('block', e.position.x, e.position.z);
       // Guerreiro: o escudo rebate o golpe e joga o herói para trás, sem defesa por um instante (e ele aproveita).
       const bash = e.data.shield && e.data.shield.bash;
-      if (bash && !opts.spell && p.staggerBack && p.staggerBack(nx, nz, bash.time, bash.push)) {
+      if (bash && !opts.spell && !opts.ranged && p.staggerBack && p.staggerBack(nx, nz, bash.time, bash.push)) {
         e.cooldown = Math.min(e.cooldown, 0.1);
         this.text.add('Desequilibrado!', p.position, 'hurt', 3.2);
         this.shakeFor(p, 0.18);
@@ -328,22 +332,39 @@ export class Combat {
     }
     // Contra-Ataque: o golpe depois de um bloqueio dá dano dobrado.
     const counter = p.counterReady ? 2 : 1;
-    const baseMul = st.damageMul * (st.fury && p.lowHp ? 1.6 : 1) * (1 + st.reaperStacks * 0.02) * counter;
+    const baseMul = st.damageMul * (st.fury && p.lowHp ? 1.6 : 1) * (st.domeFury && p.ultTime > 0 ? 1.6 : 1) * (1 + st.reaperStacks * 0.02) * counter;
     const guardBreak = step.heavy && e.data.staggerOnlyHeavy && e.shieldCovers(p.position.x, p.position.z);
-    const crit = Math.random() < st.critChance;
+    // Crítico: chance das bênçãos + a do herói (Ladino 25%). Sempre crítico: Precisão Invejável (ultimate do Ladino),
+    // saindo da fumaça, logo depois de aparar, e a Rapieira acertando pelas costas.
+    const backstab = !!(p.hero.backstab && !opts.ranged && e.alive && Math.abs(wrap(Math.atan2(p.position.x - e.position.x, p.position.z - e.position.z) - e.facing)) > 110 * DEG);
+    const crit = backstab || opts.forceCrit || p.sneakCrit || p.parryCrit || (p.heroId === 'rogue' && p.ultTime > 0)
+      || Math.random() < st.critChance + (p.hero.crit || 0);
     const exec = st.execute > 0 && e.hp < e.maxHp * 0.3 ? 1 + st.execute : 1;
-    const dmg = Math.round(step.damage * baseMul * exec * (crit ? 2 : 1) * (0.9 + Math.random() * 0.2));
+    const critMul = st.lethalCrit && p.heroId === 'rogue' && p.ultTime > 0 ? 3 : 2; // Golpe Letal
+    const dmg = Math.round(step.damage * baseMul * exec * (crit ? critMul : 1) * (0.9 + Math.random() * 0.2));
     const push = (step.heavy ? FEEL.pushHeavy * st.heavyPushMul : FEEL.push) * (opts.spell ? 0.6 : 1);
-    const died = e.takeDamage(dmg, nx, nz, push, step.heavy, !!opts.spell);
+    const died = e.takeDamage(dmg, nx, nz, push, step.heavy, !!opts.spell || !!opts.noStagger);
     this.text.add(crit ? `${dmg}!` : String(dmg), e.position, step.heavy || crit ? 'dmg big' : 'dmg');
-    if (crit) this.text.add('Crítico!', e.position, 'crit', 3.4);
+    if (crit) this.text.add(backstab ? 'Pelas costas!' : 'Crítico!', e.position, 'crit', 3.4);
+    // Garras: o 5º golpe deixa sangrando (dano por segundo, sem atordoar).
+    if (step.bleed && !died) { e.bleed = step.bleed.time; e.bleedDps = step.bleed.dps * st.damageMul; e.bleedTick = 0.5; e.bleedBy = p; this.text.add('Sangrando!', e.position, 'bleed', 3.0); }
     if (step.heavy && st.burnDps > 0 && !died) { e.burn = 3; e.burnDps = st.burnDps; e.burnTick = 0.5; e.burnBy = p; }
-    if (guardBreak && !opts.spell) this.text.add('Guarda quebrada!', e.position, 'block', 3.3);
+    if (guardBreak && !opts.spell && !opts.noStagger) this.text.add('Guarda quebrada!', e.position, 'block', 3.3);
     if (!opts.spell) this.vfx.sparks(chest, step.heavy ? 0xffb050 : 0xffffff, step.heavy ? 10 : 6);
     if (this.log) this.log({ type: 'hit', enemy: e, dmg, died, spell: !!opts.spell });
     if (died) this.killed(e, nx, nz, p);
     if (crit && st.chain > 0) this.chainLightning(e, st.chain + 1, p);
     return died ? 'kill' : 'hit';
+  }
+
+  // Sangramento (Garras do Ladino): igual ao fogo, em vermelho.
+  bleedDamage(e, dmg) {
+    if (e.immune) return;
+    e.hp -= dmg;
+    e.flash = Math.max(e.flash, 0.4);
+    this.text.add(String(dmg), e.position, 'bleed', 2.0);
+    this.vfx.sparks(new THREE.Vector3(e.position.x, 1.0, e.position.z), 0xc8102e, 4);
+    if (e.hp <= 0) { e.die(); this.killed(e, 0, 1, e.bleedBy); }
   }
 
   // Dano do fogo (Lâmina Flamejante): não atordoa nem empurra.
@@ -435,6 +456,8 @@ export class Combat {
       if (this.log) this.log({ type: 'dodged' });
       return false;
     }
+    // Rapieira: aparar no instante exato (rogue.js). Errou o tempo: o golpe entra normal.
+    if (this.rogue && this.rogue.tryParry(p, e, opts)) return false;
     const dx = p.position.x - e.position.x, dz = p.position.z - e.position.z;
     const dist = Math.hypot(dx, dz) || 0.001;
     const nx = dx / dist, nz = dz / dist;

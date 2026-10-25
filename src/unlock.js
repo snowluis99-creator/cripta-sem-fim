@@ -6,9 +6,10 @@ import { audio } from './audio.js';
 import { setFlash, makeFlashable } from './characters.js';
 import { getGlowTexture } from './dungeon/builder.js';
 import { makeIceBlock } from './magic.js';
-import { HEROES } from './heroes.js';
+import { HEROES, heroArticle } from './heroes.js';
+import { startRogue, updateRogue, finishRogue } from './unlock_rogue.js';
 
-export const UNLOCK_ART = { mage: 'art/maga.jpg' };
+export const UNLOCK_ART = { mage: 'art/maga.jpg', rogue: 'art/ladino.jpg' };
 const CENTER = new THREE.Vector3(0, 0, -0.5);
 // Lugares para se esconder (cantos com barris/caixas).
 const HIDE = [[-13.2, -8.4], [12.6, 8.2], [-13, 7.4], [13.4, -9], [-4.2, -9.2], [10.2, 9.6], [4.5, -9.4], [-10.5, 9.4]];
@@ -98,6 +99,9 @@ export class UnlockScene {
     this.iceDiscs = [];
     this.waveR = -1;
     this.popupShown = false;
+    this.mode = 'mage';
+    this.endAt = CENTER.clone();
+    this.downT = undefined; this.popAt = undefined;
     this.from = seat.group.position.clone();
     this.focus = new THREE.Vector3(-1, 0, 0.5); // a câmera olha para o meio da taverna
     if (this.cam.setBaseZoom) this.cam.setBaseZoom(1.18);
@@ -116,6 +120,7 @@ export class UnlockScene {
       p.anim.play(p.hero.anims.idle, { fade: 0.2 });
       this.actors.push({ group: p.group, anim: p.anim, mats: p.bodyMats, player: p, idle: p.hero.anims.idle });
     }
+    if (heroId === 'rogue') { startRogue(this); return; } // Ladino: facas na parede (unlock_rogue.js)
     const spots = [...HIDE].sort(() => Math.random() - 0.5);
     this.actors.forEach((a, i) => {
       const [x, z] = spots[i % spots.length];
@@ -139,8 +144,12 @@ export class UnlockScene {
   // Fala para o resto do jogo: está rodando? (bloqueia portas e avisos)
   get busy() { return this.active; }
 
+  // Fala de um personagem da cena (texto flutuando em cima dele).
+  say(msg, pos) { if (this.text) this.text.add(msg, pos, 'say', 3.6); }
+
   update(dt) {
     if (!this.active) return;
+    if (this.mode === 'rogue') { updateRogue(this, dt); return; }
     const t0 = this.t, t = (this.t += dt);
     const at = (k) => t0 < k && t >= k;
     const m = this.mage;
@@ -310,7 +319,7 @@ export class UnlockScene {
   showPopup() {
     this.popupShown = true;
     audio.play('unlock');
-    const name = HEROES[this.heroId].name;
+    const name = HEROES[this.heroId].name, o = heroArticle(this.heroId), ele = o === 'a' ? 'ela' : 'ele';
     const el = document.createElement('div');
     el.id = 'unlock';
     el.innerHTML = `
@@ -325,8 +334,8 @@ export class UnlockScene {
             <rect x="8" y="34" width="48" height="40" rx="7" fill="url(#ulg)" stroke="#6b4310" stroke-width="2.5"/>
             <circle cx="32" cy="50" r="5.5" fill="#5a3508"/><rect x="29.5" y="52" width="5" height="12" rx="2" fill="#5a3508"/>
           </svg>
-          <h2>${name} desbloqueada</h2>
-          <p class="usub">Agora ela pode descer à Cripta. Escolha-a na mesa da Taverna.</p>
+          <h2>${name} desbloquead${o}</h2>
+          <p class="usub">Agora ${ele} pode descer à Cripta. Escolha-${o} na mesa da Taverna.</p>
           <p class="uhint">Clique ou aperte E para continuar</p>
         </div>
       </div>`;
@@ -360,6 +369,7 @@ export class UnlockScene {
   }
 
   finish() {
+    if (this.mode === 'rogue') finishRogue(this);
     for (const f of this.fires) this.scene.remove(f);
     this.fires.length = 0;
     if (this.waveMesh) { this.scene.remove(this.waveMesh); this.waveMesh = null; }
@@ -373,7 +383,7 @@ export class UnlockScene {
     this.active = false;
     const cb = this.onDone;
     this.onDone = null;
-    if (cb) cb(CENTER.clone());
+    if (cb) cb(this.endAt.clone());
   }
 
   // Sair da Taverna no meio da cena (ex.: teste): limpa sem chamar onDone.

@@ -1,6 +1,7 @@
 // Co-op, lado do anfitrião: o jogo inteiro roda aqui. O Jogador 2 manda os comandos (RemoteInput)
 // e recebe ~15 vezes por segundo o que precisa desenhar (heróis, esqueletos, recompensas, projéteis, efeitos).
 import { shieldMax } from './shield.js';
+import { ammoInfo } from './rogue.js';
 import { cleanUps } from './save.js';
 import { equippedWeapon, selectedHero, WEAPONS } from './heroes.js';
 import * as THREE from 'three';
@@ -15,7 +16,7 @@ const SEND_EVERY = 1 / 15;
 const r2 = (v) => Math.round(v * 100) / 100;
 const r1 = (v) => Math.round(v * 10) / 10;
 const clipIdx = (anim) => clipNames.indexOf(anim.currentName);
-const PROJ_KINDS = ['arrow', 'orb', 'wave', 'star', 'shard'];
+export const PROJ_KINDS = ['arrow', 'orb', 'wave', 'star', 'shard', 'kunai', 'bolt'];
 const vec = (a) => (a && a.isVector3 ? { v: [r2(a.x), r2(a.y), r2(a.z)] } : a);
 
 // Comandos do Jogador 2 chegando pela rede, com a mesma "cara" do teclado/controle (input.js).
@@ -174,7 +175,7 @@ export class CoopHost {
     const code = e.finale ? e.finale.code : !e.alive ? (e.shattered ? 2 : 1) : (e.state === 'spinGather' || e.state === 'spin') && e.boneSword ? 3 : e.state === 'cast' ? 4 : 0;
     const eyes = e.eyes.length ? r1(e.eyes[0].emissiveIntensity) : 0;
     return [e.id, ENEMY_TYPES.indexOf(e.type), r2(e.position.x), r2(e.position.z), r2(e.facing), r2(e.group.position.y), r2(e.group.scale.x),
-      e.anim.playId, clipIdx(e.anim), r2(e.anim.netSpeed), e.anim.netOnce ? 1 : 0, r1(e.flash), eyes, code, e.immune ? 1 : 0, r2(e.alpha ?? 1)];
+      e.anim.playId, clipIdx(e.anim), r2(e.anim.netSpeed), e.anim.netOnce ? 1 : 0, r1(e.flash), eyes, code, e.immune ? 1 : 0, r2(e.alpha ?? 1), e.state === 'roll' ? r2(e.rollK ?? -1) : -1];
   }
 
   state() {
@@ -193,7 +194,9 @@ export class CoopHost {
         p.opts.item === 'weapon' && p2 && p2.weaponId === (WEAPONS[p2.heroId][p.opts.slot] || {}).id ? 1 : 0]),
       mc: run.npc ? [r2(run.npc.position.x), r2(run.npc.position.z), r2(run.npc.group.rotation.y), run.npc.anim.playId, clipIdx(run.npc.anim),
         r2(run.npc.anim.netSpeed), run.npc.anim.netOnce ? 1 : 0, r1(run.npc.flash), run.npc.alive ? 1 : 0, run.npc.ally ? r2(run.npc.rollK || 0) : -1] : 0,
-      ul: this.combat.players.map((p) => [p.ult || 0, p.ultNeed, r2(p.ultTime || 0)]),
+      // ultimate + Ladino: munição [n, max, tipo, corrente], fumaça (recarga) e invisível.
+      ul: this.combat.players.map((p) => { const a = ammoInfo(p); return [p.ult || 0, p.ultNeed, r2(p.ultTime || 0), a ? [a.n, a.max, a.kind, a.stack] : 0,
+        p.hero.ability === 'smoke' ? r1(p.smokeCd || 0) : -1, p.stealth > 0 ? 1 : 0]; }),
       mm: this.hud.mm || 0,
       wv: this.hud.waveEl.textContent,
       bs: this.hud.boss ? [this.hud.boss.data.name, Math.max(0, Math.round(this.hud.boss.hp)), this.hud.boss.maxHp] : 0,
@@ -223,6 +226,7 @@ export class CoopHost {
   fx() {
     const list = this.combat.projectiles.list.map((a) => [a.id, PROJ_KINDS.indexOf(a.kind), a.color, r2(a.scale),
       r2(a.x), r2(a.z), r2(a.g.position.y), r2(a.g.rotation.y), a.stuck >= 0 ? 0 : r1(Math.hypot(a.vx, a.vz))]);
+    if (this.combat.rogue) list.push(...this.combat.rogue.netList(PROJ_KINDS)); // kunais e virotes do Ladino
     const f = { p: list, ev: [] };
     // Efeitos do último segundo (o outro lado ignora os que já viu), do mais novo para o mais velho, até caber.
     let size = sizeOf({ f });

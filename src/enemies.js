@@ -5,7 +5,7 @@ import { Animator } from './animation.js';
 import { makeCharacter, attachWeapon, makeFlashable, setFlash } from './characters.js';
 import { makeIceBlock } from './magic.js';
 import { tryAbility, runAbility, initAbilities, hideTelegraphs, tickCooldowns, startRage, raiseRightArm, ABILITY_STATES, releaseGrab } from './abilities.js';
-import { archerChase, startRoll } from './ranged.js';
+import { archerChase, startRoll, applyEnemyRoll } from './ranged.js';
 import { dropHeld } from './toss.js';
 import { applyDifficulty } from './difficulty.js';
 import { meleeMove, leadAngle, targetBusy } from './brain.js';
@@ -91,7 +91,9 @@ export const ENEMIES = {
     // keep = distância que ele tenta manter (anda de costas, mirando); back = velocidade andando para trás enquanto mira.
     // roll = no 1º golpe que recebe: rola para longe e recarrega a besta.
     ranged: { max: 13, keep: 9, flee: 4.5, back: 1.6, aim: 0.55, aimClip: 'Ranged_2H_Aiming', shootClip: 'Ranged_2H_Shoot', recover: 0.45, speed: 19, damage: 9,
-      roll: { dist: 4.5, time: 0.45, reload: 1.1, clip: 'Ranged_2H_Reload' } },
+      // roll: cambalhota até as costas do herói (behind = distância atrás dele; reach = só se o herói estiver
+      // a menos disso, senão rola para o lado "dist"), depois pulo de "hop" para longe e recarrega.
+      roll: { dist: 4.5, time: 0.5, behind: 2.4, reach: 7, hop: 6.5, hopTime: 0.55, hopHeight: 1.5, reload: 1.1, clip: 'Ranged_2H_Reload' } },
     knockback: 1.1,
     stagger: 0.45,
     staggerOnlyHeavy: false,
@@ -388,13 +390,15 @@ export class Enemy {
     m.opacity += (want - m.opacity) * Math.min(1, dt * 10);
     this.bubble.visible = m.opacity > 0.01;
   }
-  get targetable() { return this.alive && this.state !== 'rage' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
+  get targetable() { return this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
 
   setState(s) {
     if (this.tele) hideTelegraphs(this);
     // Espada de esqueletos: se o giro for interrompido (ou ele morrer), ela se desmancha.
     if (this.boneSword && s !== 'spinGather' && s !== 'spin') { this.boneSword.shatter(); this.boneSword = null; }
     if (this.state === 'leap') this.position.y = 0; // interrompido no meio do salto: volta ao chão
+    if (this.state === 'hop' && s !== 'hop') this.group.position.y = 0; // Arqueiro: pulo interrompido
+    if (this.state === 'roll' && s !== 'roll') { this.rollK = -1; applyEnemyRoll(this, -1); } // cambalhota interrompida
     if (this.state === 'grab' && s !== 'grab') releaseGrab(this); // apanhou/morreu agarrando: solta o herói
     if (this.tossing && s !== 'tossGrab' && s !== 'tossThrow') dropHeld(this); // Rei interrompido: larga o esqueleto
     // Saiu da sombra/invisibilidade (inclusive acertado no meio): volta a aparecer.
@@ -426,7 +430,7 @@ export class Enemy {
     // Arqueiro: no 1º golpe que leva, rola para longe e recarrega a besta.
     const R = this.data.ranged;
     if (R && R.roll && !this.rolledOnce && this.abilities && this.state !== 'spawn') { this.rolledOnce = true; startRoll(this, dirX, dirZ); return false; }
-    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll'; // chefe não para o golpe especial
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop'; // chefe não para o golpe especial
     if (!armor && (heavy || !this.data.staggerOnlyHeavy)) {
       this.releaseToken();
       this.setState('hurt');
@@ -499,6 +503,7 @@ export class Enemy {
     if (this.vel.lengthSq() > 1e-4) { this.position.addScaledVector(this.vel, dt); this.vel.multiplyScalar(Math.exp(-12 * dt)); }
     ctx.world.resolveCircle(this.position, this.data.radius);
     if (this.burn > 0) { this.burn -= dt; this.burnTick -= dt; if (this.burnTick <= 0) { this.burnTick = 0.5; ctx.combat.burnDamage(this, Math.max(1, Math.round(this.burnDps * 0.5))); } }
+    if (this.bleed > 0) { this.bleed -= dt; this.bleedTick -= dt; if (this.bleedTick <= 0) { this.bleedTick = 0.5; ctx.combat.bleedDamage(this, Math.max(1, Math.round(this.bleedDps * 0.5))); } }
     return true;
   }
 
@@ -526,6 +531,12 @@ export class Enemy {
         this.burnTick = 0.5;
         combat.burnDamage(this, Math.max(1, Math.round(this.burnDps * 0.5)));
       }
+    }
+    // Sangramento (Garras do Ladino).
+    if (this.bleed > 0 && this.alive) {
+      this.bleed -= dt;
+      this.bleedTick -= dt;
+      if (this.bleedTick <= 0) { this.bleedTick = 0.5; combat.bleedDamage(this, Math.max(1, Math.round(this.bleedDps * 0.5))); }
     }
     // Chefe com metade da vida: se enfurece (uma vez).
     if (d.rage && !this.raged && this.alive && this.state !== 'spawn' && this.hp <= this.maxHp * d.rage.at && this.abilities) {

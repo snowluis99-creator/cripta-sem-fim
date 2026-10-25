@@ -46,6 +46,7 @@ export const NODE_INFO = {
   blessing: { label: 'Bênção', color: 0xc27bff },
   gold: { label: 'Ouro', color: 0xffc24a },
   potion: { label: 'Poção', color: 0xe2384b },
+  ult: { label: 'Bênção da Ultimate', color: 0xff9a2a },
   treasure: { label: 'Tesouro', color: 0xffd36a },
   merchant: { label: 'Mercador', color: 0x7dff8a },
   rest: { label: 'Descanso (vida cheia)', color: 0x8ad8ff },
@@ -55,6 +56,9 @@ export const NODE_INFO = {
 };
 
 const pick = (list, rng) => list[Math.floor(rng() * list.length)];
+// Prêmio extra de uma sala de combate: ouro ou poção; às vezes (ULT_CHANCE) a Bênção da Ultimate.
+export const ULT_CHANCE = 0.25;
+const prizeOf = (rng) => (rng() < ULT_CHANCE ? 'ult' : pick(['gold', 'potion'], rng));
 const shuffle = (list, rng) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // Uma "sala do mapa" (nó): { kind: combat|treasure|merchant|rest|elite|exit, reward, room, waves, level }
@@ -95,7 +99,7 @@ function generateHall(rng) {
 // Os 4 passos do meio de um andar (iguais nos 3 andares): ouro x poção, combate x tesouro,
 // combate x (mercador/descanso) e combate x o que não saiu antes.
 function midSteps(rng, node, table) {
-  const prize = () => pick(['gold', 'potion'], rng);
+  const prize = () => prizeOf(rng);
   const special = (kind, level) => (kind === 'rest' ? { kind, reward: kind, room: 'descanso' }
     : { kind, reward: kind, room: kind === 'merchant' ? 'mercador' : 'tesouro', level, waves: table[Math.min(level, table.length - 1)] });
   const steps = [];
@@ -115,7 +119,7 @@ function generateDungeon(rng) {
   const used = new Set();
   const first = { kind: 'combat', reward: 'none', room: 'entrada', waves: WAVES_BY_LEVEL[0], level: 0 };
   const steps = [];
-  const prize = () => pick(['gold', 'potion'], rng);
+  const prize = () => prizeOf(rng);
   // Sala especial com combate antes (tesouro / mercador) ou descanso (sem combate).
   const special = (kind, level) => {
     if (kind === 'rest') return { kind, reward: kind, room: 'descanso' };

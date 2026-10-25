@@ -1,6 +1,6 @@
-// Configurações do jogador (ficam salvas neste navegador): volumes, tremida da câmera e dicas de controle.
+// Configurações do jogador (ficam salvas neste navegador): volumes, tremida da câmera, dicas de controle e gráficos.
 const KEY = 'cripta.config';
-const DEFAULTS = { master: 100, music: 100, sfx: 100, shake: true, hints: true };
+const DEFAULTS = { master: 100, music: 100, sfx: 100, shake: true, hints: true, gfx: 'high' };
 
 function load() {
   const s = { ...DEFAULTS };
@@ -16,6 +16,7 @@ function load() {
   } catch (e) { /* sem localStorage: fica o padrão */ }
   for (const k of ['master', 'music', 'sfx']) s[k] = Math.max(0, Math.min(100, Math.round(+s[k] || 0)));
   s.shake = s.shake !== false; s.hints = s.hints !== false;
+  if (!['high', 'medium', 'low'].includes(s.gfx)) s.gfx = 'high';
   return s;
 }
 
@@ -26,8 +27,8 @@ export const settings = {
   set(key, value) {
     this[key] = value;
     try {
-      const { master, music, sfx, shake, hints } = this;
-      localStorage.setItem(KEY, JSON.stringify({ master, music, sfx, shake, hints }));
+      const { master, music, sfx, shake, hints, gfx } = this;
+      localStorage.setItem(KEY, JSON.stringify({ master, music, sfx, shake, hints, gfx }));
     } catch (e) { /* nada */ }
     listeners.forEach((cb) => cb(this, key));
   },

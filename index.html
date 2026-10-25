@@ -44,6 +44,20 @@
   #hud .shield .pips b { margin-left:4px; font-size:11px; }
   #hud .shield.shake { animation:shake .35s; }
   #hud .potions { display:flex; align-items:center; gap:6px; }
+  #hud .ammo { display:none; align-items:center; gap:5px; margin:4px 0 2px; font:bold 12px Georgia, serif; color:#bff2ff; text-shadow:0 1px 2px #000; }
+  #hud .ammo .ai { font-size:17px; line-height:1; }
+  #hud .ammo .apips { display:flex; gap:3px; align-items:center; }
+  #hud .ammo .apips i { width:12px; height:14px; background:#141c22; border:1px solid #4d6878; border-radius:3px; transform:skewX(-12deg); }
+  #hud .ammo .apips i.on { background:linear-gradient(#e8fbff, #5fc8e8); border-color:#bff2ff; }
+  #hud .ammo .apips b { margin-left:4px; font-size:11px; color:#ff9a8a; }
+  #hud .ammo .ast { color:#ffe066; font-size:12px; margin-left:4px; }
+  #hud .ammo.empty { color:#ff8a7a; }
+  #hud .ammo.shake { animation:shake .35s; }
+  #hud .smoke { display:none; align-items:center; gap:5px; margin:2px 0; font:12px Georgia, serif; color:#9aa0b0; text-shadow:0 1px 2px #000; }
+  #hud .smoke .sic { font-size:15px; }
+  #hud .smoke.ready { color:#dfe6f5; font-weight:bold; }
+  #hud.spec .ammo, #hud.spec .smoke { display:none !important; }
+  #fxtext .ft.bleed { color:#ff3b4a; font-size:16px; }
   #hud .ult { display:flex; align-items:center; gap:6px; font:bold 12px Georgia, serif; color:#ffe2a8; text-shadow:0 1px 2px #000; }
   #hud .ult .ub { width:min(150px, 34vw); height:9px; background:#160c0c; border:1px solid #6a5a44; border-radius:5px; overflow:hidden; }
   #hud .ult .uf { height:100%; width:0; background:linear-gradient(90deg, #8a5cff, #ffd24a); transition:width .2s; }

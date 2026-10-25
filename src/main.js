@@ -37,6 +37,8 @@ import './voice.js';
 import { shieldMax } from './shield.js';
 import { save } from './save.js';
 import { TAVERN_MODELS } from './tavern.js';
+import { RogueKit, ROGUE_MODELS, ammoInfo } from './rogue.js';
+import { gfxAtStart, bindRenderer } from './graphics.js';
 
 // Modo de teste: tecla I dentro do jogo (ou ?debug=1 local).
 let DEBUG = new URLSearchParams(location.search).has('debug') || location.hash.startsWith('#debug');
@@ -50,9 +52,8 @@ export const CAPE_P2 = 0x2f6fe0; // capa azul do Jogador 2
 
 async function start() {
   // Renderizador
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
+  const renderer = new THREE.WebGLRenderer({ antialias: gfxAtStart.aa });
+  bindRenderer(renderer); // resolução conforme Configurações → Gráficos
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
@@ -90,7 +91,7 @@ async function start() {
     ...REWARD_MODELS, ...MERCHANT_MODELS,
     ...allHeroModels(),
     ...Object.values(ENEMIES).flatMap(modelsForEnemy),
-    ...DEBRIS_MODELS, ...PROJECTILE_MODELS, ...TAVERN_MODELS,
+    ...DEBRIS_MODELS, ...PROJECTILE_MODELS, ...TAVERN_MODELS, ...ROGUE_MODELS,
     ...ANIM_FILES,
   ];
   await loadAll([...new Set(models)], (p) => loading.progress(p));
@@ -118,6 +119,8 @@ async function start() {
   const run = new Run({ scene, player, combat, waves, world, vfx, debris, hud, ui, cam });
   const team = new Teamwork({ scene, combat, run, hud, vfx, cam, world }); // jogadas em dupla (co-op)
   const ult = new Ultimates({ combat, vfx, hud, run, flash: (c, t) => team.flash(c, t) }); // ultimate (R / RT)
+  const rogue = new RogueKit({ scene, combat, vfx, run }); // Ladino: kunais, virotes, fumaça, aparar
+  combat.rogue = rogue;
   let mode = 'menu';           // menu | solo | host | client
   let coop = null;             // CoopHost (anfitrião)
   let client = null;           // CoopClient (Jogador 2)
@@ -132,6 +135,7 @@ async function start() {
     goldWarn: () => hud.goldWarn(),
     banner: (t, size) => (hud.bannerLocal || hud.banner).call(hud, t, size),
     shieldWarn: () => hud.shieldWarn(),
+    ammoWarn: () => hud.ammoWarn(),
   };
 
   // Rastro de Gelo: poças de gelo ao longo do rolamento (cada herói).
@@ -166,6 +170,14 @@ async function start() {
       vfx.sparks(new THREE.Vector3(h.position.x, 1.4, h.position.z), 0x7dff8a, 10);
     };
     p.onPotionFail = (h) => h.ux.potionWarn();
+    p.onRefill = (h) => rogue.refill(h);
+    p.onSmoke = (h) => rogue.smoke(h);
+    p.onNoAmmo = (h) => {
+      if (h.noAmmoCd > performance.now()) return;
+      h.noAmmoCd = performance.now() + 700;
+      combat.text.add(h.hero.ammo.kind === 'kunai' ? 'Sem kunais! Pegue do chão' : 'Sem virotes! Pegue do chão', h.position, 'miss', 3.2);
+      if (h.ux.ammoWarn) h.ux.ammoWarn();
+    };
     p.onNoShield = (h) => { combat.text.add(h.hero.block.wall ? 'Sem barreira!' : 'Sem escudo!', h.position, 'miss', 3.2); if (h.ux.shieldWarn) h.ux.shieldWarn(); };
     p.onDeath = (h) => {
       h.ux.shake(0.4);
@@ -406,7 +418,7 @@ async function start() {
   const clock = new THREE.Clock();
   let fpsAcc = 0, fpsFrames = 0;
   // Testes automáticos: recomeçam direto na masmorra (sem Taverna e sem melhorias).
-  const game = { player, combat, waves, hud, debris, cam, renderer, scene, ult, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; },
+  const game = { player, combat, waves, hud, debris, cam, renderer, scene, ult, rogue, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; },
     // Teste: vai direto para a sala do chefe do andar n.
     gotoBoss: (n) => {
       run.nextFloor(n);
@@ -439,6 +451,7 @@ async function start() {
       for (const p of players) { p.update(sim, cam.camera, world); iceTrail(p, sim); }
       team.update(sim);
       ult.update(sim);
+      rogue.update(sim);
       combat.update(sim);
       waves.update(sim);
       run.update(sim, simTime);
@@ -456,6 +469,8 @@ async function start() {
     hud.setPotions(player.potions, Math.max(1, hero.potions)); // pelo menos 1 frasco (vazio) no HUD
     hud.setGold(player.gold);
     hud.setShield(player.shield, shieldMax(player));
+    hud.setAmmo(ammoInfo(player));
+    hud.setSmoke(player.hero.ability === 'smoke' ? player.smokeCd || 0 : -1, player.stealth > 0);
     hud.setUlt(player.ult, player.ultNeed, input.device === 'pad' ? 'RT' : 'R');
     updateHint(player.hero);
     hud.setSoul(save.data.soul, run.inTavern);
@@ -489,8 +504,10 @@ async function start() {
   const hint = document.getElementById('controls');
   let hintDev = 'keys', hintKey = '';
   const hintHtml = (d, h) => {
-    const n = `${h.combo.length}x = combo`, block = !h.noShield;
-    const atk = h.caster ? 'magia' : 'atacar', blk = h.block && h.block.wall ? 'barreira' : 'bloquear';
+    const n = h.ammo ? `${h.ammo.max} ${h.ammo.kind === 'kunai' ? 'kunais' : 'virotes'}` : `${h.combo.length}x = combo`;
+    const block = !h.noShield || !!h.ability;
+    const atk = h.caster ? 'magia' : h.ammo ? (h.ammo.kind === 'kunai' ? 'arremessar' : 'atirar') : 'atacar';
+    const blk = h.ability === 'smoke' ? 'fumaça' : h.ability === 'parry' ? 'aparar' : h.block && h.block.wall ? 'barreira' : 'bloquear';
     return d === 'pad'
       ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span><span><b>Start</b> pausa</span>`
       : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span><span><b>Esc</b> pausa</span>`;

@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { gfxAtStart, simplifyMaterial } from './graphics.js';
 
 const cache = new Map(); // caminho -> gltf
 
@@ -26,8 +27,13 @@ export async function loadAll(paths, onProgress = () => {}) {
   // Os modelos vêm agrupados em poucos pacotes em packed/ (gerados por tools/build.py).
   await Promise.all(todo.map((p) => loadPacked(loader, p).then((gltf) => {
     gltf.scene.traverse((o) => {
-      if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; }
+      if (o.isMesh) {
+        o.castShadow = false; o.receiveShadow = true;
+        if (gfxAtStart.simple) o.material = Array.isArray(o.material) ? o.material.map(simplifyMaterial) : simplifyMaterial(o.material);
+      }
     });
+    gltf.hasSkin = false;
+    gltf.scene.traverse((o) => { if (o.isSkinnedMesh) gltf.hasSkin = true; });
     cache.set(p, gltf);
     done++;
     onProgress(done / todo.length);
@@ -84,9 +90,7 @@ async function loadPacked(loader, path) {
 export function instance(path) {
   const gltf = cache.get(path);
   if (!gltf) throw new Error(`Modelo não carregado: ${path}`);
-  let hasSkin = false;
-  gltf.scene.traverse((o) => { if (o.isSkinnedMesh) hasSkin = true; });
-  return hasSkin ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
+  return gltf.hasSkin ? SkeletonUtils.clone(gltf.scene) : gltf.scene.clone(true);
 }
 
 export function getGltf(path) { return cache.get(path); }

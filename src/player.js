@@ -155,7 +155,10 @@ export class Player {
         }
       });
     }
-    this.shieldMesh = ws.left ? attachWeapon(this.model, 'handslot.l', ws.left) : null;
+    const left = ws.left ? attachWeapon(this.model, 'handslot.l', ws.left) : null;
+    // Sem escudo (Ladino): a peça da mão esquerda é uma arma (adaga, garra), não gasta nem some.
+    this.offhand = this.hero.noShield ? left : null;
+    this.shieldMesh = this.hero.noShield ? null : left;
   }
 
   get weaponId() { return this.hero.weaponId; }
@@ -181,6 +184,7 @@ export class Player {
     initShield(this, this.shieldMesh);
     this.syncWeaponSize(this.stats.rangeMul);
     this.combo = 0;
+    this.refillAmmo();
     if (this.hp > this.maxHp) this.hp = this.maxHp;
     if (this.state !== 'dead') this.setState('idle');
     this.anim.play(this.hero.anims.idle, { fade: 0, restart: true });
@@ -208,13 +212,14 @@ export class Player {
   // Troca de arma (Taverna). Mantém vida, bênçãos e ouro.
   setWeapon(wid) {
     if (!wid || wid === this.hero.weaponId) return false;
-    for (const m of [this.weapon, this.shieldMesh]) if (m && m.parent) m.parent.remove(m);
+    for (const m of [this.weapon, this.shieldMesh, this.offhand]) if (m && m.parent) m.parent.remove(m);
     this.hero = heroWith(this.heroId, wid);
     this.glow = 0;
     this.attachArms();
     initShield(this, this.shieldMesh);
     this.syncWeaponSize(this.stats.rangeMul);
     this.combo = 0;
+    this.refillAmmo();
     if (this.state === 'idle' || this.state === 'run' || this.state === 'attack' || this.state === 'block') {
       this.setState('idle');
       this.anim.play(this.hero.anims.idle, { fade: 0.15, restart: true });
@@ -223,6 +228,13 @@ export class Player {
   }
 
   setState(s) { this.state = s; this.stateTime = 0; }
+
+  // Munição (Kunais/Besta do Ladino): cheia. O que estava no chão some (rogue.js cuida disso pelo onRefill).
+  refillAmmo() {
+    const a = this.hero.ammo;
+    if (this.onRefill) this.onRefill(this);
+    else this.ammo = a ? Array.from({ length: a.max }, () => ({ stack: 0, keep: 0 })) : [];
+  }
 
   get spectralReady() { return this.stats.spectral && this.spectralCd <= 0 && this.state !== 'dead'; }
   updateSpectral(dt) {
@@ -241,7 +253,7 @@ export class Player {
 
   get maxHp() { return Math.max(10, this.hero.maxHp + this.stats.bonusHp); }
   // Ultimate: quantos inimigos derrotados enchem a barra (Pacto do Ceifador: 6).
-  get ultNeed() { return this.stats.ultNeed || 10; }
+  get ultNeed() { return Math.max(3, this.stats.ultNeed || 10); }
   // Bênçãos com efeito por tempo/condição (M4).
   get lowHp() { return this.hp < this.maxHp * 0.4; }
   get atkSpeed() { return this.stats.attackSpeed + (this.reflexTime > 0 ? 0.3 : 0); }
@@ -289,7 +301,8 @@ export class Player {
     if (this.state !== 'dead') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0, restart: true }); }
   }
 
-  get invulnerable() { return this.state === 'dodge' || this.iframes > 0 || this.ultTime > 0 || this.state === 'dead' || this.state === 'cine'; }
+  // ultTime: só a Fortaleza Dourada (Cavaleiro) deixa invulnerável. stealth: bomba de fumaça do Ladino.
+  get invulnerable() { return this.state === 'dodge' || this.iframes > 0 || (this.ultTime > 0 && this.heroId === 'knight') || this.stealth > 0 || this.state === 'dead' || this.state === 'cine'; }
 
   // Cena (morte do Rei Skullbone): sem controle e sem levar dano; quem mexe no herói é a cena.
   enterCine() {
@@ -434,6 +447,8 @@ export class Player {
     this.iframes = 0; this.vel.set(0, 0, 0); this.hurtFlash = 0; this.combo = 0;
     this.reflexTime = 0; this.counterReady = false; this.spectralCd = 0; this.backToBack = false;
     this.ult = 0; this.ultTime = 0; this.ultCasting = false;
+    this.stealth = 0; this.smokeCd = 0; this.sneakCrit = false; this.parryCrit = false; this.parryCd = 0;
+    this.refillAmmo();
     this.shield = shieldMax(this); this.forgeT = 0; shieldVisual(this);
     this.facing = Math.PI;
     this.clearRoll();
@@ -449,6 +464,15 @@ export class Player {
   }
 
   startAttack(camera) {
+    // Sem munição (Kunais/Besta): não arremessa.
+    if (this.hero.ammo && !(this.ammo && this.ammo.length)) {
+      this.combo = 0; this.queued = false;
+      if (this.onNoAmmo) this.onNoAmmo(this);
+      if (this.state === 'attack' || this.state === 'dodge') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0.15 }); }
+      return false;
+    }
+    // Saiu da fumaça atacando: volta a aparecer (o golpe sai crítico: sneakCrit).
+    if (this.stealth > 0) this.stealth = 0;
     const step = this.hero.combo[this.combo];
     this.setState('attack');
     this.queued = false;
@@ -545,7 +569,12 @@ export class Player {
     }
     if (this.state === 'dead') { this.anim.update(dt); return; }
     this.dodgeCooldown -= dt;
+    this.parryCd = Math.max(0, (this.parryCd || 0) - dt);
     const input = this.ctl;
+    // Botão direito do Ladino (fumaça / aparar): conta só o apertar (não segurar).
+    const abilDown = !!(this.hero.ability && input.blocking());
+    const abilPress = abilDown && !this.abilHeld;
+    this.abilHeld = abilDown;
     input.moveDir(tmpMove);
     const moving = tmpMove.lengthSq() > 0;
     let targetFacing = this.facing;
@@ -560,6 +589,7 @@ export class Player {
       case 'run': {
         if (input.attack()) { this.combo = 0; this.startAttack(camera); break; }
         if (input.potion() && !this.noPotion && this.tryDrink()) break;
+        if (abilPress && this.useAbility(camera)) break;
         if (input.blocking() && this.enterBlock(camera)) break;
         if (moving) {
           this.move(tmpMove.x, tmpMove.z, h.moveSpeed * this.moveMul * dt, world);
@@ -608,6 +638,8 @@ export class Player {
         } else if (input.blocking() && p >= win && this.shield > 0) {
           this.combo = 0;
           this.enterBlock(camera);
+        } else if (abilPress && this.hitDone && this.useAbility(camera)) {
+          this.combo = 0; this.queued = false;
         }
         turnRate = 0;
         break;
@@ -637,6 +669,15 @@ export class Player {
           setFlash(this.bodyMats, 0);
           this.setState(moving ? 'run' : 'idle');
           this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 });
+        }
+        turnRate = 0;
+        break;
+      }
+      case 'parry': {
+        // Aparar (Rapieira): defesa curtinha. Só o começo (PARRY.window) apara; depois fica exposto até acabar.
+        if (this.stateTime >= (this.parryTotal || 0.42)) {
+          this.setState(moving ? 'run' : 'idle');
+          this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.12 });
         }
         turnRate = 0;
         break;
@@ -717,6 +758,23 @@ export class Player {
     this.emoteHold = hold;
     this.setState('emote');
     this.anim.play(clip, { once: true, speed, restart: true, fade: 0.12 });
+  }
+
+  // Botão direito do Ladino: bomba de fumaça ou aparar (Rapieira). Devolve true se usou.
+  useAbility(camera) {
+    const h = this.hero;
+    if (h.ability === 'smoke') return !!(this.onSmoke && this.onSmoke(this));
+    if (h.ability === 'parry') {
+      if (this.parryCd > 0) return false;
+      this.parryCd = this.parryCooldown || 0.45;
+      this.facing = this.aimAngle(camera);
+      this.group.rotation.y = this.facing;
+      this.setState('parry');
+      this.anim.play(h.anims.blockStart, { once: true, speed: 2.8, fade: 0.04, restart: true });
+      if (this.onParryStart) this.onParryStart(this);
+      return true;
+    }
+    return false;
   }
 
   // Escudo quebrado: não bloqueia (aviso curto). Devolve true se entrou no bloqueio.

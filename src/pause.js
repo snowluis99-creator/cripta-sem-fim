@@ -1,6 +1,7 @@
 // Pausa (Esc / Start / botão ⚙), Configurações e Controles.
 // Sozinho, o jogo congela; no co-op ele continua rodando (o outro jogador não para).
 import { settings } from './settings.js';
+import { GFX, GFX_LEVELS, gfxAtStart } from './graphics.js';
 
 const SLIDERS = [['master', 'Volume geral'], ['music', 'Música'], ['sfx', 'Efeitos e vozes']];
 const TOGGLES = [['shake', 'Tremida da câmera'], ['hints', 'Dicas de controle na tela']];
@@ -37,6 +38,8 @@ export class PauseMenu {
             <label class="slider"><span>${label}</span><input type="range" min="0" max="100" step="5" data-k="${k}"><output data-o="${k}"></output></label>`).join('')}
           ${TOGGLES.map(([k, label]) => `
             <button type="button" class="toggle" data-t="${k}"><span>${label}</span><i></i></button>`).join('')}
+          <button type="button" class="toggle on" data-g="1" title="Baixe se o jogo estiver lento"><span>Gráficos</span><i></i></button>
+          <p class="note gfxnote">A iluminação e as bordas mudam ao abrir o jogo de novo.</p>
           <button type="button" class="ghost" data-a="back">Voltar</button>
         </section>
         <section data-s="controls">
@@ -65,6 +68,7 @@ export class PauseMenu {
     root.addEventListener('click', (e) => {
       const t = e.target.closest('[data-t]');
       if (t) { settings.set(t.dataset.t, !settings[t.dataset.t]); return; }
+      if (e.target.closest('[data-g]')) { this.cycleGfx(1); return; }
       const b = e.target.closest('button[data-a]');
       if (b) this.action(b.dataset.a);
     });
@@ -150,6 +154,15 @@ export class PauseMenu {
       b.classList.toggle('on', !!settings[k]);
       b.querySelector('i').textContent = settings[k] ? 'Ligada' : 'Desligada';
     }
+    const g = GFX[settings.gfx] || GFX.high;
+    this.$('[data-g] i').textContent = g.label;
+    this.$('.gfxnote').hidden = g.aa === gfxAtStart.aa && g.simple === gfxAtStart.simple;
+  }
+
+  // Gráficos: Alto → Médio → Baixo → Alto.
+  cycleGfx(d) {
+    const i = GFX_LEVELS.indexOf(settings.gfx);
+    settings.set('gfx', GFX_LEVELS[(i + d + GFX_LEVELS.length) % GFX_LEVELS.length]);
   }
 
   // ---------- Controle (gamepad) e teclado ----------
@@ -177,6 +190,7 @@ export class PauseMenu {
       settings.set(el.dataset.k, v);
       el.value = v;
     }
+    if (el && el.dataset.g && (pressed('PadLeft') || pressed('PadRight'))) this.cycleGfx(pressed('PadRight') ? 1 : -1);
     if (pressed('PadA') && el && el.tagName === 'BUTTON') el.click();
     if (pressed('PadB')) this.back();
   }

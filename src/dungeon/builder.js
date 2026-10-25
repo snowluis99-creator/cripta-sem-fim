@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { instance, dungeonPath } from '../assets.js';
 import { TILE } from './rooms.js';
+import { applyTorchQuality } from '../graphics.js';
 
 const TORCH_HEIGHT = 2.3;
 const WALL_HALF_THICK = 0.5;
@@ -163,6 +164,7 @@ export function buildRoom(room, opts = {}) {
     group.add(light);
     torches.push({ light, sprite: null, base: 0, seed: 0 });
   }
+  applyTorchQuality(torches); // Gráficos Médio/Baixo: menos tochas acesas
 
   // --- Paredes (colisão): cada parede tem 1 unidade de espessura ---
   const t = WALL_HALF_THICK;
@@ -217,7 +219,7 @@ export function buildRoom(room, opts = {}) {
       for (const tc of torches) {
         if (!tc.sprite) continue;
         const f = Math.sin(t * 9 + tc.seed) * 0.5 + Math.sin(t * 23 + tc.seed * 2) * 0.3;
-        tc.light.intensity = tc.base * (1 + f * 0.12);
+        tc.light.intensity = tc.base * (tc.boost || 1) * (1 + f * 0.12);
         tc.sprite.scale.setScalar(1.15 + f * 0.12);
       }
       // Grades das portas descendo/subindo.

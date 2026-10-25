@@ -74,8 +74,48 @@ HEROES.mage = {
   },
 };
 
+// Ladino: rápido e frágil, vive de críticos (25% de chance base; Precisão Invejável = 100% por 5 s).
+// Sem escudo. Botão direito: Bomba de Fumaça (fica invisível; o 1º golpe sai crítico). Rapieira: aparar.
+// Kunais e Besta usam munição (ammo): o que foi arremessado fica no chão até ser pego (rogue.js).
+HEROES.rogue = {
+  name: 'Ladino',
+  model: 'heroes/Rogue.glb',
+  weapons: {
+    right: { model: 'weapons/heroes/dagger.gltf', rot: [0, 0, 0], tip: 0.95, scale: 1.1 },
+    left: { model: 'weapons/heroes/dagger.gltf', rot: [0, 0, 0], scale: 1.1 },
+  },
+  radius: 0.55,
+  maxHp: 70,
+  potions: 1,
+  potionHeal: 35,
+  hurt: { time: 0.28, iframes: 0.8, push: 7 },
+  block: { arc: 150 },
+  noShield: true,
+  moveSpeed: 7.8,
+  turnSpeed: 18,
+  blockMoveSpeed: 0,
+  dodge: { distance: 6.5, time: 0.28, cooldown: 0.15, pose: 'Crouching', flips: 1 },
+  crit: 0.25,           // chance de crítico própria do herói (soma com Olho do Carrasco)
+  ability: 'smoke',     // botão direito (rogue.js)
+  combo: [
+    { clip: 'Melee_Dualwield_Attack_Stab', speed: 1.7, hit: 0.25, end: 0.5, window: 0.28, lunge: 0.35, damage: 7 },
+    { clip: 'Melee_Dualwield_Attack_Slice', speed: 1.9, hit: 0.64, end: 0.82, window: 0.66, lunge: 0.3, damage: 7 },
+    { clip: 'Melee_Dualwield_Attack_Chop', speed: 1.5, hit: 0.45, end: 0.72, lunge: 0.5, damage: 13, heavy: true, blastMul: 0.7 },
+  ],
+  attackCancel: 0.5,
+  attackRange: 2.3,
+  attackArc: 110,
+  anims: {
+    idle: 'Idle_A', run: 'Running_A', blockStart: 'Melee_Block', blocking: 'Melee_Blocking',
+    hit: 'Hit_A', blockHit: 'Melee_Block_Hit', death: 'Death_A', drink: 'Use_Item',
+  },
+};
+
+// Artigo do nome (textos da Taverna: "a Maga", "o Ladino").
+export const heroArticle = (id) => (id === 'mage' ? 'a' : 'o');
+
 // Ordem dos heróis (o número é o que fica salvo como herói escolhido).
-export const HERO_IDS = ['knight', 'mage'];
+export const HERO_IDS = ['knight', 'mage', 'rogue'];
 // Preço para desbloquear um herói novo na Taverna (Ouro de Alma).
 export const HERO_PRICE = 1500;
 export const heroKey = (heroId) => `h_${heroId}`;
@@ -236,6 +276,67 @@ export const WEAPONS = {
             cast: { type: 'nova', radius: 3.2, color: 0xffb04a, burn: 2 } }, // explosão de fogo em volta da Maga (360°)
         ],
         attackRange: 2.5,
+      } },
+  ],
+  // Ladino (pedido do dono, 25/10/2026). Todas sem escudo.
+  rogue: [
+    { id: 'adagas', name: 'Duas Adagas', short: 'Adagas', icon: '⚔', color: 0xd8dde8,
+      desc: 'Golpes rápidos com as duas mãos e 25% de chance de crítico. Botão direito: bomba de fumaça.',
+      set: {} },
+    { id: 'kunai', name: 'Kunais de Arremesso', short: 'Kunais', icon: '✧', color: 0x6fe3ff,
+      desc: '2 kunais com alcance infinito e dano MUITO baixo. Acertou um inimigo: ela voa para cima e cai no círculo — pegue e arremesse de novo rápido para o dano ir crescendo. Errou: ela fica no chão até você pegar.',
+      set: {
+        weapons: { right: { model: 'weapons/extra/dagger_A.gltf', rot: [0, 0, 0], tip: 0.9, scale: 0.85, tint: 0x9fe8ff } },
+        ammo: { kind: 'kunai', max: 2 },
+        combo: [
+          { clip: 'Throw', speed: 2.1, hit: 0.44, end: 0.68, window: 0.46, lunge: 0, damage: 2, throw: 'kunai' },
+        ],
+        attackCancel: 0.5,
+      } },
+    { id: 'garras', name: 'Garras', short: 'Garras', icon: '≋', color: 0xff5a6a,
+      desc: 'Combo de 5 golpes de alcance médio. Pouco dano e não interrompe o que o inimigo está fazendo; o 5º golpe deixa o alvo sangrando.',
+      set: {
+        weapons: {
+          right: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 0], tip: 0.4, scale: 1.5 },
+          left: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 0], scale: 1.5 },
+        },
+        noStagger: true,
+        combo: [
+          { clip: 'Melee_Dualwield_Attack_Stab', speed: 2.0, hit: 0.25, end: 0.48, window: 0.27, lunge: 0.3, damage: 4 },
+          { clip: 'Melee_Unarmed_Attack_Punch_A', speed: 2.0, hit: 0.38, end: 0.58, window: 0.4, lunge: 0.3, damage: 4 },
+          { clip: 'Melee_Dualwield_Attack_Slice', speed: 2.2, hit: 0.64, end: 0.8, window: 0.66, lunge: 0.3, damage: 4 },
+          { clip: 'Melee_Dualwield_Attack_Stab', speed: 2.2, hit: 0.25, end: 0.48, window: 0.27, lunge: 0.3, damage: 4 },
+          { clip: 'Melee_Dualwield_Attack_Chop', speed: 1.6, hit: 0.45, end: 0.72, lunge: 0.4, damage: 6, heavy: true, blastMul: 0.6,
+            bleed: { dps: 6, time: 4 } },
+        ],
+        attackCancel: 0.45,
+        attackRange: 2.7,
+        attackArc: 120,
+      } },
+    { id: 'rapieira', name: 'Rapieira', short: 'Rapieira', icon: '†', color: 0xffe27a,
+      desc: 'Estocadas de alcance médio que acertam só 1 inimigo, com dano baixo. Pelas costas: sempre crítico. Botão direito: aparar — no instante exato do golpe inimigo, defende e atordoa; se errar o tempo, leva o dano.',
+      set: {
+        single: true,
+        backstab: true,
+        ability: 'parry',
+        weapons: { right: { model: 'weapons/extra/sword_C.gltf', rot: [0, 0, 0], tip: 1.9 } },
+        combo: [
+          { clip: 'Melee_1H_Attack_Stab', speed: 1.5, hit: 0.27, end: 0.52, window: 0.3, lunge: 0.6, damage: 6 },
+          { clip: 'Melee_1H_Attack_Stab', speed: 1.7, hit: 0.27, end: 0.52, window: 0.3, lunge: 0.6, damage: 6 },
+          { clip: 'Melee_1H_Attack_Stab', speed: 1.25, hit: 0.27, end: 0.58, lunge: 1.0, damage: 9, heavy: true },
+        ],
+        attackRange: 3.4,
+        attackArc: 40,
+      } },
+    { id: 'besta', name: 'Besta de Mão', short: 'Besta', icon: '➹', color: 0xc99a5a,
+      desc: '3 virotes de dano médio e alcance infinito. O virote para onde bater; se acertar um inimigo, cai no chão embaixo dele. Ande por cima para pegar de volta.',
+      set: {
+        weapons: { right: { model: 'weapons/heroes/crossbow_1handed.gltf', rot: [0, 0, 0], tip: 0.6 } },
+        ammo: { kind: 'bolt', max: 3 },
+        combo: [
+          { clip: 'Ranged_1H_Shoot', speed: 1.4, hit: 0.3, end: 0.6, window: 0.34, lunge: 0, damage: 12, throw: 'bolt' },
+        ],
+        attackCancel: 0.45,
       } },
   ],
 };

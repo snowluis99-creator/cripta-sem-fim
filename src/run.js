@@ -10,13 +10,13 @@ import { buildRoom } from './dungeon/builder.js';
 import { generateFloor, NODE_INFO, FLOORS } from './dungeon/generator.js';
 import { repairShield } from './shield.js';
 import { updateSpikes } from './traps.js';
-import { rollBlessings, rollShop, rollRisky, RARITY, BLESSINGS } from './blessings.js';
+import { rollBlessings, rollShop, rollRisky, rollUltBlessings, RARITY, BLESSINGS } from './blessings.js';
 import { Pickup, iconFor } from './rewards.js';
 import { Merchant } from './merchant.js';
 import { Mercenary, ALLY } from './ally.js';
 import { Tavern } from './tavern.js';
 import { save } from './save.js';
-import { WEAPON_PRICE, ownsWeapon, equippedWeapon, ownKey, eqKey, WEAPONS, HEROES, HERO_IDS, HERO_PRICE, HERO_SEL, heroKey, ownsHero, selectedHero } from './heroes.js';
+import { WEAPON_PRICE, ownsWeapon, equippedWeapon, ownKey, eqKey, WEAPONS, HEROES, HERO_IDS, HERO_PRICE, HERO_SEL, heroKey, ownsHero, selectedHero, heroArticle } from './heroes.js';
 import { UnlockScene } from './unlock.js';
 
 const PRICES = { potion: 150 };
@@ -42,7 +42,8 @@ export function decorateDoors(scene, ui, built, infos) {
 // Uma linha sobre cada herói (aviso da cadeira na Taverna).
 function heroDesc(h) {
   return h === 'mage' ? 'Ataca de longe com magia; barreira mágica para bloquear. Menos vida (50).'
-    : 'Corpo a corpo com escudo. 100 de vida.';
+    : h === 'rogue' ? 'Rápido, com 25% de crítico; bomba de fumaça para sumir. 70 de vida, sem escudo.'
+      : 'Corpo a corpo com escudo. 100 de vida.';
 }
 
 export class Run {
@@ -61,7 +62,7 @@ export class Run {
     this.choiceSeq = 0;
     this.pickupSeq = 0;
     this.tavern = new Tavern({ scene: this.scene, ui: this.ui });
-    this.unlock = new UnlockScene({ scene: this.scene, vfx: this.vfx, tavern: this.tavern, players: this.players, cam: this.cam });
+    this.unlock = new UnlockScene({ scene: this.scene, vfx: this.vfx, tavern: this.tavern, players: this.players, cam: this.cam, text: this.combat.text });
     this.inTavern = false;
   }
 
@@ -281,6 +282,7 @@ export class Run {
       if (bigBoss) this.ownPickup('gold', side, { amount: 60 + (this.floorNum - 1) * 20 }, p);
       else if (n.reward === 'gold') this.ownPickup('gold', side, { amount: GOLD_REWARD[0] + Math.floor(Math.random() * (GOLD_REWARD[1] - GOLD_REWARD[0] + 1)) }, p);
       else if (n.reward === 'potion') this.ownPickup('potion', side, { amount: 1 }, p);
+      else if (n.reward === 'ult') this.ownPickup('blessing', side, { ult: true, color: 0xff9a2a, size: 1.2 }, p); // Bênção da Ultimate
       else if (n.kind === 'treasure') this.addChest(p);
     }
     if (n.kind === 'merchant') this.openShop();
@@ -367,8 +369,8 @@ export class Run {
     if (it.item === 'hero') {
       const h = this.seatHero(p, pl), sv = this.saveOf(pl), name = HEROES[h].name;
       if (!sv) return `${name}<br><small>Carregando o progresso do jogador…</small>`;
-      if (ownsHero(sv.ups, h)) return `Jogar com ${h === 'mage' ? 'a' : 'o'} ${name}<br><small>${heroDesc(h)}</small>`;
-      return `Desbloquear ${h === 'mage' ? 'a' : 'o'} ${name} · <span class="soulp">${HERO_PRICE}</span><br><small>${heroDesc(h)}</small>`;
+      if (ownsHero(sv.ups, h)) return `Jogar com ${heroArticle(h)} ${name}<br><small>${heroDesc(h)}</small>`;
+      return `Desbloquear ${heroArticle(h)} ${name} · <span class="soulp">${HERO_PRICE}</span><br><small>${heroDesc(h)}</small>`;
     }
     if (it.item === 'weapon') {
       const w = WEAPONS[pl.heroId][it.slot] || it.weapon, sv = this.saveOf(pl);
@@ -390,7 +392,8 @@ export class Run {
       case 'blessing':
         p.taken = true;
         this.removePickup(p);
-        this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl);
+        if (p.opts.ult) this.offerBlessings('common', p.pos, () => this.checkDoors(), 'Bênção da Ultimate', pl, true);
+        else this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl);
         return;
       case 'gold':
         p.taken = true;
@@ -517,7 +520,7 @@ export class Run {
     if (pl === this.player) save.update(change); else if (sv) { change(sv); sv.rev = (sv.rev || 0) + 1; }
     pl.setHero(h, equippedWeapon(sv && sv.ups, h));
     pl.reset(pl.position.x, pl.position.z);
-    this.vfx.burst(pl.position, h === 'mage' ? 0xb070ff : 0xffd36a);
+    this.vfx.burst(pl.position, h === 'mage' ? 0xb070ff : h === 'rogue' ? 0x6fe3ff : 0xffd36a);
     audio.play('blessing', pl.position.x, pl.position.z);
     if (!quiet) this.combat.text.add(HEROES[h].name, pl.position, 'gold', 3.2);
     if (pl === this.player) this.rebuildTavern();
@@ -541,9 +544,10 @@ export class Run {
   }
 
   // Escolha de bênção. Jogador 1: menu nesta tela. Jogador 2 (co-op): o menu abre no computador dele.
-  offerBlessings(minRarity, pos, after, title, pl = this.player) {
-    const options = rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero.noShield);
-    const risky = rollRisky(pl.blessings);
+  // ult = escolha da sala "Bênção da Ultimate" (só melhorias da ultimate, sem a carta arriscada).
+  offerBlessings(minRarity, pos, after, title, pl = this.player, ult = false) {
+    const options = ult ? rollUltBlessings(pl.blessings, pl.heroId) : rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero.noShield);
+    const risky = ult ? null : rollRisky(pl.blessings);
     if (risky && options.length) options.push(risky); // 4ª carta: arriscada (borda vermelha)
     if (!options.length) { if (after) after(); return; }
     pl.choosing = true;

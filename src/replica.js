@@ -5,6 +5,7 @@ import { ROOMS } from './dungeon/rooms.js';
 import { buildRoom } from './dungeon/builder.js';
 import { decorateDoors, PLAYER_COLORS } from './run.js';
 import { Enemy, ENEMIES } from './enemies.js';
+import { applyEnemyRoll } from './ranged.js';
 import { Pickup } from './rewards.js';
 import { Merchant } from './merchant.js';
 import { Hazards } from './hazards.js';
@@ -15,7 +16,8 @@ import { raiseRightArm } from './abilities.js';
 import { setFlash } from './characters.js';
 import { clipNames } from './animation.js';
 import { BLESSINGS, BLESSING_BY_ID, RARITY } from './blessings.js';
-import { ENEMY_TYPES, PICKUP_KINDS } from './coop.js';
+import { ENEMY_TYPES, PICKUP_KINDS, PROJ_KINDS } from './coop.js';
+import { makeRogueShot, ammoSmoke } from './rogue.js';
 import { OmenView } from './teamwork.js';
 import { audio } from './audio.js';
 import { detachHead, shatterBoss, liftArms } from './finale.js';
@@ -162,7 +164,7 @@ export class Replica {
   // Cena de desbloqueio (o anfitrião avisa; aqui só a decoração da Taverna se mexe).
   playUnlock(heroId) {
     if (!this.inTavern) return;
-    if (!this.unlockScene) this.unlockScene = new UnlockScene({ scene: this.scene, vfx: this.vfx, tavern: this.tavern, players: [], cam: this.cam });
+    if (!this.unlockScene) this.unlockScene = new UnlockScene({ scene: this.scene, vfx: this.vfx, tavern: this.tavern, players: [], cam: this.cam, text: this.text });
     this.unlockScene.play(heroId, null, () => this.buildTavernDecor());
   }
 
@@ -195,7 +197,7 @@ export class Replica {
   applyEnemies(list) {
     const seen = new Set();
     for (const a of list) {
-      const [id, ti, x, z, f, y, sc, pid, clip, spd, once, flash, eyes, code, imm = 0, alpha = 1] = a;
+      const [id, ti, x, z, f, y, sc, pid, clip, spd, once, flash, eyes, code, imm = 0, alpha = 1, rk = -1] = a;
       seen.add(id);
       let e = this.enemies.get(id);
       if (!e) {
@@ -210,6 +212,7 @@ export class Replica {
       e.tx = x; e.tz = z; e.tf = f;
       e.group.position.y = y;
       e.group.scale.setScalar(sc);
+      if (rk >= 0 || e.netRoll) { applyEnemyRoll(e, rk); e.netRoll = rk >= 0; } // cambalhota do Arqueiro
       if (e.code !== 1 && e.code !== 2) syncAnim(e.anim, pid, clip, spd, once);
       e.netFlash = flash; e.netEyes = eyes;
       e.netImmune = !!imm;
@@ -316,7 +319,8 @@ export class Replica {
       seen.add(id);
       let s = this.shots.get(id);
       if (!s) {
-        const g = makeProjectileMesh(['arrow', 'orb', 'wave', 'star', 'shard'][k] || 'orb', color, sc);
+        const kind = PROJ_KINDS[k] || 'orb';
+        const g = kind === 'kunai' || kind === 'bolt' ? makeRogueShot(kind) : makeProjectileMesh(kind, color, sc);
         g.position.set(x, y, z);
         this.scene.add(g);
         s = { g, k };
@@ -404,7 +408,8 @@ export class Replica {
       p.stats.spectral = !!spec; p.spectralCd = 0;
       p.updateSpectral(dt);
       const us = (this.ultState || [])[i];
-      tickDome(p, !!(us && us[2] > 0) && !dead, dt);
+      tickDome(p, !!(us && us[2] > 0) && !dead && p.heroId === 'knight', dt);
+      ammoSmoke(p, !!(us && us[5])); // Ladino invisível: transparente também na tela do Jogador 2
       p.netDead = !!dead;
       p.anim.update(dt);
       if (p.weapon && p.weapon.userData.flail) updateFlail(p.weapon, dt);
@@ -426,6 +431,7 @@ export class Replica {
       if (mine[22] !== undefined) this.hud.setShield(mine[22], mine[23]);
       const um = (this.ultState || [])[1];
       if (um) this.hud.setUlt(um[0], um[1], input.device === 'pad' ? 'RT' : 'R');
+      if (um) { const a = um[3]; this.hud.setAmmo(a ? { n: a[0], max: a[1], kind: a[2], stack: a[3] } : null); this.hud.setSmoke(um[4] ?? -1, !!um[5]); }
       if (mine[26] !== undefined) save.adopt(mine[26], mine[27], mine[28], mine[29]);
       this.hud.setSoul(save.data.soul, this.inTavern);
       const bk = mine[20] || '';

@@ -16,7 +16,7 @@ const GUESTS = [
   { model: 'heroes/Barbarian.glb', name: 'Bárbaro', x: -10, z: 2.6, rot: 0 },
   { model: 'heroes/Mage.glb', name: 'Maga', x: -8, z: 2.6, rot: 0, hero: 'mage' },
   { model: 'heroes/Ranger.glb', name: 'Patrulheira', x: -11.8, z: 4.4, rot: Math.PI / 2 },
-  { model: 'heroes/Rogue.glb', name: 'Ladino', x: -6.2, z: 4.4, rot: -Math.PI / 2 },
+  { model: 'heroes/Rogue.glb', name: 'Ladino', x: -6.2, z: 4.4, rot: -Math.PI / 2, hero: 'rogue' },
 ];
 // Suporte de armas (lado direito da taverna): uma mesinha por arma do herói, na ordem de WEAPONS.
 const SPOTS = [[7.5, -6.5], [12, -6.5], [7.5, -1.5], [12, -1.5], [9.75, 3.5]];

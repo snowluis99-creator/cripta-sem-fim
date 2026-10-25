@@ -10,6 +10,7 @@ import { shadowTests } from './selftest6.js';
 import { tavernTests } from './selftest7.js';
 import { mageTests } from './selftest8.js';
 import { newTests } from './selftest9.js';
+import { rogueTests } from './selftest10.js';
 // Teste automático de combate (tecla T, só com o modo de teste ligado pela tecla I).
 // Roda um roteiro com tempo fixo de 1/60 s por passo, escreve o resultado na tela e congela
 // nos momentos importantes para screenshot (T continua). Usado pelo Claude; o jogador não precisa dele.
@@ -109,6 +110,7 @@ function* script(g, out, flags) {
   yield* tavernTests(g, out, flags);
   yield* mageTests(g, out, flags);
   yield* newTests(g, out, flags);
+  yield* rogueTests(g, out, flags);
   waves.paused = false;
   out('FIM (partida nova começou)');
   g.restart();
@@ -444,12 +446,12 @@ export function createSelfTest(state, game, isDebug) {
   // T = teste com pausas para screenshot; Y = teste corrido (sem pausas); U = rápido mas parando nas pausas.
   let fast = false, skipHolds = false;
   addEventListener('keydown', (e) => {
-    if (!['KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9'].includes(e.code) || !isDebug()) return;
+    if (!['KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'].includes(e.code) || !isDebug()) return;
     if (running) { holding = false; return; }
     fast = e.code !== 'KeyT';
     skipHolds = e.code === 'KeyY';
     running = true; holding = false; log = []; page = -1; wait = 0; waitFn = null;
-    gen = e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : script(game, out, flags);
+    gen = e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : script(game, out, flags);
     box.style.display = 'block';
     out('TESTE AUTOMÁTICO DE COMBATE');
   });

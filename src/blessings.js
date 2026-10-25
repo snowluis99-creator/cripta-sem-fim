@@ -8,6 +8,8 @@ export const RARITY = {
   legendary: { name: 'Lendária', color: '#ffc24a', weight: 3, price: 500 },
   // Arriscada: sempre a 4ª carta (borda vermelha). Muito forte, mas com uma contrapartida. Não é vendida.
   risky: { name: 'Arriscada', color: '#ff4a4a', weight: 0, price: 0 },
+  // Da sala "Bênção da Ultimate": melhoram a ultimate. Só saem lá (não vendem nem aparecem nas outras escolhas).
+  ult: { name: 'Ultimate', color: '#ff9a2a', weight: 0, price: 0 },
 };
 const ORDER = ['common', 'rare', 'epic', 'legendary'];
 
@@ -22,6 +24,9 @@ export function baseStats() {
     shieldBonus: 0, parry: false, forge: false, shards: false, mithril: 0,
     // Bênçãos arriscadas e ultimate:
     potionMul: 1, ultNeed: 10,
+    // Bênçãos da Ultimate (ultimate.js):
+    ultHeal: 0, ultBlast: 0, ultRefund: 0, domeTime: 0, domeBurn: 0, domeFury: false, rainRepeat: 0, rainFreeze: 0, rainDamage: 0,
+    aimTime: 0, lethalCrit: false, ultSmoke: false, // Ladino (Precisão Invejável)
   };
 }
 
@@ -139,9 +144,72 @@ export const RISKY = [
     apply: (s) => { s.lifeOnKill += 5; s.potionMul *= 0.5; } },
   { id: 'r_ceifador', name: 'Pacto do Ceifador', icon: '⌛', rarity: 'risky', max: 1,
     desc: () => 'A ultimate carrega com 6 inimigos derrotados (em vez de 10).', risk: '−20 de vida máxima.',
-    apply: (s) => { s.ultNeed = 6; s.bonusHp -= 20; } },
+    apply: (s) => { s.ultNeed -= 4; s.bonusHp -= 20; } },
 ];
 BLESSINGS.push(...RISKY);
+
+// ---- Bênçãos da Ultimate (sala "Bênção da Ultimate"). hero = só para esse herói; sem hero = todos ----
+export const ULT_BLESSINGS = [
+  { id: 'u_carga', name: 'Carga Rápida', icon: '⚡', rarity: 'ult', max: 2,
+    desc: () => 'A ultimate carrega com 2 inimigos a menos.',
+    apply: (s) => { s.ultNeed -= 2; } },
+  { id: 'u_cura', name: 'Ultimate Restauradora', icon: '✚', rarity: 'ult', max: 2,
+    desc: (n) => `Usar a ultimate cura ${n * 25} de vida.`,
+    apply: (s) => { s.ultHeal += 25; } },
+  { id: 'u_onda', name: 'Explosão de Poder', icon: '✹', rarity: 'ult', max: 2,
+    desc: (n) => `Ao usar a ultimate, uma explosão em volta causa ${n * 25} de dano e empurra os inimigos.`,
+    apply: (s) => { s.ultBlast += 25; } },
+  { id: 'u_eco', name: 'Carga Guardada', icon: '↺', rarity: 'ult', max: 1,
+    desc: () => 'Depois de usar a ultimate, a barra já começa com metade.',
+    apply: (s) => { s.ultRefund = 0.5; } },
+  // Cavaleiro (Fortaleza Dourada)
+  { id: 'u_eterna', hero: 'knight', name: 'Fortaleza Eterna', icon: '⛨', rarity: 'ult', max: 2,
+    desc: (n) => `O domo dourado dura +1,5 s. (total: ${(3 + n * 1.5).toString().replace('.', ',')} s)`,
+    apply: (s) => { s.domeTime += 1.5; } },
+  { id: 'u_ardente', hero: 'knight', name: 'Domo Ardente', icon: '♨', rarity: 'ult', max: 1,
+    desc: () => 'O domo queima quem estiver perto: 10 de dano a cada meio segundo.',
+    apply: (s) => { s.domeBurn = 10; } },
+  { id: 'u_furia', hero: 'knight', name: 'Fúria Dourada', icon: '☄', rarity: 'ult', max: 1,
+    desc: () => 'Dentro do domo, os golpes causam +60% de dano.',
+    apply: (s) => { s.domeFury = true; } },
+  // Maga (Chuva Arcana)
+  { id: 'u_dupla', hero: 'mage', name: 'Chuva Dupla', icon: '↯', rarity: 'ult', max: 1,
+    desc: () => 'A Chuva Arcana cai mais uma vez logo depois.',
+    apply: (s) => { s.rainRepeat = 1; } },
+  { id: 'u_gelida', hero: 'mage', name: 'Chuva Gélida', icon: '❄', rarity: 'ult', max: 1,
+    desc: () => 'A Chuva Arcana congela os inimigos por 2 s.',
+    apply: (s) => { s.rainFreeze = 2; } },
+  { id: 'u_forte', hero: 'mage', name: 'Tempestade Arcana', icon: '✦', rarity: 'ult', max: 2,
+    desc: (n) => `Cada raio da Chuva Arcana causa +12 de dano. (total: ${15 + n * 12})`,
+    apply: (s) => { s.rainDamage += 12; } },
+  // Ladino (Precisão Invejável)
+  { id: 'u_mira', hero: 'rogue', name: 'Mira Demorada', icon: '◎', rarity: 'ult', max: 2,
+    desc: (n) => `A Precisão Invejável dura +2 s. (total: ${5 + n * 2} s)`,
+    apply: (s) => { s.aimTime += 2; } },
+  { id: 'u_letal', hero: 'rogue', name: 'Golpe Letal', icon: '†', rarity: 'ult', max: 1,
+    desc: () => 'Durante a Precisão Invejável, os críticos causam o triplo de dano (em vez do dobro).',
+    apply: (s) => { s.lethalCrit = true; } },
+  { id: 'u_sombra', hero: 'rogue', name: 'Sombra Instantânea', icon: '☁', rarity: 'ult', max: 1,
+    desc: () => 'Usar a ultimate também solta uma bomba de fumaça (fica invisível por 2 s).',
+    apply: (s) => { s.ultSmoke = true; } },
+];
+for (const b of ULT_BLESSINGS) b.ult = true;
+BLESSINGS.push(...ULT_BLESSINGS);
+
+// 3 bênçãos da ultimate para este herói (pelo menos uma dele, se ainda tiver).
+export function rollUltBlessings(owned, heroId, count = 3, rng = Math.random) {
+  const can = (b) => (owned[b.id] || 0) < b.max && (!b.hero || b.hero === heroId);
+  const own = ULT_BLESSINGS.filter((b) => can(b) && b.hero);
+  const picks = [];
+  if (own.length) picks.push(own[Math.floor(rng() * own.length)]);
+  let pool = ULT_BLESSINGS.filter((b) => can(b) && !picks.includes(b));
+  while (picks.length < count && pool.length) {
+    const i = Math.floor(rng() * pool.length);
+    picks.push(pool[i]);
+    pool = pool.filter((_, j) => j !== i);
+  }
+  return picks.sort((a, b) => ULT_BLESSINGS.indexOf(a) - ULT_BLESSINGS.indexOf(b));
+}
 
 // A 4ª carta: uma arriscada que o herói ainda não tem (null se já tem todas).
 export function rollRisky(owned, rng = Math.random) {
@@ -155,7 +223,7 @@ export const BLESSING_BY_ID = Object.fromEntries(BLESSINGS.map((b) => [b.id, b])
 // noShield: herói com arma de duas mãos (as bênçãos de escudo não aparecem).
 export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math.random, noShield = false) {
   const min = ORDER.indexOf(minRarity);
-  const can = (b) => b.rarity !== 'risky' && (owned[b.id] || 0) < b.max && !(noShield && b.shield);
+  const can = (b) => b.rarity !== 'risky' && !b.ult && (owned[b.id] || 0) < b.max && !(noShield && b.shield);
   let pool = BLESSINGS.filter((b) => can(b) && ORDER.indexOf(b.rarity) >= min);
   if (pool.length < count) pool = BLESSINGS.filter(can);
   const picks = [];

@@ -53,6 +53,7 @@ export function iconFor(kind) {
   switch (kind) {
     case 'blessing': g.add(orb(0xc27bff, 0.8)); break;
     case 'gold': g.add(model('dungeon/coin_stack_small.gltf', 0.9), glow(0xffc24a, 1.6)); break;
+    case 'ult': g.add(orb(0xff9a2a, 1.0), glow(0xffe08a, 1.0)); break; // Bênção da Ultimate: orbe laranja maior
     case 'potion': g.add(model('dungeon/bottle_B_green.gltf', 1.1), glow(0xe2384b, 1.6)); break;
     case 'treasure': g.add(model('dungeon/chest_gold.gltf', 0.55), glow(0xffd36a, 2)); break;
     case 'merchant': g.add(model('props/loot/Gold_Bars_Stack_Small.gltf', 0.8), glow(0x7dff8a, 1.8)); break;
