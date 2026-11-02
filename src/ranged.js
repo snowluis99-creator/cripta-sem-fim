@@ -20,6 +20,7 @@ function clearShot(e, p, world) {
 // e, com mira livre, anda de lado mantendo distância.
 export function archerChase(e, dt, ctx, dist, dx, dz) {
   const d = e.data, R = d.ranged, p = ctx.player;
+  if (R.fetch && e.loaded === false) return archerFetch(e, dt, ctx, dist);
   const shot = clearShot(e, p, ctx.world);
   if (targetBusy(p)) e.cooldown -= dt; // herói ocupado: atira mais cedo
   if (e.cooldown <= 0 && dist <= R.max + 2 && shot) { startShot(e, R); return true; }
@@ -135,29 +136,168 @@ function startHop(e, ctx) {
   const Rl = e.data.ranged.roll, h = e.rollHero || ctx.player;
   const away = Math.atan2(e.position.x - h.position.x, e.position.z - h.position.z);
   const to = freeSpot(ctx.world, e, e.position.x, e.position.z, away, Rl.hop, [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.3, -2.3], [1, 0.7, 0.45]);
-  e.hopFrom = { x: e.position.x, z: e.position.z };
-  e.hopTo = to || { x: e.position.x, z: e.position.z };
-  e.setState('hop');
-  const ang = Math.atan2(e.hopTo.x - e.hopFrom.x, e.hopTo.z - e.hopFrom.z);
-  if (to) e.facing = ang;
-  e.anim.play('Jump_Full_Short', { once: true, restart: true, speed: 1.05 / Rl.hopTime, fade: 0.06 });
-  audio.play('swing', e.position.x, e.position.z);
-  if (ctx.combat && ctx.combat.log) ctx.combat.log({ type: 'archerHop', enemy: e, to: { ...e.hopTo } });
+  // Sem flechas (buscando): depois do pulo continua a busca; já pegou todas: recarrega;
+  // ainda tem flechas: sem recarregar, cai e já atira no herói.
+  const next = e.loaded === false ? (e.carry ? 'reload' : 'chase') : 'shoot';
+  startHopTo(e, ctx, to || { x: e.position.x, z: e.position.z }, Rl.hopTime, Rl.hopHeight, next);
 }
 
 function runHop(e, dt, ctx) {
-  const Rl = e.data.ranged.roll, k = Math.min(1, e.t / Rl.hopTime);
+  const k = Math.min(1, e.t / e.hopDur);
   e.position.x = e.hopFrom.x + (e.hopTo.x - e.hopFrom.x) * k;
   e.position.z = e.hopFrom.z + (e.hopTo.z - e.hopFrom.z) * k;
-  e.group.position.y = Rl.hopHeight * 4 * k * (1 - k);
+  e.group.position.y = e.hopH * 4 * k * (1 - k);
   if (k >= 1) {
     e.group.position.y = 0;
     if (ctx.combat) ctx.combat.vfx.dust(e.position, new THREE.Vector3(0, 0, 0), 5);
-    e.setState('reload');
-    e.anim.play(Rl.clip, { once: true, restart: true, speed: 1.6 / Rl.reload, fade: 0.1 });
-    audio.play('creak', e.position.x, e.position.z);
+    if (e.hopNext === 'reload') startReload(e);
+    else if (e.hopNext === 'pickup') startPickup(e); // caiu em cima da flecha: já pega
+    else if (e.hopNext === 'shoot') { // pulou para longe com flechas na besta: atira logo
+      e.setState('chase');
+      e.cooldown = e.data.ranged.fetch ? e.data.ranged.fetch.fireAfter : 0.15;
+      e.anim.play(e.data.anims.idle, { fade: 0.1 });
+    } else {
+      e.setState('chase');
+      e.hopWait = rand(e.data.ranged.fetch ? e.data.ranged.fetch.pause : [0.3, 0.3]);
+      e.anim.play(e.data.anims.idle, { fade: 0.1 });
+    }
   }
   return null;
+}
+
+// Pegando o virote: no meio da animação ele some do chão; no fim, pulo para o canto.
+function runPickup(e, dt, ctx) {
+  const F = e.data.ranged.fetch;
+  if (e.bolt && e.t >= F.pickup * 0.5) {
+    ctx.combat.projectiles.takeBolt(e.bolt);
+    e.boltList = (e.boltList || []).filter((it) => it !== e.bolt);
+    e.bolt = null;
+    e.picked = (e.picked || 0) + 1;
+    const left = e.boltList.length + (e.flying || 0);
+    ctx.combat.text.add(left ? `Pegou ${e.picked}/${F.ammo}` : 'Pegou as flechas', e.position, 'miss', 2.6);
+    if (ctx.combat.log) ctx.combat.log({ type: 'archerPickup', enemy: e, left });
+    if (!left) e.carry = true;
+  }
+  if (e.t >= F.pickup) {
+    if (e.carry) startCornerHop(e, ctx); // pegou todas: canto da sala e recarrega
+    else { e.setState('chase'); e.hopWait = 0; e.anim.play(e.data.anims.idle, { fade: 0.1 }); } // ainda tem flecha no chão: pula direto para a próxima
+  }
+  return null;
+}
+
+// ---------- Arqueiro sem flechas (atirou as 3): busca as flechas caídas (um pulo direto em cada), pula para um canto e recarrega ----------
+
+// A flecha do Arqueiro parou: vira um virote no chão, num lugar livre (puxado para trás se parou na parede).
+function landBolt(e, c, x, z, ang, dx, dz) {
+  if (!e.alive || !c) return;
+  const w = c.world, r = 0.55;
+  let px = x, pz = z;
+  for (let k = 0; k <= 6; k += 0.4) {
+    const t = { x: x - dx * k, z: z - dz * k };
+    if (w) w.clampInside(t, r);
+    if (!w || !w.blocked(t.x, t.z, r)) { px = t.x; pz = t.z; break; }
+  }
+  (e.boltList ||= []).push(c.projectiles.dropBolt(px, pz, ang, e));
+  e.flying = Math.max(0, (e.flying || 0) - 1);
+  if (c.log) c.log({ type: 'archerBoltDrop', enemy: e, at: { x: px, z: pz } });
+}
+
+function archerFetch(e, dt, ctx, dist) {
+  const R = e.data.ranged, F = R.fetch, p = ctx.player, c = ctx.combat;
+  e.fetchT = (e.fetchT || 0) + dt;
+  if (e.carry) { startCornerHop(e, ctx); return true; } // já pegou todas (foi interrompido): vai para o canto
+  // Próximo virote: o mais perto dos que estão no chão.
+  const list = (e.boltList || []).filter((it) => c.projectiles.bolts && c.projectiles.bolts.includes(it));
+  e.boltList = list;
+  e.bolt = null;
+  let near = Infinity;
+  for (const it of list) { const d = Math.hypot(it.x - e.position.x, it.z - e.position.z); if (d < near) { near = d; e.bolt = it; } }
+  if (!e.bolt) {
+    // Flechas ainda voando: espera um pouco; se não aparecerem, tira outras da aljava.
+    if (!(e.flying > 0) || e.fetchT > 3.5) { e.carry = true; startCornerHop(e, ctx); return true; }
+    e.anim.play(e.data.anims.idle);
+    return false;
+  }
+  if (near <= F.pickR) { startPickup(e); return true; }
+  if (e.fetchT > F.giveUp) { for (const it of list) c.projectiles.takeBolt(it); e.boltList = []; e.carry = true; startCornerHop(e, ctx); return true; } // preso: desiste
+  // Um pulo só, direto em cima da flecha; ao cair já pega.
+  boltHop(e, ctx, e.bolt);
+  return true;
+}
+
+// Pulo direto até a flecha (tempo cresce com a distância). Se o lugar exato está ocupado, cai do lado.
+function boltHop(e, ctx, b) {
+  const F = e.data.ranged.fetch, w = ctx.world, r = e.data.radius;
+  let to = { x: b.x, z: b.z };
+  if (w.blocked(to.x, to.z, r)) {
+    to = null;
+    for (const d of [0.5, 0.9, 1.3]) {
+      for (let i = 0; i < 8 && !to; i++) {
+        const a = (i / 8) * Math.PI * 2, t = { x: b.x + Math.sin(a) * d, z: b.z + Math.cos(a) * d };
+        if (!w.blocked(t.x, t.z, r)) to = t;
+      }
+      if (to) break;
+    }
+    if (!to) to = { x: b.x, z: b.z };
+  }
+  const L = Math.hypot(to.x - e.position.x, to.z - e.position.z);
+  startHopTo(e, ctx, to, Math.min(F.hopMax, Math.max(F.hopTime, 0.3 + L / F.hopSpeed)), F.hopHeight + Math.min(1.4, L * 0.08), 'pickup');
+}
+
+// Pegando o virote do chão.
+function startPickup(e) {
+  e.releaseToken();
+  e.setState('pickup');
+  e.vel.set(0, 0, 0);
+  e.anim.play('PickUp', { once: true, restart: true, speed: 1.3 / e.data.ranged.fetch.pickup, fade: 0.08 });
+}
+
+// Pulo grande para uma ponta da sala (longe do herói), para recarregar com calma.
+function startCornerHop(e, ctx) {
+  const F = e.data.ranged.fetch, w = ctx.world, p = ctx.player, r = e.data.radius + 0.2;
+  const ex = e.position.x, ez = e.position.z;
+  let best = null, bs = -Infinity;
+  if (w.bounds) {
+    const bx = Math.max(0, w.bounds.x - F.inset), bz = Math.max(0, w.bounds.z - F.inset);
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      for (const k of [1, 0.85, 0.7]) {
+        const x = sx * bx * k, z = sz * bz * k;
+        if (w.blocked(x, z, r)) continue;
+        const toHero = Math.hypot(p.position.x - x, p.position.z - z), far = Math.hypot(x - ex, z - ez);
+        if (far < 2) break;
+        const sc = toHero - far * 0.35 + (sx && sz ? 1.5 : 0); // longe do herói, sem atravessar a sala toda; cantos de preferência
+        if (sc > bs) { bs = sc; best = { x, z }; }
+        break;
+      }
+    }
+  }
+  if (!best) { // sem sala conhecida: pula para longe do herói
+    const away = Math.atan2(ex - p.position.x, ez - p.position.z);
+    best = freeSpot(w, e, ex, ez, away, 7, [0, 0.6, -0.6, 1.2, -1.2], [1, 0.6]) || { x: ex, z: ez };
+  }
+  const L = Math.hypot(best.x - ex, best.z - ez);
+  startHopTo(e, ctx, best, Math.min(1.1, Math.max(0.55, 0.45 + L / 28)), F.cornerHeight, 'reload');
+}
+
+// Pulo genérico do Arqueiro (de, para, tempo, altura; next = 'reload' | 'chase').
+function startHopTo(e, ctx, to, time, height, next) {
+  e.releaseToken();
+  e.hopFrom = { x: e.position.x, z: e.position.z };
+  e.hopTo = to;
+  e.hopDur = time; e.hopH = height; e.hopNext = next;
+  e.vel.set(0, 0, 0);
+  e.setState('hop');
+  if (to.x !== e.hopFrom.x || to.z !== e.hopFrom.z) e.facing = Math.atan2(to.x - e.hopFrom.x, to.z - e.hopFrom.z);
+  e.anim.play('Jump_Full_Short', { once: true, restart: true, speed: 1.05 / time, fade: 0.06 });
+  audio.play('swing', e.position.x, e.position.z);
+  if (ctx.combat && ctx.combat.log) ctx.combat.log({ type: 'archerHop', enemy: e, to: { ...to }, next });
+}
+
+function startReload(e) {
+  const Rl = e.data.ranged.roll;
+  e.setState('reload');
+  e.anim.play(Rl.clip, { once: true, restart: true, speed: 1.6 / Rl.reload, fade: 0.1 });
+  audio.play('creak', e.position.x, e.position.z);
 }
 
 // Saraivada do Guardião (quando o herói está longe).
@@ -175,13 +315,21 @@ export function runRanged(e, dt, ctx, { toPlayer }) {
       e.anim.play(R.shootClip, { once: true, restart: true, speed: R.shootSpeed || 1, fade: 0.05 });
       const s = e.data.scale || 1;
       const n = R.count || 1;
+      const fetchShot = !!(R.fetch && R === e.data.ranged && !e.undead); // Arqueiro: a flecha cai e ele vai buscar
       for (let i = 0; i < n; i++) {
         const a = e.facing + (n > 1 ? (i / (n - 1) - 0.5) * R.spread : 0);
         const fx = e.position.x + Math.sin(a) * (0.9 * s), fz = e.position.z + Math.cos(a) * (0.9 * s);
         ctx.combat.projectiles.fire(fx, fz, a, {
           speed: R.speed, damage: Math.round(R.damage * (e.dmgScale || 1)), scale: R.scale || 1, height: 0.55 * s + 0.6, owner: e,
-          kind: R.kind, homing: R.homing, color: R.color,
+          kind: R.kind, homing: R.homing, color: R.color, hits: e.undead ? 'undead' : undefined, // morto-vivo da Maga: acerta inimigos
+          onEnd: fetchShot ? (x, z, ang, dx, dz) => landBolt(e, ctx.combat, x, z, ang, dx, dz) : undefined,
         });
+      }
+      if (fetchShot) {
+        // Besta com 3 flechas: atira normal; depois da última, vai buscar todas.
+        e.ammo = (e.ammo ?? R.fetch.ammo) - 1;
+        e.flying = (e.flying || 0) + 1;
+        if (e.ammo <= 0) { e.loaded = false; e.carry = false; e.bolt = null; e.picked = 0; e.fetchT = 0; e.hopWait = 0.35; }
       }
     }
     // Andando para trás enquanto mira (se o herói está mais perto que a distância que ele gosta).
@@ -202,9 +350,13 @@ export function runRanged(e, dt, ctx, { toPlayer }) {
   }
   if (e.state === 'roll') return runRoll(e, dt, ctx);
   if (e.state === 'hop') return runHop(e, dt, ctx);
+  if (e.state === 'pickup') return runPickup(e, dt, ctx);
   if (e.state === 'reload') {
     // Recarregando a besta, parado.
-    if (e.t >= e.data.ranged.roll.reload) { e.setState('chase'); e.cooldown = 0.15; e.anim.play(e.data.anims.idle, { fade: 0.15 }); }
+    if (e.t >= e.data.ranged.roll.reload) {
+      if (e.carry || e.loaded === false) { e.loaded = true; e.carry = false; e.fetchT = 0; e.ammo = e.data.ranged.fetch.ammo; e.picked = 0; } // flechas de volta na besta
+      e.setState('chase'); e.cooldown = e.data.ranged.fetch ? e.data.ranged.fetch.fireAfter : 0.15; e.anim.play(e.data.anims.idle, { fade: 0.15 });
+    }
     return { target: toPlayer, turn: 6 };
   }
   // 'shot': recuo do disparo.

@@ -1,5 +1,6 @@
 import { audio } from './audio.js';
 import { ENEMIES } from './enemies.js';
+import { DIFF } from './difficulty.js';
 // Ondas de esqueletos dentro de uma sala. A sala dá a lista de ondas; quando a última acaba, chama onClear.
 
 const MARK_TIME = 0.8;   // aviso no chão antes de nascer
@@ -31,6 +32,7 @@ export class WaveManager {
     this.wave = -1;
     this.queue = [];
     this.state = 'wait';
+    this.holdT = 0;
     this.timer = opts.delay ?? 1.0;
   }
 
@@ -56,8 +58,24 @@ export class WaveManager {
     this.hud.banner(this.wave === this.waves.length - 1 && this.waves.length > 1 ? 'Última onda' : `Onda ${this.wave + 1}`, 'small');
   }
 
-  // Co-op: o dobro de esqueletos (os chefes continuam um só, mas com o dobro de vida).
-  count(type, n) { return ENEMIES[type]?.boss ? n : Math.max(n, Math.round(n * (this.opts?.mult || 1))); }
+  // Co-op: +50% de esqueletos (os chefes continuam um só; vida +50% em run.js).
+  // Depois do multiplicador, respeita o máximo por tipo (DIFF.maxOnField).
+  count(type, n) {
+    if (ENEMIES[type]?.boss) return n;
+    return Math.min(Math.max(n, Math.round(n * (this.opts?.mult || 1))), this.cap(type));
+  }
+
+  cap(type) {
+    const m = DIFF.maxOnField[type];
+    if (m == null) return Infinity;
+    return Array.isArray(m) ? m[this.opts?.coop ? 1 : 0] : m;
+  }
+
+  // Quantos desse tipo já estão vivos ou para nascer (invocações não passam do máximo).
+  onField(type) {
+    return this.combat.enemies.filter((e) => e.alive && !e.undead && e.type === type).length
+      + this.queue.filter((q) => q.type === type).length;
+  }
 
   // Herói de referência para o nascimento: um dos heróis vivos, sorteado (co-op).
   anchor() {
@@ -66,10 +84,20 @@ export class WaveManager {
   }
 
   // Esqueletos invocados pelo chefe (também nascem nas costas do herói).
+  // Quantos a invocação colocaria agora (respeitando o máximo por tipo). 0 = o chefe nem tenta invocar.
+  summonRoom(list) {
+    if (this.state === 'idle') return 0;
+    return list.reduce((a, [type, n]) => a + Math.max(0, Math.min(this.count(type, n), this.cap(type) - this.onField(type))), 0);
+  }
+
   summon(list) {
-    if (this.state === 'idle') return;
+    if (this.state === 'idle') return 0;
     const types = [];
-    for (const [type, n] of list) for (let i = 0; i < this.count(type, n); i++) types.push(type);
+    for (const [type, n] of list) {
+      const room = this.cap(type) - this.onField(type);
+      for (let i = 0; i < Math.min(this.count(type, n), room); i++) types.push(type);
+    }
+    if (!types.length) return 0;
     const used = [];
     types.forEach((type, i) => {
       const p = this.pickSpot(used, 0.9);
@@ -80,6 +108,7 @@ export class WaveManager {
     });
     this.queue.sort((a, b) => a.t - b.t);
     this.state = 'spawning';
+    return types.length;
   }
 
   // Lugar para nascer: sempre nas costas do herói (atrás de onde ele está olhando), dentro da sala,
@@ -125,6 +154,8 @@ export class WaveManager {
   update(dt) {
     if (this.paused || this.state === 'idle' || !this.combat.alivePlayers.length) return;
     if (this.state === 'wait') {
+      // 1ª onda: espera os heróis pegarem a recompensa da entrada (no máximo 20 s).
+      if (this.wave < 0 && this.hold && !this.noHold && this.hold() && (this.holdT = (this.holdT || 0) + dt) < 20) { this.timer = Math.max(this.timer, 0.8); return; }
       this.timer -= dt;
       if (this.timer <= 0) this.startWave();
       return;

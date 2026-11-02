@@ -202,6 +202,39 @@ export class Vfx {
     this.sparks(b, color, 6);
   }
 
+  // Raio elétrico grosso em zigue-zague (Cajado Elétrico): segmentos de tubo brilhante + núcleo branco + 2 galhos.
+  lightning(a, b, color = 0x7fd8ff, width = 0.22) {
+    const len = a.distanceTo(b), n = Math.max(4, Math.round(len / 0.7));
+    const pts = [a.clone()];
+    for (let i = 1; i < n; i++) pts.push(a.clone().lerp(b, i / n).add(new THREE.Vector3((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.8)));
+    pts.push(b.clone());
+    const up = new THREE.Vector3(0, 1, 0);
+    const seg = (p0, p1, w, c, op, life) => {
+      const d = p0.distanceTo(p1);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(w, w, d, 6, 1, true),
+        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      m.position.copy(p0).add(p1).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(up, p1.clone().sub(p0).normalize());
+      this.add(m, life, (o, k) => { o.material.opacity = op * (1 - k) * (k < 0.5 && Math.random() < 0.3 ? 0.4 : 1); });
+    };
+    for (let i = 0; i < pts.length - 1; i++) {
+      seg(pts[i], pts[i + 1], width, color, 0.85, 0.3);
+      seg(pts[i], pts[i + 1], width * 0.35, 0xffffff, 1, 0.18);
+    }
+    // Galhos finos saindo do meio.
+    for (let k = 0; k < 2; k++) {
+      const i = 1 + Math.floor(Math.random() * (pts.length - 2));
+      const end = pts[i].clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, -0.3 - Math.random() * 0.6, (Math.random() - 0.5) * 1.6));
+      seg(pts[i], end, width * 0.4, color, 0.6, 0.18);
+    }
+    const flash = this.sprite(this.iceTex);
+    if (flash) {
+      flash.position.copy(b); flash.scale.setScalar(1.8);
+      this.add(flash, 0.2, (o, k) => { o.material.opacity = 1 - k; o.scale.setScalar(1.8 + k * 1.2); });
+    }
+    this.sparks(b, color, 8);
+  }
+
   // Fumaça roxa (Necromante sumindo/aparecendo, Mago revivendo).
   smoke(pos, color = 0x9a40ff, count = 14) {
     for (let i = 0; i < count; i++) {
@@ -246,14 +279,14 @@ export class Vfx {
   }
 
   // Sopro de fogo em cone (Cajado de Fogo): chamas saindo do herói na direção do ângulo.
-  flameCone(pos, angle, range, half, color = 0xff7a2a, big = false) {
+  flameCone(pos, angle, range, half, color = 0xff7a2a, big = false, accent = 0xffd060) {
     const n = big ? 26 : 16;
     for (let i = 0; i < n; i++) {
       const s = this.sprite(this.sparkTex);
       const a = angle + (Math.random() * 2 - 1) * half;
       const sp = range * (2.4 + Math.random() * 1.2);
       const vel = new THREE.Vector3(Math.sin(a) * sp, 0.6 + Math.random() * 1.2, Math.cos(a) * sp);
-      s.material.color.setHex(Math.random() < 0.35 ? 0xffd060 : color);
+      s.material.color.setHex(Math.random() < 0.35 ? accent : color);
       s.position.set(pos.x + Math.sin(angle) * 0.6, pos.y, pos.z + Math.cos(angle) * 0.6);
       const size = (big ? 1.1 : 0.8) + Math.random() * 0.5;
       this.add(s, 0.3 + Math.random() * 0.12, (o, k, dt) => {
@@ -263,6 +296,17 @@ export class Vfx {
         o.material.opacity = (1 - k) * 0.95;
       });
     }
+  }
+
+  // Leque (cone) brilhante no chão: mostra a área do cone do Grimório.
+  sector(pos, angle, range, half, color) {
+    const key = Math.round(half * 100);
+    this.sectorGeo = this.sectorGeo || {};
+    const geo = this.sectorGeo[key] || (this.sectorGeo[key] = new THREE.CircleGeometry(1, 28, -Math.PI / 2 - half, half * 2).rotateX(-Math.PI / 2));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.position.set(pos.x, 0.25, pos.z);
+    m.rotation.y = angle;
+    this.add(m, 0.35, (o, k) => { o.scale.setScalar(range * (0.35 + 0.65 * (1 - (1 - k) ** 3))); o.material.opacity = 0.55 * (1 - k); });
   }
 
   // Anel colorido que se abre no chão (explosão de magia).

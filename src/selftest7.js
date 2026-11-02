@@ -191,4 +191,5 @@ export function* tavernTests(g, out, flags) {
   yield () => hud.deathVisible;
   out(`  morreram: Jogador 2 ganhou 15 ${ok(p2.saveData.soul === 115)} | Jogador 1 ganhou 5 ${ok(save.data.soul === mySoul + 5)}`);
   player.setWeapon('espada');
+  if (g.removeGuest) { g.removeGuest(); g.restart(); } // os próximos testes rodam sozinho (sem o Jogador 2 caído)
 }

@@ -9,6 +9,9 @@ const TORCH_HEIGHT = 2.3;
 const WALL_HALF_THICK = 0.5;
 export const MAX_TORCH_LIGHTS = 6; // sempre 6 luzes: trocar a quantidade de luzes faz o jogo travar recompilando
 const BAR_OPEN_Y = -3.6;
+// Objetos que quebram com golpes (barris, caixas, baús, cadeiras, mesas, velas, caixões, abóboras...).
+// Pilares, colunas, túmulos, árvores, entulho e a cama não quebram.
+const BREAKABLE = /^(barrel|box|crates|keg|trunk|chest|chair|table|candle|shelf|plate|weapons\/heroes\/mug|props\/crypt\/(coffin|skull_candle|lantern|candle|bench|pumpkin|skull$|ribcage|bone_))/;
 
 // Caminho de uma peça: sem "/" = kit da masmorra; com "/" = outra pasta de assets.
 export const propPath = (name) => (name.includes('/') ? `${name}.gltf` : dungeonPath(name));
@@ -177,17 +180,26 @@ export function buildRoom(room, opts = {}) {
 
   // --- Obstáculos e enfeites no chão ---
   const box = new THREE.Box3();
+  const breakables = []; // objetos que quebram com golpes (props.js)
+  const canBreak = room.special !== 'shop' && room.special !== 'tavern' && room.special !== 'merchant';
   for (const [name, x, z, rotDeg, solid, y = 0] of room.props || []) {
     const obj = place(group, name, x, y, z, THREE.MathUtils.degToRad(rotDeg || 0));
-    if (!solid) continue;
     obj.updateMatrixWorld(true);
     box.setFromObject(obj);
-    const m = 0.08; // um pouco menor que a caixa, para não "bater no ar"
-    colliders.push([box.min.x + m, box.min.z + m, box.max.x - m, box.max.z - m]);
+    let colIdx = -1;
+    if (solid) {
+      const m = 0.08; // um pouco menor que a caixa, para não "bater no ar"
+      colliders.push([box.min.x + m, box.min.z + m, box.max.x - m, box.max.z - m]);
+      colIdx = colliders.length - 1;
+    }
+    if (canBreak && BREAKABLE.test(name)) {
+      const r = Math.max(0.35, Math.min(1.6, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2));
+      breakables.push({ name, obj, x, z, r, colIdx, chest: /trunk|chest/.test(name), h: Math.max(0.4, box.max.y - box.min.y), broken: false });
+    }
   }
 
   return {
-    room, group, halfW, halfD, colliders, doors, spikes,
+    room, group, halfW, halfD, colliders, doors, spikes, breakables,
     entrance: { x: entranceX, z: halfD - 2.2 },
     reward: new THREE.Vector3(room.reward?.[0] ?? 0, 0, room.reward?.[1] ?? 0),
     setDoorsOpen(open) { for (const d of doors) d.open = open; },

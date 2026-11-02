@@ -3,7 +3,7 @@
 // Volumes vêm das Configurações (settings.js): geral, música e efeitos (a voz do chefe segue os efeitos).
 import { settings } from './settings.js';
 
-const VOL = { master: 0.9, music: 0.36, sfx: 0.75, voice: 0.5 };
+const VOL = { master: 0.9, music: 0.36, sfx: 0.6, voice: 0.25 }; // 31/10: efeitos um pouco mais baixos para combinar com as músicas (antes sfx 0,75 e voz 0,3)
 // Ajuste fino de volume por efeito (os sopros e chiados saem mais baixos que os impactos).
 const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -18,13 +18,19 @@ export const audio = {
   noiseBuf: null,
   readyCbs: [],
 
-  // Liga o áudio no primeiro clique/tecla (o navegador não deixa tocar antes).
+  // Liga o áudio já ao abrir o jogo (31/10, versão 114). Se o navegador bloquear o som automático,
+  // ele liga no primeiro clique/tecla. Tenta de novo algumas vezes (alguns navegadores liberam após carregar).
   boot() {
     const start = () => {
       if (!this.ctx) this.create();
-      if (this.ctx && this.ctx.state === 'suspended' && !this.hold) this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended' && !this.hold) this.ctx.resume().catch(() => {});
     };
-    for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, start, { capture: true });
+    for (const ev of ['pointerdown', 'pointerup', 'mousedown', 'click', 'keydown', 'keyup', 'touchstart', 'touchend']) addEventListener(ev, start, { capture: true });
+    start();
+    let tries = 0;
+    const retry = setInterval(() => { if (++tries > 20 || (this.ctx && this.ctx.state === 'running')) clearInterval(retry); else start(); }, 500);
+    addEventListener('focus', start);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
     settings.onChange(() => this.applyMode());
   },
 
@@ -204,6 +210,7 @@ export const SFX = {
     });
   },
   arrow: (A, t, o) => { tone(A, t, 'triangle', 260, 120, 0.12, 0.35, o, 0.001); hiss(A, t, 'highpass', 3000, 6000, 0.7, 0.15, 0.2, o); },
+  zap: (A, t, o) => { hiss(A, t, 'highpass', 2500, 5000, 1.2, 0.18, 0.55, o, 0.002); tone(A, t, 'sawtooth', 1400, 180, 0.22, 0.12, o, 0.002); hiss(A, t + 0.03, 'bandpass', 900, 300, 2, 0.25, 0.4, o, 0.01); },
   orb: (A, t, o) => { tone(A, t, 'sine', 300, 900, 0.3, 0.2, o, 0.02); tone(A, t, 'triangle', 450, 1300, 0.3, 0.08, o, 0.02); },
   // Cena de desbloqueio na Taverna.
   fireRoar: (A, t, o) => {     // fogo pegando em tudo (rugido + estalos)
@@ -237,6 +244,12 @@ export const SFX = {
   headThud: (A, t, o) => { tone(A, t, 'sine', 140, 60, 0.3, 0.9, o); hiss(A, t, 'lowpass', 900, 200, 1, 0.2, 0.6, o); SFX.bones(A, t + 0.02, o); },
   grab: (A, t, o) => { hiss(A, t, 'bandpass', 700, 1500, 1.4, 0.2, 0.5, o, 0.02); SFX.creak(A, t + 0.1, o); },
   thump: (A, t, o) => { tone(A, t, 'sine', 110, 45, 0.25, 0.8, o); hiss(A, t, 'lowpass', 700, 200, 1, 0.12, 0.5, o); },
+  select: (A, t, o) => {        // capa: clicou para entrar na cripta (brilho + sino grave)
+    hiss(A, t, 'bandpass', 1200, 5200, 1.1, 0.35, 0.35, o, 0.03);
+    [0, 7, 12, 19].forEach((s, i) => tone(A, t + 0.03 + i * 0.055, 'triangle', mtof(74 + s), mtof(74 + s), 0.55, 0.16, o, 0.004));
+    metal(A, t + 0.02, 330, 1.1, 0.22, o);
+    tone(A, t, 'sine', 110, 82, 0.6, 0.45, o, 0.01);
+  },
   win: (A, t, o) => {
     [[62, 0], [66, 0.18], [69, 0.36], [74, 0.54], [78, 0.72]].forEach(([m, d]) => {
       tone(A, t + d, 'sawtooth', mtof(m), mtof(m), 0.9, 0.06, o, 0.03);

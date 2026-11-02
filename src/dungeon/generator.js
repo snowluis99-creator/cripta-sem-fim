@@ -57,8 +57,11 @@ export const NODE_INFO = {
 
 const pick = (list, rng) => list[Math.floor(rng() * list.length)];
 // Prêmio extra de uma sala de combate: ouro ou poção; às vezes (ULT_CHANCE) a Bênção da Ultimate.
-export const ULT_CHANCE = 0.25;
+export const ULT_CHANCE = 0.15;
 const prizeOf = (rng) => (rng() < ULT_CHANCE ? 'ult' : pick(['gold', 'potion'], rng));
+// Prêmios das 3 salas de combate do meio do andar: uma delas SEMPRE é a Bênção da Ultimate (pedido do dono:
+// antes era só sorte, e dava para passar andares inteiros sem ver a sala).
+const midPrizes = (rng) => { const k = Math.floor(rng() * 3); return [0, 1, 2].map((i) => (i === k ? 'ult' : prizeOf(rng))); };
 const shuffle = (list, rng) => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // Uma "sala do mapa" (nó): { kind: combat|treasure|merchant|rest|elite|exit, reward, room, waves, level }
@@ -99,7 +102,8 @@ function generateHall(rng) {
 // Os 4 passos do meio de um andar (iguais nos 3 andares): ouro x poção, combate x tesouro,
 // combate x (mercador/descanso) e combate x o que não saiu antes.
 function midSteps(rng, node, table) {
-  const prize = () => prizeOf(rng);
+  const pz = midPrizes(rng);
+  const prize = () => pz.shift();
   const special = (kind, level) => (kind === 'rest' ? { kind, reward: kind, room: 'descanso' }
     : { kind, reward: kind, room: kind === 'merchant' ? 'mercador' : 'tesouro', level, waves: table[Math.min(level, table.length - 1)] });
   const steps = [];
@@ -119,7 +123,8 @@ function generateDungeon(rng) {
   const used = new Set();
   const first = { kind: 'combat', reward: 'none', room: 'entrada', waves: WAVES_BY_LEVEL[0], level: 0 };
   const steps = [];
-  const prize = () => prizeOf(rng);
+  const pz = midPrizes(rng);
+  const prize = () => pz.shift();
   // Sala especial com combate antes (tesouro / mercador) ou descanso (sem combate).
   const special = (kind, level) => {
     if (kind === 'rest') return { kind, reward: kind, room: 'descanso' };

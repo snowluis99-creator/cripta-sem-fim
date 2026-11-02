@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { audio } from './audio.js';
 import { boltImpact } from './magic.js';
+import { hitUndead, undeadHit } from './undead.js';
+import { useShield } from './shield.js';
 import { instance } from './assets.js';
 
 import { getGlowTexture } from './dungeon/builder.js';
@@ -93,13 +95,16 @@ export class Projectiles {
       g, x, z, vx: Math.sin(angle) * opts.speed, vz: Math.cos(angle) * opts.speed,
       damage: opts.damage, r: (kind === 'arrow' ? 0.25 : kind === 'wave' ? 0.9 : 0.35) * s, life: opts.life || (kind === 'orb' ? 4.5 : 3),
       stuck: -1, owner: opts.owner, dodged: false, hits: opts.hits || 'player',
-      kind, homing: opts.homing || 0, pierce: !!opts.pierce, hitSet: new Set(), age: 0, step: opts.step,
+      kind, homing: opts.homing || 0, pierce: !!opts.pierce, hitSet: new Set(), age: 0, step: opts.step, burn: opts.burn || 0,
+      pierceLeft: (opts.step && opts.step.cast && opts.step.cast.pierce) || 0, // magia que atravessa (bênçãos)
+      onEnd: opts.onEnd, // Arqueiro: avisa onde a flecha parou (ela cai no chão para ele buscar)
     });
   }
 
   update(dt) {
     const c = this.combat;
     this.updateRain(dt);
+    if (this.bolts) for (const b of [...this.bolts]) if (!b.owner || !b.owner.alive) this.takeBolt(b); // dono morreu: o virote some
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i];
       if (!a) continue; // a lista pode ter sido limpa no meio (magia matou o chefe -> clear())
@@ -114,8 +119,13 @@ export class Projectiles {
         if (a.hits === 'spell' && a.step.cast.blast) boltImpact(c, a, null); // orbe grande explode no fim do caminho
         this.removeA(a); continue;
       }
+      // Magia da Maga (Cajado, Gelo, Varinha): segue o inimigo dentro do alcance que ainda falta voar.
+      if (a.hits === 'spell') this.steerSpell(a, dt);
+      // Rebatido pela barreira da Maga: volta para quem atirou.
+      if (a.hits === 'reflected') this.steerReflected(a, dt);
       // Orbe teleguiado: vira devagar na direção do herói (só no primeiro 1,4 s).
-      const hp = a.homing && a.age < 1.4 ? c.nearestPlayer(a.x, a.z) : null;
+      const hp = !(a.homing && a.age < 1.4) ? null : a.hits === 'player' ? c.nearestPlayer(a.x, a.z)
+        : a.hits === 'undead' && a.owner && a.owner.target && a.owner.target.targetable ? a.owner.target : null;
       if (hp && hp.state !== 'dead') {
         const p = hp;
         const want = Math.atan2(p.position.x - a.x, p.position.z - a.z), cur = Math.atan2(a.vx, a.vz);
@@ -134,18 +144,49 @@ export class Projectiles {
         const st = Math.min(0.3, left);
         left -= st;
         a.x += dx * st; a.z += dz * st;
-        if (c.world.blocked(a.x, a.z, 0.05)) {
+        if (c.world.blocked(a.x, a.z, 0.05) && !(a.hits !== 'player' && a.hits !== 'reflected' && c.props.hitAt(a.x, a.z, a.owner))) { // objeto quebrável: quebra e o disparo segue
           if (a.hits === 'spell') { boltImpact(c, a, null); this.removeA(a); done = true; break; }
+          if (a.hits === 'reflected') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0x9fd8ff, 6); this.remove(i); done = true; break; }
           if (a.kind !== 'arrow') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xc890ff, 6); this.remove(i); done = true; break; }
+          if (a.onEnd) { this.remove(i); done = true; break; } // flecha do Arqueiro: cai no chão (vira virote para buscar)
           a.stuck = 0; done = true; break;
         }
         if (a.hits === 'spell') { // magia da Maga: para no 1º esqueleto (ou no mercador)
-          const e = c.enemies.find((en) => en.targetable && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
+          const e = c.enemies.find((en) => en.targetable && !a.hitSet.has(en) && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
           const m = c.merchant;
           if (!e && m && m.alive && !m.ally && Math.hypot(m.position.x - a.x, m.position.z - a.z) < m.radius + a.r) {
             m.hit(Math.round(a.damage * a.owner.stats.damageMul), a.owner); this.remove(i); done = true; continue;
           }
+          if (e && a.pierceLeft > 0) { // Atravessar: acerta e segue voando
+            a.pierceLeft--; a.hitSet.add(e); a.target = null;
+            boltImpact(c, a, e);
+            if (!this.list.includes(a)) { done = true; break; }
+            continue;
+          }
           if (e) { boltImpact(c, a, e); this.removeA(a); done = true; }
+          continue;
+        }
+        if (a.hits === 'reflected') { // rebatido: acerta inimigos (o mesmo dano que daria no herói)
+          const e = c.enemies.find((en) => en.targetable && !a.hitSet.has(en) && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
+          if (e) {
+            a.hitSet.add(e);
+            c.bonusDamage(e, a.damage, dx, dz, 'dmg', a.by);
+            c.vfx.sparks(new THREE.Vector3(e.position.x, 1.2, e.position.z), 0x9fd8ff, 10);
+            audio.play('hit', e.position.x, e.position.z);
+            if (c.log) c.log({ type: 'reflectHit', enemy: e, dmg: a.damage, owner: a.owner });
+            if (!this.list.includes(a)) { done = true; break; } // chefe morreu e a lista foi limpa
+            // Ricochete: pula para outro inimigo perto
+            if (a.bounces > 0) {
+              const nx = c.enemies.filter((en) => en.targetable && !a.hitSet.has(en)).sort((u, v) => Math.hypot(u.position.x - a.x, u.position.z - a.z) - Math.hypot(v.position.x - a.x, v.position.z - a.z))[0];
+              if (nx && Math.hypot(nx.position.x - a.x, nx.position.z - a.z) < 12) { a.bounces--; a.target = nx; a.life = 2; continue; }
+            }
+            this.removeA(a); done = true;
+          }
+          continue;
+        }
+        if (a.hits === 'undead') { // tiro de um morto-vivo da Maga: acerta inimigos, atravessa heróis e outros mortos-vivos
+          const e = c.enemies.find((en) => !en.undead && en.targetable && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
+          if (e) { undeadHit(c, a.owner, e, a.damage); this.removeA(a); done = true; }
           continue;
         }
         if (a.hits === 'hero') { // onda do herói: acerta cada esqueleto uma vez e segue
@@ -154,6 +195,7 @@ export class Projectiles {
             if (Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r) {
               a.hitSet.add(en);
               c.bonusDamage(en, a.damage, dx, dz, 'dmg', a.owner && a.owner.hero ? a.owner : null);
+              if (a.burn && en.alive) { en.burn = 3; en.burnDps = Math.max(en.burnDps || 0, a.burn); en.burnTick = 0.5; en.burnBy = a.owner; } // Lança do Dragão
               c.vfx.sparks(new THREE.Vector3(en.position.x, 1.2, en.position.z), 0xffd36a, 6);
             }
           }
@@ -165,6 +207,9 @@ export class Projectiles {
           if (e) { c.merchantShot(e, a.damage, dx, dz); this.removeA(a); done = true; }
           continue;
         }
+        // Morto-vivo da Maga (Cajado das Trevas) no caminho: leva a flecha/magia.
+        const ud = c.enemies.find((en) => en.undead && en.alive && en !== a.owner && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
+        if (ud) { hitUndead(c, ud, a.damage, a.x - dx * 3, a.z - dz * 3); this.remove(i); done = true; continue; }
         const m = c.merchant;
         if (m && m.alive && a.owner !== m && Math.hypot(m.position.x - a.x, m.position.z - a.z) < m.radius + a.r) {
           m.hit(a.damage, a.owner && a.owner.alive !== undefined ? a.owner : c.player);
@@ -174,10 +219,17 @@ export class Projectiles {
           if (p.state === 'dead') continue;
           if (Math.hypot(p.position.x - a.x, p.position.z - a.z) >= p.hero.radius + a.r) continue;
           if (p.state === 'dodge') { // rolando: a flecha passa direto
-            if (!(a.dodgedBy ||= new Set()).has(p)) { a.dodgedBy.add(p); c.text.add('Esquivou!', p.position, 'miss'); c.reflex(p); }
+            if (!(a.dodgedBy ||= new Set()).has(p)) { a.dodgedBy.add(p); c.text.add('Esquivou!', p.position, 'miss'); c.reflex(p); c.dodgeUlt(p); }
             continue;
           }
           if (p.invulnerable) continue;
+          // Rapieira: aparar no instante certo também segura flechas e magias (o projétil some).
+          if (c.rogue && c.rogue.tryParry(p, { position: new THREE.Vector3(a.x - dx * 3, 0, a.z - dz * 3), alive: false, data: {} }, { shot: true })) {
+            c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xffe27a, 10);
+            this.remove(i); done = true; break;
+          }
+          // Barreira da Maga: rebate (flecha, orbe, onda do Ceifador...) de volta para quem atirou.
+          if (p.reflects(a.x - dx * 3, a.z - dz * 3)) { this.reflect(a, p); done = true; break; }
           // A "origem" do golpe fica atrás da flecha: é dali que o escudo precisa estar virado.
           const src = { position: new THREE.Vector3(a.x - dx * 3, 0, a.z - dz * 3), alive: false, data: { boss: true } };
           c.hitPlayer(src, a.damage, { push: 4, noRepel: true, target: p });
@@ -191,6 +243,67 @@ export class Projectiles {
       if (done && !this.list.includes(a)) continue;
       a.g.position.x = a.x; a.g.position.z = a.z;
     }
+  }
+
+  // Magia da Maga: escolhe o inimigo mais perto que ainda dá para alcançar (de preferência à frente) e vira para ele.
+  steerSpell(a, dt) {
+    const c = this.combat, sp = Math.hypot(a.vx, a.vz) || 1, reach = sp * a.life;
+    const cur = Math.atan2(a.vx, a.vz);
+    const ok = (e) => e && e.targetable && !a.hitSet.has(e) && Math.hypot(e.position.x - a.x, e.position.z - a.z) <= reach + e.data.radius;
+    if (!ok(a.target)) {
+      a.target = null; let best = Infinity;
+      for (const e of c.enemies) {
+        if (!ok(e)) continue;
+        const d = Math.hypot(e.position.x - a.x, e.position.z - a.z);
+        let da = Math.atan2(e.position.x - a.x, e.position.z - a.z) - cur; da = Math.abs(Math.atan2(Math.sin(da), Math.cos(da)));
+        if (da > (a.age < 0.05 ? 1.2 : 1.9)) continue; // no disparo: só quem está mais ou menos na frente
+        const score = d + da * 3;
+        if (score < best) { best = score; a.target = e; }
+      }
+    }
+    if (a.target) this.turnTo(a, a.target.position.x, a.target.position.z, Math.max(9, sp * 0.6) * dt); // mais rápida = vira mais (curva sempre curta)
+  }
+
+  steerReflected(a, dt) {
+    const t = a.target;
+    if (t && t.targetable) this.turnTo(a, t.position.x, t.position.z, 12 * dt);
+  }
+
+  turnTo(a, x, z, maxTurn) {
+    const want = Math.atan2(x - a.x, z - a.z), cur = Math.atan2(a.vx, a.vz);
+    let d = want - cur; d = Math.atan2(Math.sin(d), Math.cos(d));
+    const na = cur + Math.max(-maxTurn, Math.min(maxTurn, d)), sp0 = Math.hypot(a.vx, a.vz);
+    a.vx = Math.sin(na) * sp0; a.vz = Math.cos(na) * sp0;
+    a.g.rotation.y = na;
+  }
+
+  // Barreira da Maga rebateu o projétil: volta (mais rápido) para quem atirou, com o mesmo dano que daria nela.
+  reflect(a, p) {
+    const c = this.combat, st = p.stats;
+    a.hits = 'reflected';
+    a.by = p;
+    a.damage = Math.round(a.damage * (st.reflectMul || 1));
+    a.bounces = st.reflectBounce || 0;
+    a.hitSet = new Set();
+    a.homing = 0;
+    const o = a.owner;
+    a.target = o && o.targetable && c.enemies.includes(o) ? o : null;
+    const sp = Math.max(a.speed || Math.hypot(a.vx, a.vz), 14) * 1.25;
+    const ang = a.target ? Math.atan2(a.target.position.x - a.x, a.target.position.z - a.z) : Math.atan2(-a.vx, -a.vz);
+    a.vx = Math.sin(ang) * sp; a.vz = Math.cos(ang) * sp;
+    a.g.rotation.y = ang;
+    a.life = 3; a.age = 0;
+    a.x = p.position.x + Math.sin(ang) * (p.hero.radius + a.r + 0.15); a.z = p.position.z + Math.cos(ang) * (p.hero.radius + a.r + 0.15);
+    const nx = -Math.sin(ang), nz = -Math.cos(ang);
+    const res = useShield(p, c, o); // cada rebatida gasta 1 da barreira (quebra com 10, igual ao escudo)
+    p.blockedHit(0, nx, nz);
+    c.vfx.sparks(new THREE.Vector3(a.x, 1.3, a.z), 0x9fd8ff, 14);
+    if (res !== 'break') c.text.add('Refletiu!', p.position, 'block');
+    else { p.setState('hurt'); p.anim.play(p.hero.anims.hit, { once: true, speed: 1.6, fade: 0.05, restart: true }); }
+    if (st.reflectHeal > 0) { const h = p.heal(st.reflectHeal); if (h) c.text.add(`+${h}`, p.position, 'heal'); }
+    if (st.reflectCounter) p.counterReady = true;
+    c.addHitstop(0.04);
+    if (c.log) c.log({ type: 'reflected', kind: a.kind, owner: o, p });
   }
 
   // Chuva de crânios (Necromante): cada crânio cai do alto num ponto e machuca quem estiver embaixo.
@@ -234,7 +347,7 @@ export class Projectiles {
       for (const p of this.visual ? [] : c.players) {
         if (p.state === 'dead' || Math.hypot(p.position.x - d.x, p.position.z - d.z) >= d.r + p.hero.radius * 0.6) continue;
         const src = { position: new THREE.Vector3(d.x, 0, d.z - 0.01), alive: false, data: { boss: true } };
-        c.hitPlayer(src, d.damage, { push: 5, noRepel: true, target: p });
+        c.hitPlayer(src, d.damage, { push: 5, noRepel: true, bossSkill: true, target: p });
         if (c.log) c.log({ type: 'rainHit' });
       }
       this.scene.remove(d.skull); this.scene.remove(d.sh); d.sh.geometry.dispose(); d.sh.material.dispose();
@@ -245,14 +358,44 @@ export class Projectiles {
   // Tira um projétil pelo objeto (seguro mesmo se a lista mudou durante o impacto).
   removeA(a) { const i = this.list.indexOf(a); if (i >= 0) this.remove(i); }
 
+  // A flecha parou (parede, herói, escudo, fim do voo): chama onEnd uma vez só.
+  ended(a) {
+    if (!a.onEnd || a.endDone || this.clearing) return;
+    a.endDone = true;
+    const sp = Math.hypot(a.vx, a.vz) || 1;
+    a.onEnd(a.x, a.z, Math.atan2(a.vx, a.vz), a.vx / sp, a.vz / sp);
+  }
+
+  // Virote caído no chão (Arqueiro vai buscar). Some na troca de sala ou quando o dono morre.
+  dropBolt(x, z, angle, owner) {
+    const g = makeProjectileMesh('arrow', 0, 1);
+    g.position.set(x, 0.12, z);
+    g.rotation.set(0.28, angle, 0, 'YXZ'); // ponta enfiada no chão
+    this.scene.add(g);
+    const it = { x, z, g, owner };
+    (this.bolts ||= []).push(it);
+    return it;
+  }
+
+  takeBolt(it) {
+    if (!it || !this.bolts) return;
+    const i = this.bolts.indexOf(it);
+    if (i >= 0) { this.scene.remove(it.g); this.bolts.splice(i, 1); }
+  }
+
   remove(i) {
     if (!this.list[i]) return;
+    this.ended(this.list[i]);
     this.scene.remove(this.list[i].g);
     this.list.splice(i, 1);
   }
 
   clear() {
+    this.clearing = true;
     for (let i = this.list.length - 1; i >= 0; i--) this.remove(i);
+    this.clearing = false;
+    for (const b of this.bolts || []) this.scene.remove(b.g);
+    if (this.bolts) this.bolts.length = 0;
     for (const d of this.drops) { this.scene.remove(d.skull); this.scene.remove(d.sh); }
     this.drops.length = 0;
   }

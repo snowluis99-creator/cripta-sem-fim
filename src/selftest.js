@@ -9,6 +9,12 @@ import { duoTests } from './selftest5.js';
 import { shadowTests } from './selftest6.js';
 import { tavernTests } from './selftest7.js';
 import { mageTests } from './selftest8.js';
+import { tweakTests } from './selftest11.js';
+import { wbTests } from './selftest12.js';
+import { newWeaponTests } from './selftest13.js';
+import { changes30Tests } from './selftest14.js';
+import { kitTests } from './selftest15.js';
+import { axeTests } from './selftest16.js';
 import { newTests } from './selftest9.js';
 import { rogueTests } from './selftest10.js';
 // Teste automático de combate (tecla T, só com o modo de teste ligado pela tecla I).
@@ -111,6 +117,12 @@ function* script(g, out, flags) {
   yield* mageTests(g, out, flags);
   yield* newTests(g, out, flags);
   yield* rogueTests(g, out, flags);
+  yield* tweakTests(g, out, flags);
+  yield* wbTests(g, out, flags);
+  yield* newWeaponTests(g, out, flags);
+  yield* changes30Tests(g, out, flags);
+  yield* kitTests(g, out, flags);
+  yield* axeTests(g, out, flags);
   waves.paused = false;
   out('FIM (partida nova começou)');
   g.restart();
@@ -244,6 +256,9 @@ function* abilityTests(g, out, flags, setup) {
   out(`  giro 360°: ${hs ? `acertou ✔ -${hs.dmg}` : 'ERRO'}`);
   yield 1.0;
   waves.stop(); waves.state = 'fighting'; waves.paused = false;
+  // Limite por sala (maxOnField): tira os lacaios que sobraram, senão a invocação não cabe.
+  combat.enemies.forEach((o) => { if (o.alive && o.targetable && !o.data.boss) { o.die(); combat.killed(o, 0, 1); } });
+  yield 0.2;
   player.facing = 0;
   const n0 = combat.enemies.length;
   boss.cd.summon = 0;
@@ -259,21 +274,16 @@ function* abilityTests(g, out, flags, setup) {
 function* roomFlow(g, out) {
   const { player, combat, waves, run, ui } = g;
   const killAll = () => combat.enemies.forEach((e) => { if (e.alive && e.targetable) { e.die(); combat.killed(e, 0, 1); } });
-  out('7) Sala de combate completa');
+  out('7) Sala de combate completa (recompensa no começo, 30/10)');
+  waves.noHold = false;
   g.restart();
   waves.paused = false;
-  player.position.set(0, 0, 0); player.facing = Math.PI; // no meio da sala, olhando para o fundo
-  yield () => combat.enemies.length > 0;
-  {
-    const fx = Math.sin(player.facing), fz = Math.cos(player.facing);
-    const ok = combat.enemies.every((e) => (e.position.x - player.position.x) * fx + (e.position.z - player.position.z) * fz < 0);
-    out(`  onda nasceu nas costas do herói: ${ok ? '✔' : 'ERRO'}`);
-  }
+  player.position.set(-7, 0, run.built.halfD - 3); player.facing = Math.PI; // longe da recompensa (não pega sem querer)
+  yield 0.3;
+  out(`  recompensa no chão logo na entrada: ${run.pickups.some((p) => p.kind === 'blessing') ? '✔' : 'ERRO'} (${run.pickups.map((p) => p.kind).join(', ')}) | sem esqueletos ainda: ${combat.aliveCount === 0 ? '✔' : 'ERRO'}`);
   out(`  sala: ${run.built.room.name} | portas: ${run.built.doors.length} (${run.built.doors.map((d) => d.node.reward).join(', ')}) | fechadas: ${!run.doorsOpen ? '✔' : 'ERRO'}`);
-  for (let i = 0; i < 4 && waves.active; i++) yield () => { killAll(); return !waves.active; };
-  out(`  sala limpa: ${!waves.active ? '✔' : 'ERRO'} | recompensa no chão: ${run.pickups.map((p) => p.kind).join(', ') || 'nenhuma'}`);
-  yield 0.6;
-  out(`  portas ainda fechadas antes de pegar: ${!run.doorsOpen ? '✔' : 'ERRO'}`);
+  for (const pk of run.pickups.filter((p) => p.kind !== 'blessing' && (!p.opts.owner || p.opts.owner === player))) { player.position.copy(pk.pos); yield 0.2; }
+  run.pickups.filter((p) => p.auto && p.opts.owner && p.opts.owner !== player).forEach((p) => { p.taken = true; run.removePickup(p); });
   player.position.copy(run.built.reward);
   yield () => ui.modal;
   out(`  menu de bênção: ${ui.modal ? '✔' : 'ERRO'} (${ui.choice ? ui.choice.options.map((b) => b.name).join(' / ') : ''}) -> CONGELADO (T continua)`);
@@ -281,11 +291,22 @@ function* roomFlow(g, out) {
   yield 0.4;
   press('Digit1');
   yield 0.1;
-  out(`  bênção escolhida: ${Object.keys(player.blessings).join(', ') || 'ERRO nenhuma'} | portas abertas: ${run.doorsOpen ? '✔' : 'ERRO'}`);
+  out(`  bênção escolhida: ${Object.keys(player.blessings).join(', ') || 'ERRO nenhuma'}`);
+  player.position.set(0, 0, 0); player.facing = Math.PI;
+  yield () => combat.enemies.length > 0;
+  {
+    const fx = Math.sin(player.facing), fz = Math.cos(player.facing);
+    const ok = combat.enemies.every((e) => (e.position.x - player.position.x) * fx + (e.position.z - player.position.z) * fz < 0);
+    out(`  depois de pegar, a onda nasceu nas costas do herói: ${ok ? '✔' : 'ERRO'}`);
+  }
+  for (let i = 0; i < 4 && waves.active; i++) yield () => { killAll(); return !waves.active; };
+  yield 0.6;
+  out(`  sala limpa: ${!waves.active ? '✔' : 'ERRO'} | portas abertas: ${run.doorsOpen ? '✔' : 'ERRO'}`);
   player.position.set(0, 0, run.built.halfD - 6);
   yield 1.4;
   out('  -> portas abertas com ícones: CONGELADO (T continua)');
   yield 'hold';
+  waves.noHold = true;
   const d = run.built.doors[0];
   const target = d.node;
   player.position.set(d.x, 0, d.z + 2.5);
@@ -396,6 +417,7 @@ function* m4Only(g, out, flags) {
 }
 
 export function createSelfTest(state, game, isDebug) {
+  window.__g = game; // testes de fora (screenshots)
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;top:120px;left:8px;z-index:6;font:11px monospace;color:#ff9;'
     + 'background:rgba(0,0,0,.75);padding:6px 8px;white-space:pre;display:none;max-width:90vw;max-height:calc(100vh - 140px);overflow:auto;pointer-events:auto';
@@ -446,12 +468,16 @@ export function createSelfTest(state, game, isDebug) {
   // T = teste com pausas para screenshot; Y = teste corrido (sem pausas); U = rápido mas parando nas pausas.
   let fast = false, skipHolds = false;
   addEventListener('keydown', (e) => {
-    if (!['KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'].includes(e.code) || !isDebug()) return;
+    if (!['KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Digit5', 'Digit4', 'Digit3', 'Digit2', 'Digit1', 'Minus'].includes(e.code) || !isDebug()) return;
     if (running) { holding = false; return; }
+    if (game.ui && game.ui.modal) return; // menu aberto (ex.: pergunta da porta): os números escolhem, não rodam teste
     fast = e.code !== 'KeyT';
     skipHolds = e.code === 'KeyY';
     running = true; holding = false; log = []; page = -1; wait = 0; waitFn = null;
-    gen = e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : script(game, out, flags);
+    if (game.ult) game.ult.cinematic = false; // testes antigos: a ultimate sai na hora (a cena tem teste próprio)
+    if (game.combat) game.combat.noEvade = true;
+    if (game.waves) game.waves.noHold = true; // testes antigos: a onda não espera pegarem a recompensa da entrada // desvio de 10% do Ladino desligado nos testes antigos (tem teste próprio)
+    gen = e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : e.code === 'Digit5' ? (function* () { yield 0.5; yield* tweakTests(game, out, flags); })() : e.code === 'Digit4' ? (function* () { yield 0.5; yield* wbTests(game, out, flags); })() : e.code === 'Digit3' ? (function* () { yield 0.5; yield* newWeaponTests(game, out, flags); })() : e.code === 'Digit2' ? (function* () { yield 0.5; yield* changes30Tests(game, out, flags); })() : e.code === 'Digit1' ? (function* () { yield 0.5; yield* kitTests(game, out, flags); })() : e.code === 'Minus' ? (function* () { yield 0.5; yield* axeTests(game, out, flags); })() : script(game, out, flags);
     box.style.display = 'block';
     out('TESTE AUTOMÁTICO DE COMBATE');
   });
@@ -460,6 +486,9 @@ export function createSelfTest(state, game, isDebug) {
     const r = gen.next();
     if (r.done) {
       running = false;
+      if (game.ult) game.ult.cinematic = true;
+      if (game.combat) game.combat.noEvade = false;
+      if (game.waves) game.waves.noHold = false;
       // Resumo no título da aba (dá para ler mesmo com o painel pequeno).
       const bad = log.filter((l) => l.includes('ERRO'));
       document.title = bad.length ? `ERRO ${bad.length}: ${bad.map((l) => l.trim()).join(' || ')}`.slice(0, 900) : 'Teste OK';

@@ -200,54 +200,109 @@ const BOSS = {
   },
 };
 
-const TRACKS = { explore: EXPLORE, boss: BOSS };
+// Tensão (inimigos vivos, sem chefe): Ré menor, 104 bpm. Pulso grave constante, batida de coração, cordas com
+// semitom dissonante e um sino agudo que pinga. Sem melodia: deixa o combate na frente.
+const TN_PROG = [[50, 'm'], [50, 'm'], [46, 'M'], [49, 'M'], [50, 'm'], [51, 'M'], [46, 'M'], [45, 'M']];
+const TENSION = {
+  bpm: 104, bars: 8, fadeIn: 3,
+  step(ctx, out, t, bar, s, sp) {
+    const [root, q] = TN_PROG[bar % 8], ch = chordNotes(root, q), barLen = sp * 16;
+    if (s === 0) {
+      pad(ctx, out, t, [ch[0], ch[0] + 1, ch[2]], barLen, 0.03, 800);      // semitom: inquieto
+      sub(ctx, out, t, root - 12, barLen, 0.11);
+      if (bar % 4 === 3) swell(ctx, out, t + barLen * 0.5, barLen * 0.5, 0.05);
+    }
+    // Pulso grave em semicolcheias (acento a cada 4).
+    stac(ctx, out, t, root - 12 + (s % 8 === 7 ? 1 : 0), s % 4 === 0 ? 0.05 : 0.025, 0.09);
+    // Batida de coração: tum-tum no 1 e no 9.
+    if (s === 0 || s === 8) taiko(ctx, out, t, 0.42);
+    if (s === 2 || s === 10) taiko(ctx, out, t, 0.24);
+    if (s % 4 === 2) shaker(ctx, out, t, 0.018);
+    // Sino agudo esparso.
+    if (s === 12 && bar % 2 === 1) harp(ctx, out, t, ch[2] + 24, 0.035);
+  },
+};
+
+export const SYNTH_TRACKS = { explore: EXPLORE, boss: BOSS, tension: TENSION }; // antigas (sem uso)
+
+// Músicas do dono (mp3 em music/, volume igualado em -18 LUFS no preparo). Pedido de 31/10: tocar em
+// volume ambiente e trocar aos poucos, de forma suave. As músicas feitas na hora (acima) ficaram sem uso.
+const FILES = {
+  menu: 'music/menu.mp3',          // capa (cavaleiro no campo)
+  crypt: 'music/cripta.mp3',       // menu da cripta
+  tavern: 'music/taverna.mp3',     // Taverna
+  explore: 'music/exploracao.mp3', // masmorra sem monstros
+  tension: 'music/combate.mp3',    // inimigos na tela
+  boss1: 'music/chefe1.mp3',       // Rei Skullbone (andar 1)
+  boss2: 'music/chefe2.mp3',       // Necromante (andar 2)
+  boss3: 'music/chefe3.mp3',       // Ceifador Sombrio (andar 3)
+  defeat: 'music/derrota.mp3',     // tela de derrota (toca uma vez)
+};
+const ONCE = new Set(['defeat']);
+// Ajuste de volume por faixa (pedido do dono, 31/10: a da capa estava baixa)
+const GAIN = { menu: 1.35 };
+const FROM_START = new Set(['boss1', 'boss2', 'boss3', 'defeat']); // as outras continuam de onde pararam
+const LEVEL = 0.7;   // volume de cada faixa no barramento de música (ambiente; o jogador ainda tem o controle "Música")
+// Chefe (pedido do dono, 31/10): a música entra normal e vai subindo devagar até um volume mediano, mais alto.
+const BOSS_MUL = 1.6;  // volume final da música do chefe (× o volume normal)
+const BOSS_RISE = 14;  // segundos para chegar lá (depois de entrar)
+const BOSSES = new Set(['boss1', 'boss2', 'boss3']);
+const FADE_IN = { explore: 4, tension: 3.5, defeat: 1.5 };   // segundos
+const FADE_OUT = { explore: 3.5, tension: 4.5, defeat: 1.5 };
+const BOSS_OF = { guardian: 'boss1', necromancer: 'boss2', reaper: 'boss3' };
+export const bossTrack = (type) => BOSS_OF[type] || 'boss1';
 
 export class Music {
   constructor() {
-    this.want = null;      // música pedida
-    this.playing = [];     // { name, track, gain, bar, s, next, stopAt }
+    this.want = null;     // faixa pedida (null = silêncio)
+    this.tracks = {};     // nome → { el, gain, vol }
     this.intensity = 0;
-    audio.onReady(() => { this.timer = setInterval(() => this.tick(), 40); });
+    this.last = 0;
+    audio.onReady(() => { this.timer = setInterval(() => this.tick(), 50); });
   }
 
-  // name: 'explore' | 'boss' | null (silêncio)
   set(name) {
     if (name === this.want) return;
     this.want = name;
-    const ctx = audio.ctx;
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    for (const p of this.playing) if (!p.stopAt) { p.stopAt = t + 2.2; p.gain.gain.setTargetAtTime(0.0001, t, 0.5); }
-    if (name) this.startTrack(name, t + (this.playing.length ? 0.6 : 0.05));
+    const tr = name && this.tracks[name];
+    if (tr && FROM_START.has(name) && tr.vol <= 0.001) { tr.boost = 0; try { tr.el.currentTime = 0; } catch (e) { /* ainda carregando */ } }
   }
 
   setIntensity(v) { this.intensity = v; }
 
-  startTrack(name, t) {
-    const ctx = audio.ctx, gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(1, t + 1.2);
-    gain.connect(audio.musicBus);
-    this.playing.push({ name, track: TRACKS[name], gain, bar: 0, s: 0, next: t });
+  track(name) {
+    if (this.tracks[name]) return this.tracks[name];
+    const ctx = audio.ctx;
+    const el = new Audio(FILES[name]);
+    el.loop = !ONCE.has(name);
+    el.preload = 'auto';
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    try { ctx.createMediaElementSource(el).connect(gain); gain.connect(audio.musicBus); } catch (e) { /* sem Web Audio */ }
+    return (this.tracks[name] = { el, gain, vol: 0, boost: 0 });
   }
 
   tick() {
     const ctx = audio.ctx;
-    if (!ctx || ctx.state !== 'running') return;
-    if (this.want && !this.playing.some((p) => p.name === this.want && !p.stopAt)) this.startTrack(this.want, ctx.currentTime + 0.05);
-    const now = ctx.currentTime;
-    for (let i = this.playing.length - 1; i >= 0; i--) {
-      const p = this.playing[i];
-      if (p.stopAt && now > p.stopAt) { p.gain.disconnect(); this.playing.splice(i, 1); continue; }
-      if (p.next < now - 1) p.next = now + 0.05; // aba ficou parada: recomeça do agora
-      const sp = 60 / p.track.bpm / 4;
-      while (p.next < now + LOOK) {
-        if (!p.stopAt || p.next < p.stopAt) {
-          try { p.track.step(ctx, p.gain, p.next, p.bar, p.s, sp, this.intensity); } catch (e) { /* nota com defeito */ }
-        }
-        p.next += sp;
-        if (++p.s >= 16) { p.s = 0; p.bar = (p.bar + 1) % p.track.bars; }
+    if (!ctx) return;
+    const nowMs = performance.now(), dt = Math.min(0.25, (nowMs - (this.last || nowMs)) / 1000);
+    this.last = nowMs;
+    const running = ctx.state === 'running';
+    if (this.want && FILES[this.want]) this.track(this.want);
+    for (const [name, tr] of Object.entries(this.tracks)) {
+      const on = name === this.want;
+      if (running) {
+        const fade = on ? FADE_IN[name] || 2.5 : FADE_OUT[name] || 2.5;
+        tr.vol = on ? Math.min(1, tr.vol + dt / fade) : Math.max(0, tr.vol - dt / fade);
+        if (BOSSES.has(name)) tr.boost = on && tr.vol >= 1 ? Math.min(1, tr.boost + dt / BOSS_RISE) : tr.vol <= 0 ? 0 : tr.boost;
       }
+      // Curva suave (seno): a troca entre duas faixas fica sem "buraco" no meio.
+      const b = tr.boost || 0, rise = b * b * (3 - 2 * b); // sobe suave
+      const g = Math.sin(tr.vol * Math.PI / 2) * LEVEL * (GAIN[name] || 1) * (1 + (BOSS_MUL - 1) * rise);
+      tr.gain.gain.setTargetAtTime(g, ctx.currentTime, 0.05);
+      const shouldPlay = running && tr.vol > 0 && !(ONCE.has(name) && tr.el.ended);
+      if (shouldPlay && tr.el.paused) tr.el.play().catch(() => {});
+      else if (!shouldPlay && !tr.el.paused) tr.el.pause(); // pausa guarda a posição
     }
   }
 }

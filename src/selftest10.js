@@ -43,8 +43,11 @@ export function* rogueTests(g, out, flags) {
   yield 'hold';
   yield () => sc.actors.every((a) => a.state === 'free');
   out(`  reverência e estalo: todos caíram ${ok(sc.knives.every((k) => k.state === 'gone'))}`);
-  yield () => !!document.getElementById('unlock');
-  const pop = document.getElementById('unlock');
+  // (o aviso da Maga de um teste anterior pode ainda estar sumindo: espera o do Ladino)
+  const ladPop = () => [...document.querySelectorAll('#unlock')].find((el) => /Ladino/.test(el.textContent));
+  const t0pop = performance.now();
+  yield () => !!ladPop() || performance.now() - t0pop > 4000;
+  const pop = ladPop();
   out(`  aviso "Ladino desbloqueado" ${ok(pop && /Ladino desbloqueado/.test(pop.textContent) && /Agora ele pode/.test(pop.textContent))} | arte ${ok(/ladino\.jpg/.test(pop.querySelector('.uart').style.backgroundImage))}`);
   yield 1.4;
   out('  -> aviso na tela: CONGELADO (T continua)');
@@ -57,7 +60,7 @@ export function* rogueTests(g, out, flags) {
   out(`  suporte com as armas do Ladino ${ok(rack(0) && rack(0).opts.weapon.id === 'adagas' && rack(4).opts.weapon.id === 'besta')} | sem escudo no HUD ${ok(hud.$('.shield').style.display === 'none')}`);
 
   // ---------------- 46) Adagas, crítico, fumaça e ultimate ----------------
-  out('46) Duas Adagas: 25% de crítico, bomba de fumaça e Precisão Invejável');
+  out('46) Duas Adagas: 25% de crítico, sem fumaça e Precisão Invejável');
   fresh('adagas');
   yield 0.2;
   out(`  duas adagas nas mãos ${ok(!!player.weapon && !!player.offhand && !player.shieldMesh)} | combo de 3 ${ok(player.hero.combo.length === 3)}`);
@@ -66,24 +69,10 @@ export function* rogueTests(g, out, flags) {
   let crits = 0;
   for (let i = 0; i < 400; i++) { flags.events.length = 0; combat.damageEnemy(player, bag, step, 0, -1); const h = hits()[0]; if (h && h.dmg >= 12) crits++; }
   out(`  crítico em ${crits}/400 golpes ${ok(crits > 70 && crits < 130, `${Math.round(crits / 4)}%`)}`);
-  // Fumaça
-  const hp0 = player.hp;
-  yield* ability();
-  out(`  botão direito: fumaça ${ok(!!flags.last('smoke'))} | invisível ${ok(player.stealth > 1.5 && player.invulnerable)} | HUD ${ok(/invisível/.test(hud.$('.stx').textContent))}`);
-  combat.hitPlayer(bag, 20, { target: player });
-  out(`  esqueleto não acerta na fumaça ${ok(player.hp === hp0)} | modelo transparente ${ok(player.stealthShown < 0.5)}`);
-  yield 0.3;
-  out('  -> Ladino invisível: CONGELADO (T continua)');
-  yield 'hold';
-  flags.events.length = 0;
-  combat.playerStrike(player, step);
-  out(`  golpe saindo da fumaça é crítico ${ok(hits()[0] && hits()[0].dmg >= 12, hits()[0] && hits()[0].dmg)}`);
+  // Sem fumaça (tirada a pedido do dono): botão direito não faz nada com as Adagas
   flags.events.length = 0;
   yield* ability();
-  out(`  fumaça recarregando (${SMOKE.cooldown} s) ${ok(!flags.last('smoke'))}`);
-  yield SMOKE.cooldown + 0.1;
-  out(`  recarregou ${ok(/pronta/.test(hud.$('.stx').textContent))}`);
-  player.stealth = 0;
+  out(`  botão direito: sem fumaça ${ok(!flags.last('smoke') && !(player.stealth > 0))} | HUD sem fumaça ${ok(hud.$('.smoke').style.display === 'none' || getComputedStyle(hud.$('.smoke')).display === 'none')} | dica sem botão direito ${ok(!/Botão direito/.test(document.getElementById('controls').textContent))}`);
   yield () => player.state === 'idle' || player.state === 'run';
   // Ultimate
   player.ult = player.ultNeed;
@@ -102,46 +91,53 @@ export function* rogueTests(g, out, flags) {
   combat.clear();
 
   // ---------------- 47) Kunais ----------------
-  out('47) Kunais: 2 cargas, alcance infinito, pegar no círculo aumenta o dano');
+  out('47) Kunais: cada acerto aumenta o dano daquela kunai (acumula); parede zera');
   fresh('kunai');
   yield 0.2;
   const target = dummy(0, -9, 'minion'); target.hp = target.maxHp = 1e6;
-  player.hero.crit = 0; // sem crítico aleatório: o dano tem que crescer sempre
+  out(`  sem crítico próprio (só as Adagas têm) ${ok(!player.hero.crit)}`);
   out(`  2 kunais na mão ${ok(player.ammo.length === 2)} | HUD ${ok(hud.$('.ammo').style.display === 'flex' && hud.$('.apips').children.length === 2)}`);
   const throwAt = function* () { player.facing = Math.PI; flags.events.length = 0; press('KeyJ'); yield () => flags.last('rogueFire'); };
   yield* throwAt();
   yield () => hits().length > 0;
   const d1 = (hits()[0] || {}).dmg;
-  out(`  arremessou: ${player.ammo.length} na mão ${ok(player.ammo.length === 1)} | dano muito baixo ${ok(d1 <= 2 * 2.2, d1)}`);
+  out(`  arremessou: ${player.ammo.length} na mão ${ok(player.ammo.length === 1)} | dano baixo ${ok(d1 <= 2 * 2.2, d1)}`);
   const it = g.rogue.items[0];
-  out(`  acertou: voa para cima com círculo no chão ${ok(it && it.state === 'pop' && !!it.mark)}`);
+  out(`  acertou: voa para cima com círculo no chão ${ok(it && it.state === 'pop' && !!it.mark)} | essa kunai ficou ×2 ${ok(it && it.stack === 1)}`);
   yield 0.25;
   out('  -> kunai voando e o círculo onde ela cai: CONGELADO (T continua)');
   yield 'hold';
   yield () => !g.rogue.items[0] || g.rogue.items[0].state === 'ground';
-  out(`  não pegou: ficou no chão ${ok(g.rogue.items[0] && g.rogue.items[0].state === 'ground' && !!flags.last('kunaiMissed'))}`);
+  out(`  caiu no chão sem pegar: continua ×2 ${ok(g.rogue.items[0] && g.rogue.items[0].state === 'ground' && g.rogue.items[0].stack === 1)}`);
   player.position.set(g.rogue.items[0].x, 0, g.rogue.items[0].z);
   yield 0.1;
-  out(`  andou por cima: pegou de volta ${ok(player.ammo.length === 2 && player.ammo.every((a) => a.stack === 0) && !!flags.last('ammoPick'))}`);
-  // Pegando no círculo: dano cresce.
+  out(`  andou por cima: pegou de volta com a corrente ${ok(player.ammo.length === 2 && player.ammo.some((a) => a.stack === 1) && !!flags.last('ammoPick'))}`);
+  // A mesma kunai (a de maior corrente sai primeiro) acerta 3 vezes: dano cresce sempre; demorar não perde.
   const dmgs = [];
   for (let k = 0; k < 3; k++) {
     player.position.set(0, 0, 0);
-    target.position.set(0, 0, -9); target.vel.set(0, 0, 0); // o empurrão do golpe não tira ele da linha
+    target.position.set(0, 0, -9); target.vel.set(0, 0, 0);
     yield 0.05;
     yield* throwAt();
     yield () => hits().length > 0;
     dmgs.push((hits()[0] || {}).dmg);
-    const pi = g.rogue.items.find((x) => x.state === 'pop');
-    if (pi) player.position.set(pi.to.x, 0, pi.to.z);
-    yield () => flags.last('kunaiCatch') || flags.last('kunaiMissed');
-    yield 0.05;
+    yield () => g.rogue.items.some((x) => x.state === 'ground');
+    const gi = g.rogue.items.find((x) => x.state === 'ground');
+    player.position.set(gi.x, 0, gi.z);
+    yield 0.1;
   }
-  out(`  pegou no ar 3 vezes: dano ${dmgs.join(' -> ')} ${ok(dmgs[1] > dmgs[0] && dmgs[2] > dmgs[1])} | corrente ×${Math.max(...player.ammo.map((a) => a.stack)) + 1} no HUD ${ok(/corrente ×4/.test(hud.$('.ast').textContent), hud.$('.ast').textContent)}`);
-  yield KUNAI.keep + 0.2;
-  out(`  demorou para arremessar: corrente zerou ${ok(player.ammo.every((a) => a.stack === 0))}`);
+  const best = Math.max(...player.ammo.map((a) => a.stack));
+  out(`  3 acertos seguidos: dano ${d1} -> ${dmgs.join(' -> ')} ${ok(dmgs[0] > d1 && dmgs[1] > dmgs[0] && dmgs[2] > dmgs[1])} | kunai ×${best + 1} ${ok(best === 4)} | HUD ${ok(/corrente ×5/.test(hud.$('.ast').textContent), hud.$('.ast').textContent)}`);
+  yield 3;
+  out(`  esperou 3 s: não perde ${ok(Math.max(...player.ammo.map((a) => a.stack)) === 4)}`);
+  // Bateu na parede: volta ao começo
+  combat.clear(); player.position.set(0, 0, 0); flags.events.length = 0;
+  yield* throwAt();
+  yield () => flags.last('ammoWall');
+  const wi = g.rogue.items.find((x) => x.state === 'ground');
+  out(`  kunai ×5 bateu na parede: voltou ao começo ${ok(wi && wi.stack === 0)}`);
   // Parede e sem munição.
-  combat.clear(); g.rogue.clear(); player.ammo = [{ stack: 0, keep: 0 }, { stack: 0, keep: 0 }];
+  combat.clear(); g.rogue.clear(); player.ammo = [{ stack: 0 }, { stack: 0 }];
   player.position.set(0, 0, 0);
   yield* throwAt();
   yield () => flags.last('ammoWall');
@@ -156,22 +152,41 @@ export function* rogueTests(g, out, flags) {
   out(`  sala nova: as kunais voltam para a mão ${ok(player.ammo.length === 2 && g.rogue.items.length === 0)}`);
 
   // ---------------- 48) Garras ----------------
-  out('48) Garras: combo de 5, não interrompe, 5º golpe sangra');
+  out('48) Garras: combo de 5, interrompe, sangramento acumulado ao atacar, garras apontando');
   fresh('garras');
   yield 0.2;
   out(`  combo de 5 ${ok(player.hero.combo.length === 5)} | duas garras ${ok(!!player.offhand)}`);
   const foe = dummy(0, -1.6, 'minion', 0); foe.hp = foe.maxHp = 500; foe.passive = false;
   foe.startAttack();
   combat.playerStrike(player, player.hero.combo[0]);
-  out(`  acertou no meio do ataque dele: ele continua atacando ${ok(foe.state === 'attack')}`);
+  out(`  acertou no meio do ataque dele: interrompe (igual à espada) ${ok(foe.state === 'hurt')}`);
   combat.clear();
   const foe2 = dummy(0, -1.6, 'minion', 0); foe2.hp = foe2.maxHp = 500;
   combat.playerStrike(player, player.hero.combo[4]);
+  out(`  5º golpe: sangramento 1 ${ok(foe2.bleedStacks === 1)}`);
   const hpB = foe2.hp;
-  out(`  5º golpe: sangrando ${ok(foe2.bleed > 3)}`);
-  yield 1.6;
-  out(`  sangrou ${hpB - foe2.hp} de vida ${ok(hpB - foe2.hp >= 6)}`);
+  yield 1.5;
+  out(`  parado não sangra ${ok(foe2.hp === hpB, hpB - foe2.hp)}`);
+  combat.playerStrike(player, player.hero.combo[4]); combat.playerStrike(player, player.hero.combo[4]);
+  out(`  acumula: 3 golpes finais = sangramento ${foe2.bleedStacks} ${ok(foe2.bleedStacks === 3)}`);
+  const hpC = foe2.hp;
+  const st0 = foe2.state; foe2.passive = false; foe2.startAttack();
+  const st1 = foe2.state;
+  yield 0.4;
+  out(`  ao atacar perde 3 de vida ${ok(hpC - foe2.hp === 3, `${hpC - foe2.hp} (${st0}→${st1}→${foe2.state}, pend ${foe2.bleedPending})`)} | atordoado como num golpe ${ok(foe2.state === 'hurt')} | sangramento sobe para 4 ${ok(foe2.bleedStacks === 4, foe2.bleedStacks)}`);
+  yield () => foe2.state !== 'attack';
+  const hpD = foe2.hp; foe2.startAttack(); yield 0.4;
+  out(`  de novo no próximo ataque, agora 4 (dura até morrer) ${ok(hpD - foe2.hp === 4, hpD - foe2.hp)} | sobe para 5 ${ok(foe2.bleedStacks === 5)}`);
+  // Garras apontam para a frente no ataque
+  const fwdOf = (o) => { o.updateWorldMatrix(true, false); const q = new o.quaternion.constructor(); o.getWorldQuaternion(q); const v = new player.position.constructor(-1, 0, 0).applyQuaternion(q); return v.x * Math.sin(player.facing) + v.z * Math.cos(player.facing); };
+  player.startAttack(g.cam.camera); yield 0.12;
+  out(`  atacando, as duas garras apontam para o inimigo ${ok(fwdOf(player.weapon) > 0.8 && fwdOf(player.offhand) > 0.8, fwdOf(player.weapon).toFixed(2) + '/' + fwdOf(player.offhand).toFixed(2))}`);
+  yield () => player.state === 'idle';
+  yield 0.3;
+  const up = (o) => { const q = new o.quaternion.constructor(); o.getWorldQuaternion(q); return new player.position.constructor(-1, 0, 0).applyQuaternion(q).y; };
+  out(`  parado, as duas garras para baixo ${ok(up(player.weapon) < -0.5 && up(player.offhand) < -0.5, up(player.weapon).toFixed(2) + '/' + up(player.offhand).toFixed(2))}`);
   yield 'hold';
+  combat.clear(); player.reset(0, 0); player.facing = Math.PI; yield 0.1;
   // Comparação: as adagas interrompem.
   player.setWeapon('adagas');
   const foe3 = dummy(1.2, -1.4, 'minion', 0); foe3.hp = foe3.maxHp = 500; foe3.passive = false;
@@ -215,23 +230,23 @@ export function* rogueTests(g, out, flags) {
   combat.clear();
 
   // ---------------- 50) Besta ----------------
-  out('50) Besta de mão: 3 virotes, cai embaixo do inimigo, pega andando por cima');
+  out('50) Besta de mão: 1 virote forte, cai embaixo do inimigo, pega andando por cima');
   fresh('besta');
   yield 0.2;
   const mark = dummy(0, -8, 'minion'); mark.hp = mark.maxHp = 1e6;
-  out(`  3 virotes ${ok(player.ammo.length === 3)} | dica de controle ${ok(/atirar/.test(document.getElementById('controls').textContent))}`);
+  out(`  1 virote ${ok(player.ammo.length === 1)} | dica de controle ${ok(/atirar/.test(document.getElementById('controls').textContent))}`);
   yield* throwAt();
   yield () => hits().length > 0;
   const bd = (hits()[0] || {}).dmg;
   yield 0.05;
   const bolt = g.rogue.items[0];
-  out(`  dano médio ${ok(bd >= 10 && bd <= 30, bd)} | caiu embaixo dele ${ok(bolt && bolt.state === 'ground' && Math.hypot(bolt.x - mark.position.x, bolt.z - mark.position.z) < 1.2)} | ${player.ammo.length} na mão ${ok(player.ammo.length === 2)}`);
+  out(`  dano alto (triplo) ${ok(bd >= 30 && bd <= 45, bd)} | caiu embaixo dele ${ok(bolt && bolt.state === 'ground' && Math.hypot(bolt.x - mark.position.x, bolt.z - mark.position.z) < 1.2)} | ${player.ammo.length} na mão ${ok(player.ammo.length === 0)}`);
   yield 0.3;
   out('  -> virote no chão: CONGELADO (T continua)');
   yield 'hold';
   player.position.set(bolt.x, 0, bolt.z + 1);
   yield 0.1;
-  out(`  pegou de volta ${ok(player.ammo.length === 3)}`);
+  out(`  pegou de volta ${ok(player.ammo.length === 1)}`);
   combat.clear();
   // Arremesso sai na hora certa da animação (sem travar) e o Jogador volta ao normal.
   player.setWeapon('adagas');

@@ -57,7 +57,7 @@ HEROES.mage = {
   potions: 1,
   potionHeal: 35,
   hurt: { time: 0.3, iframes: 0.8, push: 7 },
-  block: { arc: 150, wall: true },
+  block: { arc: 150, wall: true, reflect: true }, // barreira: não segura golpes; rebate projéteis e segura habilidades de chefe (gasta 1 a cada vez)
   moveSpeed: 7,
   turnSpeed: 16,
   blockMoveSpeed: 0,
@@ -75,7 +75,7 @@ HEROES.mage = {
 };
 
 // Ladino: rápido e frágil, vive de críticos (25% de chance base; Precisão Invejável = 100% por 5 s).
-// Sem escudo. Botão direito: Bomba de Fumaça (fica invisível; o 1º golpe sai crítico). Rapieira: aparar.
+// Sem escudo. Botão direito: só a Rapieira usa (aparar).
 // Kunais e Besta usam munição (ammo): o que foi arremessado fica no chão até ser pego (rogue.js).
 HEROES.rogue = {
   name: 'Ladino',
@@ -91,12 +91,14 @@ HEROES.rogue = {
   hurt: { time: 0.28, iframes: 0.8, push: 7 },
   block: { arc: 150 },
   noShield: true,
+  evade: 0.1, // 10% de chance de desviar de qualquer golpe (com qualquer arma)
   moveSpeed: 7.8,
+  lungeMul: 0.45,       // golpes corpo a corpo avançam menos (pedido do dono, 31/10: esbarrava nos inimigos)
   turnSpeed: 18,
   blockMoveSpeed: 0,
   dodge: { distance: 6.5, time: 0.28, cooldown: 0.15, pose: 'Crouching', flips: 1 },
-  crit: 0.25,           // chance de crítico própria do herói (soma com Olho do Carrasco)
-  ability: 'smoke',     // botão direito (rogue.js)
+  // crítico próprio (25%) só nas Duas Adagas (crit no set da arma; soma com Olho do Carrasco)
+  ability: null,        // botão direito: nada (a Rapieira apara). A fumaça foi tirada a pedido do dono.
   combo: [
     { clip: 'Melee_Dualwield_Attack_Stab', speed: 1.7, hit: 0.25, end: 0.5, window: 0.28, lunge: 0.35, damage: 7 },
     { clip: 'Melee_Dualwield_Attack_Slice', speed: 1.9, hit: 0.64, end: 0.82, window: 0.66, lunge: 0.3, damage: 7 },
@@ -184,7 +186,7 @@ export const WEAPONS = {
         anims: { idle: 'Melee_2H_Idle' },
       } },
     { id: 'manopla', name: 'Manopla e Escudo de Antebraço', short: 'Manopla', icon: '✊', color: 0xffd36a,
-      desc: 'Os golpes mais rápidos: combo de 4. Alcance bem curto; dano parecido com o da espada. O 1º esbarrão em esqueleto não machuca.',
+      desc: 'Os golpes mais rápidos: combo de 4. Alcance bem curto; dano parecido com o da espada. O 1º esbarrão em esqueleto não machuca (no co-op, nenhum esbarrão machuca).',
       set: {
         weapons: {
           right: { model: 'weapons/extra/fistweapon_A.gltf', rot: [0, 0, 0], tip: 0.3, scale: 1.5, gold: true },
@@ -207,7 +209,7 @@ export const WEAPONS = {
   // e uma magia diferente. cast: bolt (orbe que voa), beam (raio em linha reta), cone (sopro de fogo).
   mage: [
     { id: 'cajado', name: 'Cajado Arcano', short: 'Cajado', icon: '✦', color: 0xb070ff,
-      desc: 'Orbes roxos de média distância; o 3º é um orbe grande e mais forte.',
+      desc: 'Orbes roxos de média distância; o 3º é um orbe grande e mais forte que explode em área.',
       set: {
         combo: [
           { clip: 'Ranged_Magic_Shoot', speed: 0.78, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
@@ -215,43 +217,42 @@ export const WEAPONS = {
           { clip: 'Ranged_Magic_Shoot', speed: 0.83, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
             cast: { type: 'bolt', speed: 24, size: 1, color: 0xb070ff } },
           { clip: 'Ranged_Magic_Spellcasting', speed: 0.47, hit: 0.3, end: 0.52, lunge: 0, damage: 8, heavy: true,
-            cast: { type: 'bolt', speed: 17, size: 2, color: 0xd59bff } },
+            cast: { type: 'bolt', speed: 17, size: 2, color: 0xd59bff, blast: 2.2 } }, // explode em área (raio 2,2)
         ],
       } },
-    { id: 'varinha', name: 'Varinha Estelar', short: 'Varinha', icon: '★', color: 0xffd84a,
-      desc: 'Estrelinhas rápidas de curta distância: combo de 5. Pouco dano por tiro; a 5ª solta 3 estrelas em cone.',
+    // Cajado Elétrico (no lugar da Varinha, pedido do dono 26/10): alcance um pouco menor, mesmo dano do Cajado Arcano
+    // sem golpe forte; cada raio pula nos inimigos perto do atingido; todo 3º golpe dá 1 de dano em todos da sala.
+    { id: 'eletrico', legacy: 'varinha', name: 'Cajado Elétrico', short: 'Elétrico', icon: 'ϟ', color: 0x7fd8ff,
+      desc: 'Raios instantâneos que saem do cajado e acertam o inimigo mais perto à frente (alcance um pouco menor). Cada raio que acerta pula para os inimigos perto do atingido (mesmo dano). Todo 3º golpe dá 1 de dano em todos os inimigos da sala.',
       set: {
-        weapons: { right: { model: 'weapons/extra/wand_A.gltf', rot: [0, 0, 0], tip: 0.83, scale: 1.3, fx: 'star' } },
+        weapons: { right: { model: 'weapons/extra/staff_A.gltf', rot: [0, 0, 0], tip: 1.07, scale: 1.15, fx: 'storm', tint: 0x7f8aa8 } },
         combo: [
-          { clip: 'Ranged_1H_Shoot', speed: 1.25, hit: 0.26, end: 0.5, window: 0.3, lunge: 0, damage: 2,
-            cast: { type: 'bolt', speed: 34, size: 0.6, color: 0xffe066, star: true } },
-          { clip: 'Ranged_1H_Shoot', speed: 1.25, hit: 0.26, end: 0.5, window: 0.3, lunge: 0, damage: 2,
-            cast: { type: 'bolt', speed: 34, size: 0.6, color: 0xffe066, star: true } },
-          { clip: 'Ranged_1H_Shoot', speed: 1.25, hit: 0.26, end: 0.5, window: 0.3, lunge: 0, damage: 2,
-            cast: { type: 'bolt', speed: 34, size: 0.6, color: 0xffe066, star: true } },
-          { clip: 'Ranged_1H_Shoot', speed: 1.25, hit: 0.26, end: 0.5, window: 0.3, lunge: 0, damage: 2,
-            cast: { type: 'bolt', speed: 34, size: 0.6, color: 0xffe066, star: true } },
-          { clip: 'Ranged_Magic_Shoot', speed: 0.73, hit: 0.24, end: 0.48, lunge: 0, damage: 5, heavy: true,
-            cast: { type: 'bolt', speed: 30, size: 1.0, color: 0xfff2a0, star: true, count: 3, spread: 22 } },
+          { clip: 'Ranged_Magic_Shoot', speed: 0.78, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
+            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0x7fd8ff, spark: true, chain: 3 } },
+          { clip: 'Ranged_Magic_Shoot', speed: 0.83, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
+            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0x7fd8ff, spark: true, chain: 3 } },
+          { clip: 'Ranged_Magic_Spellcasting', speed: 0.6, hit: 0.3, end: 0.52, lunge: 0, damage: 3,
+            cast: { type: 'bolt', instant: true, speed: 28, size: 1.0, color: 0xbff0ff, spark: true, chain: 3, roomZap: 1 } },
         ],
-        attackCancel: 0.45,
-        attackRange: 3.5,
+        attackRange: 3.8,
       } },
-    { id: 'grimorio', name: 'Grimório Verde', short: 'Grimório', icon: '❖', color: 0x4dff9a,
-      desc: 'Raio verde em linha reta que atravessa todos os esqueletos. Mais lento.',
+    // Cajado das Trevas (no lugar do Grimório, pedido do dono 26/10): mesmo alcance do Cajado Arcano, +1 de dano;
+    // o 3º golpe marca; inimigo marcado que morre levanta com 1 de vida e luta pela Maga (undead.js).
+    { id: 'trevas', legacy: 'grimorio', name: 'Cajado das Trevas', short: 'Trevas', icon: '☠', color: 0x9a4dff,
+      desc: 'Orbes sombrios com 1 de dano a mais que o Cajado Arcano. O 3º golpe marca os inimigos atingidos: se um marcado morrer, ele levanta com 1 de vida e luta do seu lado (os inimigos só batem nele depois que ele bate neles).',
       set: {
-        weapons: { right: { model: 'weapons/heroes/spellbook_open.gltf', rot: [-70, 0, 0], tip: 0.3, scale: 1.25, fx: 'tome' } },
+        weapons: { right: { model: 'weapons/heroes/staff.gltf', rot: [0, 0, 0], tip: 1.25, fx: 'dark', tint: 0x3a2a4a } },
         combo: [
-          { clip: 'Ranged_Magic_Spellcasting', speed: 0.52, hit: 0.3, end: 0.8, window: 0.35, lunge: 0, damage: 2,
-            cast: { type: 'beam', length: 4, width: 0.8, color: 0x4dff9a } },
-          { clip: 'Ranged_Magic_Spellcasting', speed: 0.52, hit: 0.3, end: 0.8, window: 0.35, lunge: 0, damage: 2,
-            cast: { type: 'beam', length: 4, width: 0.8, color: 0x4dff9a } },
-          { clip: 'Ranged_Magic_Shoot', speed: 0.47, hit: 0.28, end: 0.43, lunge: 0, damage: 4, heavy: true,
-            cast: { type: 'beam', length: 4, width: 0.8, color: 0x9dffc8 } },
+          { clip: 'Ranged_Magic_Shoot', speed: 0.78, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 4,
+            cast: { type: 'bolt', speed: 24, size: 1, color: 0x8a3aff } },
+          { clip: 'Ranged_Magic_Shoot', speed: 0.83, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 4,
+            cast: { type: 'bolt', speed: 24, size: 1, color: 0x8a3aff } },
+          { clip: 'Ranged_Magic_Spellcasting', speed: 0.47, hit: 0.3, end: 0.52, lunge: 0, damage: 4,
+            cast: { type: 'bolt', speed: 20, size: 1.4, color: 0x5a1a9a, darkMark: true } },
         ],
       } },
     { id: 'gelo', name: 'Cajado de Gelo', short: 'Gelo', icon: '❄', color: 0x8fe3ff,
-      desc: 'Orbes de gelo que deixam os esqueletos lentos; o 3º ataque sempre congela (imobiliza) o esqueleto atingido, mesmo no meio de um golpe ou habilidade. Chefes: metade do tempo.',
+      desc: 'Orbes de gelo que deixam os esqueletos lentos; o 3º ataque sempre congela (imobiliza) o esqueleto atingido por 4,4 s, mesmo no meio de um golpe ou habilidade. Chefes: só 1,1 s. O 1º ataque num congelado dá dano dobrado.',
       set: {
         weapons: { right: { model: 'weapons/extra/staff_A.gltf', rot: [0, 0, 0], tip: 1.07, scale: 1.15, fx: 'ice', tint: 0xcff4ff } },
         combo: [
@@ -260,18 +261,18 @@ export const WEAPONS = {
           { clip: 'Ranged_Magic_Shoot', speed: 0.78, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
             cast: { type: 'bolt', speed: 20, size: 1, color: 0x2f7dff, slow: 2.5, shard: true } },
           { clip: 'Ranged_Magic_Spellcasting', speed: 0.47, hit: 0.3, end: 0.52, lunge: 0, damage: 3, heavy: true,
-            cast: { type: 'bolt', speed: 22, size: 1.5, color: 0x4a9bff, freeze: 2.2, shard: true } },
+            cast: { type: 'bolt', speed: 22, size: 1.5, color: 0x4a9bff, freeze: 4.4, shard: true } }, // comuns 4,4 s; chefes × 0,25 = 1,1 s
         ],
       } },
     { id: 'fogo', name: 'Cajado de Fogo', short: 'Fogo', icon: '♨', color: 0xff6a1a,
-      desc: 'Sopro de fogo de perto, em cone, que deixa os esqueletos queimando. Alcance curto; o 3º é uma explosão de fogo em volta da Maga.',
+      desc: 'Sopro de fogo de perto, em cone, que deixa os esqueletos queimando. O 2º é uma linha de fogo reta que vai um pouco mais longe; o 3º é uma explosão de fogo em volta da Maga.',
       set: {
         weapons: { right: { model: 'weapons/extra/staff_B.gltf', rot: [0, 0, 0], tip: 1.45, fx: 'fire', tint: 0x8a3020 } },
         combo: [
           { clip: 'Ranged_Magic_Spellcasting', speed: 0.68, hit: 0.28, end: 0.7, window: 0.32, lunge: 0, damage: 3,
             cast: { type: 'cone', range: 2.4, arc: 70, color: 0xff7a2a, burn: 1.5 } },
-          { clip: 'Ranged_Magic_Spellcasting', speed: 0.68, hit: 0.28, end: 0.7, window: 0.32, lunge: 0, damage: 3,
-            cast: { type: 'cone', range: 2.4, arc: 70, color: 0xff7a2a, burn: 1.5 } },
+          { clip: 'Ranged_Magic_Shoot', speed: 0.73, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
+            cast: { type: 'fireline', length: 3.6, width: 1.1, color: 0xff7a2a, burn: 1.5 } }, // fogo em linha reta, um pouco mais longe
           { clip: 'Ranged_Magic_Shoot', speed: 0.52, hit: 0.26, end: 0.43, lunge: 0, damage: 6, heavy: true,
             cast: { type: 'nova', radius: 3.2, color: 0xffb04a, burn: 2 } }, // explosão de fogo em volta da Maga (360°)
         ],
@@ -281,10 +282,10 @@ export const WEAPONS = {
   // Ladino (pedido do dono, 25/10/2026). Todas sem escudo.
   rogue: [
     { id: 'adagas', name: 'Duas Adagas', short: 'Adagas', icon: '⚔', color: 0xd8dde8,
-      desc: 'Golpes rápidos com as duas mãos e 25% de chance de crítico. Botão direito: bomba de fumaça.',
-      set: {} },
+      desc: 'Golpes rápidos com as duas mãos e 25% de chance de crítico.',
+      set: { crit: 0.25 } },
     { id: 'kunai', name: 'Kunais de Arremesso', short: 'Kunais', icon: '✧', color: 0x6fe3ff,
-      desc: '2 kunais com alcance infinito e dano MUITO baixo. Acertou um inimigo: ela voa para cima e cai no círculo — pegue e arremesse de novo rápido para o dano ir crescendo. Errou: ela fica no chão até você pegar.',
+      desc: '2 kunais com alcance infinito e dano baixo. Cada inimigo acertado deixa aquela kunai mais forte (acumula). Se ela bater numa parede ou objeto, volta ao dano do começo. Depois de acertar ela voa e cai: pegue no ar ou no chão.',
       set: {
         weapons: { right: { model: 'weapons/extra/dagger_A.gltf', rot: [0, 0, 0], tip: 0.9, scale: 0.85, tint: 0x9fe8ff } },
         ammo: { kind: 'kunai', max: 2 },
@@ -294,27 +295,26 @@ export const WEAPONS = {
         attackCancel: 0.5,
       } },
     { id: 'garras', name: 'Garras', short: 'Garras', icon: '≋', color: 0xff5a6a,
-      desc: 'Combo de 5 golpes de alcance médio. Pouco dano e não interrompe o que o inimigo está fazendo; o 5º golpe deixa o alvo sangrando.',
+      desc: 'Combo de 5 golpes de alcance médio, com pouco dano. Todo 5º golpe soma +1 de sangramento: sempre que o inimigo atacar, ele perde vida pelo sangramento, fica atordoado como se levasse um golpe e o sangramento sobe +1. Dura até ele morrer.',
       set: {
         weapons: {
-          right: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 0], tip: 0.4, scale: 1.5 },
-          left: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 0], scale: 1.5 },
+          right: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 180], tip: 0.4, scale: 1.5, aim: true }, // virada: antes apontava para cima
+          left: { model: 'weapons/extra/fistweapon_B.gltf', rot: [0, 0, 0], scale: 1.5, aim: true },
         },
-        noStagger: true,
         combo: [
           { clip: 'Melee_Dualwield_Attack_Stab', speed: 2.0, hit: 0.25, end: 0.48, window: 0.27, lunge: 0.3, damage: 4 },
           { clip: 'Melee_Unarmed_Attack_Punch_A', speed: 2.0, hit: 0.38, end: 0.58, window: 0.4, lunge: 0.3, damage: 4 },
           { clip: 'Melee_Dualwield_Attack_Slice', speed: 2.2, hit: 0.64, end: 0.8, window: 0.66, lunge: 0.3, damage: 4 },
           { clip: 'Melee_Dualwield_Attack_Stab', speed: 2.2, hit: 0.25, end: 0.48, window: 0.27, lunge: 0.3, damage: 4 },
           { clip: 'Melee_Dualwield_Attack_Chop', speed: 1.6, hit: 0.45, end: 0.72, lunge: 0.4, damage: 6, heavy: true, blastMul: 0.6,
-            bleed: { dps: 6, time: 4 } },
+            bleed: { stacks: 1 } },
         ],
         attackCancel: 0.45,
         attackRange: 2.7,
         attackArc: 120,
       } },
     { id: 'rapieira', name: 'Rapieira', short: 'Rapieira', icon: '†', color: 0xffe27a,
-      desc: 'Estocadas de alcance médio que acertam só 1 inimigo, com dano baixo. Pelas costas: sempre crítico. Botão direito: aparar — no instante exato do golpe inimigo, defende e atordoa; se errar o tempo, leva o dano.',
+      desc: 'Estocadas de alcance médio que acertam só 1 inimigo, com dano baixo; o 2º golpe é um corte em cone que acerta todos na frente e os deixa de costas. Pelas costas: sempre crítico. Botão direito: aparar — no instante exato do golpe inimigo (ou flecha/magia), defende e atordoa; se errar o tempo, leva o dano.',
       set: {
         single: true,
         backstab: true,
@@ -322,19 +322,19 @@ export const WEAPONS = {
         weapons: { right: { model: 'weapons/extra/sword_C.gltf', rot: [0, 0, 0], tip: 1.9 } },
         combo: [
           { clip: 'Melee_1H_Attack_Stab', speed: 1.5, hit: 0.27, end: 0.52, window: 0.3, lunge: 0.6, damage: 6 },
-          { clip: 'Melee_1H_Attack_Stab', speed: 1.7, hit: 0.27, end: 0.52, window: 0.3, lunge: 0.6, damage: 6 },
+          { clip: 'Melee_1H_Attack_Slice_Horizontal', speed: 1.5, hit: 0.26, end: 0.6, window: 0.32, lunge: 0.4, damage: 6, cone: true, arc: 90, turnAround: true }, // cone: acerta todos na frente e vira de costas
           { clip: 'Melee_1H_Attack_Stab', speed: 1.25, hit: 0.27, end: 0.58, lunge: 1.0, damage: 9, heavy: true },
         ],
         attackRange: 3.4,
         attackArc: 40,
       } },
     { id: 'besta', name: 'Besta de Mão', short: 'Besta', icon: '➹', color: 0xc99a5a,
-      desc: '3 virotes de dano médio e alcance infinito. O virote para onde bater; se acertar um inimigo, cai no chão embaixo dele. Ande por cima para pegar de volta.',
+      desc: '1 virote só, de dano altíssimo e alcance infinito, mas o disparo demora. O virote para onde bater; se acertar um inimigo, cai no chão embaixo dele. Ande por cima para pegar de volta.',
       set: {
-        weapons: { right: { model: 'weapons/heroes/crossbow_1handed.gltf', rot: [0, 0, 0], tip: 0.6 } },
-        ammo: { kind: 'bolt', max: 3 },
-        combo: [
-          { clip: 'Ranged_1H_Shoot', speed: 1.4, hit: 0.3, end: 0.6, window: 0.34, lunge: 0, damage: 12, throw: 'bolt' },
+        weapons: { right: { model: 'weapons/heroes/crossbow_1handed.gltf', rot: [0, 0, 0], tip: 0.6, forward: true } }, // forward: sempre apontada para a frente (player.aimForward)
+        ammo: { kind: 'bolt', max: 1 },
+        combo: [ // 1 virote só, triplo do dano, e o disparo demora 3× mais (speed 1.4 → 0.47)
+          { clip: 'Ranged_1H_Shoot', speed: 0.47, hit: 0.3, end: 0.6, window: 0.34, lunge: 0, damage: 36, throw: 'bolt' },
         ],
         attackCancel: 0.45,
       } },
@@ -368,7 +368,10 @@ export const allHeroModels = () => HERO_IDS.flatMap((id) => [HEROES[id].model, .
 export const ownKey = (heroId, wid) => `w_${heroId}_${wid}`;
 export const eqKey = (heroId) => `eq_${heroId}`;
 export function ownsWeapon(ups, heroId, wid) {
-  return WEAPONS[heroId][0].id === wid || !!(ups && ups[ownKey(heroId, wid)]);
+  if (WEAPONS[heroId][0].id === wid) return true;
+  if (!ups) return false;
+  const w = WEAPONS[heroId].find((x) => x.id === wid);
+  return !!(ups[ownKey(heroId, wid)] || (w && w.legacy && ups[ownKey(heroId, w.legacy)])); // comprou a arma antiga (Varinha/Grimório): já tem a nova
 }
 export function equippedWeapon(ups, heroId) {
   const list = WEAPONS[heroId];

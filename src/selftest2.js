@@ -1,4 +1,5 @@
 // Teste automático, parte 3: Arqueiro e Guardião enfurecido (chamado por selftest.js).
+import { rollBlessings, ensureLegendary } from './blessings.js';
 const press = (code) => {
   dispatchEvent(new KeyboardEvent('keydown', { code }));
   dispatchEvent(new KeyboardEvent('keyup', { code }));
@@ -25,17 +26,91 @@ export function* rangedAndRageTests(g, out, flags, setup) {
   const h = flags.last('heroHit');
   out(`  flecha acertou o herói: ${h ? `✔ -${h.dmg}` : 'ERRO'}`);
   yield 1.0; flags.events.length = 0;
-  a.position.set(0, 0, -6); face(a); keyDown('KeyK'); yield 0.2;
-  a.cooldown = 0;
+  const reload = (e) => { e.loaded = true; e.carry = false; e.ammo = 3; for (const it of e.boltList || []) combat.projectiles.takeBolt(it); e.boltList = []; combat.projectiles.takeBolt(e.bolt); e.bolt = null; if (e.state !== 'chase') e.setState('chase'); };
+  reload(a); a.position.set(0, 0, -6); face(a); keyDown('KeyK'); yield 0.2;
+  reload(a); a.cooldown = 0;
   yield () => flags.last('arrow');
   const bl = flags.last('blockedHero');
   out(`  escudo bloqueou a flecha: ${bl ? `✔ dano ${bl.dmg}` : 'ERRO'}`);
   keyUp('KeyK'); yield 0.2;
-  a.cooldown = 99;
+  reload(a); a.cooldown = 99;
   a.position.set(0, 0, 0.8);
   const d0 = dist(a);
   yield 0.8;
   out(`  fugiu do herói: ${dist(a) > d0 + 1.5 ? '✔' : 'ERRO'} (${d0.toFixed(1)} -> ${dist(a).toFixed(1)})`);
+
+  out('16b) Arqueiro: 3 flechas, depois um pulo direto em cada flecha, canto, recarrega; 1º golpe sem recarregar');
+  setup();
+  const until = function* (f, t) { let k = 0; while (!f() && k < t) { yield 0.1; k += 0.1; } return f(); };
+  player.position.set(4, 0, 3); player.facing = Math.PI; player.iframes = 0;
+  const b = combat.spawn('archer', -2, -6, { awake: true, facing: 0 });
+  flags.events.length = 0;
+  let shots = 0;
+  for (let i = 0; i < 3; i++) {
+    b.cooldown = 0;
+    const n = shots;
+    yield* until(() => flags.events.filter((e) => e.type === 'archerBoltDrop').length > n, 4);
+    shots = flags.events.filter((e) => e.type === 'archerBoltDrop').length;
+    if (i === 0) out(`  1ª flecha: continua atirando normal: ${b.loaded !== false && b.ammo === 2 ? '✔' : 'ERRO'} (flechas ${b.ammo})`);
+  }
+  out(`  3 flechas no chão: ${shots === 3 && combat.projectiles.bolts && combat.projectiles.bolts.length === 3 ? '✔' : 'ERRO'} (${shots}) | besta vazia: ${b.loaded === false ? '✔' : 'ERRO'}`);
+  const hop = yield* until(() => b.state === 'hop', 3);
+  const h1 = flags.last('archerHop') || { next: '-', to: { x: 99, z: 99 } };
+  const nb = h1 && combat.projectiles.bolts.reduce((m, it) => Math.min(m, Math.hypot(it.x - h1.to.x, it.z - h1.to.z)), 99);
+  out(`  pulo direto na flecha: ${hop && h1.next === 'pickup' && nb < 1.4 ? '✔' : 'ERRO'} (${nb != null ? nb.toFixed(2) : '-'}) | no ar não leva golpe: ${hop && !b.targetable ? '✔' : 'ERRO'} -> CONGELADO (T continua)`);
+  yield 'hold';
+  player.position.set(6, 0, 6);
+  let tPick = 0;
+  const pick = yield* (function* () { let k = 0; while (flags.events.filter((e) => e.type === 'archerPickup').length < 3 && k < 20) { yield 0.1; k += 0.1; tPick = k; } return flags.events.filter((e) => e.type === 'archerPickup').length >= 3; })();
+  const pHops = flags.events.filter((e) => e.type === 'archerHop' && e.next === 'pickup' && e.enemy === b).length;
+  out(`  um pulo por flecha: ${pHops >= 1 && pHops <= 3 ? '✔' : 'ERRO'} (${pHops} pulos; flecha colada na outra = pega sem pular) | rápido: ${tPick <= 5 ? '✔' : 'ERRO'} (${tPick.toFixed(1)} s)`);
+  out(`  pegou as 3 flechas: ${pick ? '✔' : 'ERRO'} (${flags.events.filter((e) => e.type === 'archerPickup').length})`);
+  const corner = yield* until(() => flags.last('archerHop') && flags.last('archerHop').next === 'reload', 3);
+  const to = corner && flags.last('archerHop').to, bd = combat.world.bounds;
+  out(`  pulou para a ponta da sala: ${to && bd && (Math.abs(to.x) > bd.x * 0.5 || Math.abs(to.z) > bd.z * 0.5) ? '✔' : 'ERRO'} (${to ? to.x.toFixed(1) + ', ' + to.z.toFixed(1) : '-'})`);
+  const rl = yield* until(() => b.state === 'reload', 2);
+  out(`  recarregando: ${rl ? '✔' : 'ERRO'} -> CONGELADO (T continua)`);
+  yield 'hold';
+  yield* until(() => b.loaded === true, 3);
+  const n0 = combat.projectiles.list.length;
+  const again = yield* until(() => combat.projectiles.list.length > n0 || b.state === 'aim', 4);
+  out(`  recarregou (3 flechas) e atira de novo: ${b.loaded !== false && again && b.ammo >= 2 ? '✔' : 'ERRO'}`);
+  b.die();
+  // 1º golpe com flechas na besta: rola, pula para longe e atira SEM recarregar.
+  setup();
+  player.position.set(0, 0, 0); player.facing = Math.PI;
+  const r = combat.spawn('archer', 0, -1.6, { awake: true, facing: 0 });
+  r.cooldown = 99; flags.events.length = 0;
+  press('KeyJ');
+  yield* until(() => r.state === 'roll', 1.2);
+  r.cooldown = 99;
+  const rh = yield* until(() => flags.last('archerHop'), 2);
+  out(`  1º golpe com flechas: rolou e pulou para longe: ${rh && flags.last('archerHop').next === 'shoot' ? '✔' : 'ERRO'} (${rh ? flags.last('archerHop').next : r.state})`);
+  let sawReload = false, shotR = false;
+  for (let k = 0; k < 2.5 && !shotR; k += 0.05) { yield 0.05; if (r.state === 'reload') sawReload = true; if (r.state === 'aim' || r.state === 'shot') shotR = true; }
+  out(`  sem recarregar: ${!sawReload ? '✔' : 'ERRO'} | já atirou: ${shotR ? '✔' : 'ERRO'} (flechas ${r.ammo})`);
+  r.die();
+
+  out('16c) Escudo atordoa em volta a cada bloqueio + chefe sempre com 1 lendária');
+  setup();
+  player.position.set(0, 0, 0); player.facing = Math.PI;
+  const ms = [[0, -1.3], [1.6, -0.8], [-1.6, -0.8]].map(([x, z]) => combat.spawn('minion', x, z, { awake: true, facing: 0 }));
+  for (const m of ms) block(m);
+  player.shield = 10; player.iframes = 0; player.bumpGrace = 0;
+  flags.events.length = 0; keyDown('KeyK'); yield 0.25;
+  combat.hitPlayer(ms[0], 5, { contact: true, push: 6, noRepel: true, target: player });
+  const sh = flags.events.filter((e) => e.type === 'shieldShock').sort((a, c) => c.n - a.n)[0];
+  out(`  esbarrão bloqueado atordoa ${sh ? sh.n : 0} esqueletos em volta: ${sh && sh.n >= 3 && ms.every((m) => m.state === 'hurt') ? '✔' : `ERRO (${player.state}, escudo ${player.shield}, ${flags.events.map((e) => e.type).join(',')})`}`);
+  keyUp('KeyK'); yield 0.3;
+  for (const m of ms) m.die();
+  let okL = 0;
+  for (let i = 0; i < 60; i++) { const o = ensureLegendary(rollBlessings({}, 3, 'epic', Math.random, player.hero), {}, Math.random, player.hero); if (o.some((x) => x.rarity === 'legendary')) okL++; }
+  out(`  bênção do chefe com lendária: ${okL}/60 ${okL === 60 ? '✔' : 'ERRO'}`);
+  player.hp = Math.max(1, player.maxHp - 30); player.potions = Math.max(player.potions, 1); player.restRoom = true;
+  const pot0 = player.potions;
+  const drank = player.tryDrink();
+  out(`  sala de descanso: poção travada: ${!drank && player.potions === pot0 && player.state !== 'drink' ? '✔' : 'ERRO'}`);
+  player.restRoom = false;
 
   out('17) Guardião enfurecido (metade da vida)');
   setup();

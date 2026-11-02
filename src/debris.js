@@ -6,6 +6,8 @@ export const DEBRIS_MODELS = ['props/crypt/bone_A.gltf', 'props/crypt/bone_B.glt
   'props/crypt/skull.gltf', 'props/crypt/ribcage.gltf'];
 
 const GRAVITY = 26;
+const SPLINTER_GEO = new THREE.BoxGeometry(0.7, 0.09, 0.18);
+const SPLINTER_MATS = [0xb07a45, 0x8a5a30, 0xd09a5c].map((c) => new THREE.MeshLambertMaterial({ color: c }));
 const LIFE = 6;      // segundos no chão antes de afundar
 const SINK = 0.8;
 
@@ -37,6 +39,21 @@ export class Debris {
       const vel = new THREE.Vector3(Math.cos(a) * sp + dirX * 3, 4 + Math.random() * 4, Math.sin(a) * sp + dirZ * 3);
       const spin = new THREE.Vector3((Math.random() - 0.5) * 16, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 16);
       this.add(o, vel, spin, { x: 0, z: 0 });
+    }
+  }
+
+  // Lascas de madeira (objeto quebrado): tabuinhas marrons voando.
+  splinters(pos, dirX, dirZ, r = 0.6) {
+    const n = 5 + Math.round(r * 4);
+    for (let i = 0; i < n; i++) {
+      const o = new THREE.Mesh(SPLINTER_GEO, SPLINTER_MATS[i % SPLINTER_MATS.length]);
+      o.scale.set(0.6 + Math.random() * 0.8, 1, 0.6 + Math.random() * 0.6);
+      o.position.set(pos.x + (Math.random() - 0.5) * r, pos.y + Math.random() * 0.4, pos.z + (Math.random() - 0.5) * r);
+      o.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3;
+      const vel = new THREE.Vector3(Math.cos(a) * sp + dirX * 2.5, 3 + Math.random() * 4, Math.sin(a) * sp + dirZ * 2.5);
+      const spin = new THREE.Vector3((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 18);
+      this.add(o, vel, spin, { x: 0, z: 0 }, 0.04, 2.5);
     }
   }
 

@@ -1,4 +1,5 @@
 // Inicialização e loop do jogo. Modos: menu, sozinho, anfitrião do co-op (roda o jogo) e Jogador 2 (só desenha).
+import { statGold, resetStats, setStatsFallback, statsPanel } from './runstats.js';
 import * as THREE from 'three';
 import { createLoadingScreen, loadAll } from './assets.js';
 import { createCamera } from './camera.js';
@@ -15,7 +16,7 @@ import { Debris, DEBRIS_MODELS } from './debris.js';
 import { Combat } from './combat.js';
 import { WaveManager } from './waves.js';
 import { Hud } from './hud.js';
-import { BLESSINGS, RARITY } from './blessings.js';
+import { BLESSINGS, RARITY, setCoopBlessings } from './blessings.js';
 import { createSelfTest } from './selftest.js';
 import { Ui } from './ui.js';
 import { Run, PLAYER_COLORS } from './run.js';
@@ -23,6 +24,7 @@ import { REWARD_MODELS, ownerRing } from './rewards.js';
 import { MERCHANT_MODELS } from './merchant.js';
 import { PROJECTILE_MODELS } from './projectiles.js';
 import { Menu } from './menu.js';
+import { Title } from './title.js';
 import { PauseMenu } from './pause.js';
 import { settings } from './settings.js';
 import { Net, makeCode, PUBLIC_URL } from './net.js';
@@ -30,9 +32,10 @@ import { CoopHost } from './coop.js';
 import { Replica } from './replica.js';
 import { CoopClient } from './client.js';
 import { Teamwork } from './teamwork.js';
+import { coopUpdate } from './coopbless.js';
 import { Ultimates } from './ultimate.js';
 import { audio } from './audio.js';
-import { Music } from './music.js';
+import { Music, bossTrack } from './music.js';
 import './voice.js';
 import { shieldMax } from './shield.js';
 import { save } from './save.js';
@@ -73,12 +76,19 @@ async function start() {
   // Som: liga no primeiro clique/tecla (regra do navegador). Botão ♫ no canto troca: tudo / sem música / mudo.
   audio.boot();
   const music = new Music();
+  state.music = music; // testes
   // Música: exploração; chefe vivo (ou na cena de morte) = música tensa; mais intensa quando ele se enfurece.
-  const pickMusic = (bosses, dead) => {
-    if (dead) { music.set(null); return; }
+  // Inimigos vivos (sem chefe): a música normal some aos poucos e entra a de tensão (volta 4 s depois do último cair).
+  let calmAt = 0;
+  let title = null;
+  // place: 'menu' | 'tavern' | 'dungeon'. Morte = música de derrota.
+  const pickMusic = (bosses, dead, fighting, now, place = 'dungeon') => {
+    if (place === 'menu') { music.set(title && title.visible ? 'menu' : 'crypt'); return; } // capa: música da capa; menu da cripta: música da cripta
+    if (dead) { music.set('defeat'); return; }
+    if (place === 'tavern') { calmAt = 0; music.set('tavern'); return; }
     const b = bosses[0];
-    music.set(b ? 'boss' : 'explore');
-    if (b) music.setIntensity(b.group.scale.x > (b.type && ENEMIES[b.type].scale || 1) * 1.3 || (b.type === 'reaper' && b.phaseIdx > 0) ? 1 : 0);
+    if (fighting) calmAt = now + 4;
+    music.set(b ? bossTrack(b.type) : now < calmAt ? 'tension' : 'explore');
   };
   const dbg = document.getElementById('debug');
   const showDebug = () => { dbg.style.display = DEBUG ? 'block' : 'none'; };
@@ -118,7 +128,7 @@ async function start() {
   const ui = new Ui();
   const run = new Run({ scene, player, combat, waves, world, vfx, debris, hud, ui, cam });
   const team = new Teamwork({ scene, combat, run, hud, vfx, cam, world }); // jogadas em dupla (co-op)
-  const ult = new Ultimates({ combat, vfx, hud, run, flash: (c, t) => team.flash(c, t) }); // ultimate (R / RT)
+  const ult = new Ultimates({ combat, vfx, hud, run, cam, flash: (c, t) => team.flash(c, t) }); // ultimate (R / RT)
   const rogue = new RogueKit({ scene, combat, vfx, run }); // Ladino: kunais, virotes, fumaça, aparar
   combat.rogue = rogue;
   let mode = 'menu';           // menu | solo | host | client
@@ -169,7 +179,13 @@ async function start() {
       combat.text.add(`+${amount}`, h.position, 'heal');
       vfx.sparks(new THREE.Vector3(h.position.x, 1.4, h.position.z), 0x7dff8a, 10);
     };
+    p.onText = (h, t, cls) => combat.text.add(t, h.position, cls, 3.2);
     p.onPotionFail = (h) => h.ux.potionWarn();
+    p.onRestPotion = (h) => {
+      if (h.restPotCd > performance.now()) return;
+      h.restPotCd = performance.now() + 900;
+      combat.text.add('Não dá para beber poção no descanso', h.position, 'miss', 3.2);
+    };
     p.onRefill = (h) => rogue.refill(h);
     p.onSmoke = (h) => rogue.smoke(h);
     p.onNoAmmo = (h) => {
@@ -186,13 +202,16 @@ async function start() {
     };
   };
   setupHero(player);
+  setStatsFallback(player); resetStats(player);
   combat.onKill = (e, by) => {
     by = by || player;
     by.gold += Math.round(2 * by.stats.goldMul);
+    statGold(by, Math.round(2 * by.stats.goldMul));
     if (by === player) hud.setGold(by.gold);
     if (e.data.final || e.data.finale) waves.queue.length = 0; // chefe morreu: ninguém mais nasce
   };
-  combat.onSummon = (boss, list) => { waves.summon(list); hud.banner(`${boss.data.short || 'O chefe'} invoca esqueletos!`, 'small'); };
+  combat.onSummon = (boss, list) => { if (waves.summon(list)) hud.banner(`${boss.data.short || 'O chefe'} invoca esqueletos!`, 'small'); };
+  combat.summonRoom = (list) => waves.summonRoom(list); // limite de inimigos por sala (difficulty.js maxOnField)
 
   // Recomeçar depois de morrer (ou ganhar).
   const restart = () => {
@@ -224,6 +243,11 @@ async function start() {
 
   // ---------- Menu e co-op ----------
   const menu = new Menu();
+  // Capa: cavaleiro no campo; clicar na cripta abre o menu da cripta.
+  title = new Title();
+  state.title = title; // testes
+  title.on.enter = () => menu.show('main');
+  menu.on.field = () => { leaveNet(); menu.hide(); title.show(); };
 
   // Pausa (Esc / Start / botão ⚙). Sozinho congela o jogo; no co-op só abre o menu.
   const pause = new PauseMenu();
@@ -241,7 +265,7 @@ async function start() {
   const openPause = () => { if (pause.visible) return; pause.open('pause', pauseOpts()); setPaused(true); };
   pause.on.closed = () => setPaused(false);
   const togglePause = () => { if (pause.visible) pause.back(); else if (mode !== 'menu') openPause(); };
-  addEventListener('keydown', (e) => { if (e.code === 'Escape' && !e.repeat && !selfTest.running) { e.preventDefault(); togglePause(); } });
+  addEventListener('keydown', (e) => { if (e.code === 'Escape' && !e.repeat && !selfTest.running && !(ui.choice && ui.choice.confirm)) { e.preventDefault(); togglePause(); } });
   pause.on.button = () => {
     if (pause.visible) { pause.back(); return; }
     if (mode === 'menu') pause.open('config', {}); else openPause();
@@ -252,7 +276,7 @@ async function start() {
     restart();
   };
   pause.on.quit = () => { setPaused(false); giveUp(); hud.banner('Você voltou para a Taverna', 'small'); };
-  pause.on.mainmenu = () => { setPaused(false); giveUp(); setMode('menu'); menu.show('main'); };
+  pause.on.mainmenu = () => { setPaused(false); giveUp(); setMode('menu'); title.show(); };
   menu.on.config = () => pause.open('config', {});
   menu.on.controls = () => pause.open('controls', {});
   // Dicas de controle na tela (Configurações).
@@ -265,7 +289,7 @@ async function start() {
   let unLobby = null;
   const leaveNet = () => { net.leave(); if (unLobby) { unLobby(); unLobby = null; } };
 
-  menu.on.solo = () => { menu.hide(); setMode('solo'); };
+  menu.on.solo = () => menu.enter(() => setMode('solo')); // espiral "Rumo à Taverna…" e entra
   menu.on.back = () => { leaveNet(); menu.show('main'); };
   menu.on.msgok = () => menu.show('main');
   menu.on.host = async () => {
@@ -418,7 +442,7 @@ async function start() {
   const clock = new THREE.Clock();
   let fpsAcc = 0, fpsFrames = 0;
   // Testes automáticos: recomeçam direto na masmorra (sem Taverna e sem melhorias).
-  const game = { player, combat, waves, hud, debris, cam, renderer, scene, ult, rogue, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; },
+  const game = { player, combat, waves, hud, debris, cam, renderer, scene, ult, rogue, restart: () => { restart(); run.beginDescent({ noUpgrades: true }); hud.hideBanner && hud.hideBanner(); }, toTavern: restart, save, run, ui, team, addGuest: () => { if (!p2) addGuest(); return p2; }, removeGuest: () => removeGuest(), music,
     // Teste: vai direto para a sala do chefe do andar n.
     gotoBoss: (n) => {
       run.nextFloor(n);
@@ -429,6 +453,7 @@ async function start() {
   Object.defineProperty(game, 'coop', { get: () => coop });
   state.game = game; // testes automáticos
   const selfTest = createSelfTest(state, game, () => DEBUG);
+  run.skipDoorAsk = () => selfTest.running || !!bot; // teste automático / robô: entra direto (sem a pergunta da porta)
   Object.defineProperty(state, 'game', { value: game, enumerable: false }); // testes automáticos
 
   // Um passo do jogo. Durante o hitstop (pausa no impacto) a simulação para, mas a câmera e os números continuam.
@@ -443,13 +468,18 @@ async function start() {
       return;
     }
     if (ui.modal) ui.updateModal(dt);
+    setCoopBlessings(players.length > 1); // bênçãos do co-op só aparecem com 2 heróis
     if (coop) coop.input.beginFrame();
-    const sim = combat.simDt(dt);
+    // Cena da ultimate: o jogo inteiro congela; só o herói levanta a arma (ultimate.js).
+    const cineNow = !!ult.cine;
+    if (cineNow) ult.updateCine(dt);
+    const sim = cineNow ? 0 : combat.simDt(dt);
     if (sim > 0) {
       simTime += sim;
       if (god) for (const p of players) if (p.state !== 'dead') p.hp = Math.max(p.hp, 60);
       for (const p of players) { p.update(sim, cam.camera, world); iceTrail(p, sim); }
       team.update(sim);
+      coopUpdate(combat, run, sim); // bênçãos do co-op (coopbless.js)
       ult.update(sim);
       rogue.update(sim);
       combat.update(sim);
@@ -459,8 +489,9 @@ async function start() {
       vfx.update(sim);
       if (run.built) run.built.update(simTime, sim);
     }
+    pickMusic(combat.enemies.filter((e) => e.data.boss && (e.alive || e.finale)), hud.deathVisible || (mode === 'solo' && player.state === 'dead'), combat.aliveCount > 0, simTime, run.inTavern ? 'tavern' : 'dungeon');
     // Câmera no herói deste computador (caído: no parceiro).
-    const follow = player.state === 'dead' && p2 && p2.state !== 'dead' ? p2 : player;
+    const follow = ult.cine ? ult.cine.p : player.state === 'dead' && p2 && p2.state !== 'dead' ? p2 : player;
     cam.follow(run.unlock.active ? run.unlock.focus : follow.position, dt, run.unlock.active ? 2.5 : 5); // cena da Taverna: câmera no meio
     if (run.built) run.built.updateFrontWall([...players.filter((p) => p.group.visible).map((p) => p.position), ...combat.enemies.filter((e) => e.alive).map((e) => e.position)], dt);
     combat.text.update(dt, cam.camera);
@@ -479,7 +510,10 @@ async function start() {
     if (deathTimer > 0) {
       deathTimer -= dt;
       if (deathTimer <= 0) {
-        const stats = `Andar: <b>${run.floorNum}</b> &nbsp;·&nbsp; Salas: <b>${run.step + 1}</b> &nbsp;·&nbsp; Ondas vencidas: <b>${waves.cleared}</b> &nbsp;·&nbsp; Esqueletos destruídos: <b>${combat.kills}</b>${run.bankSoul(false)}`;
+        const secs = Math.round((performance.now() - (run.startTime || performance.now())) / 1000);
+        const head = `Andar: <b>${run.floorNum}</b> &nbsp;·&nbsp; Salas: <b>${run.step + 1}</b> &nbsp;·&nbsp; Ondas vencidas: <b>${waves.cleared}</b> &nbsp;·&nbsp; Tempo: <b>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</b>`;
+        const panels = players.length > 1 ? players.map((p) => statsPanel(p, `Jogador ${p.id}`)).join('') : statsPanel(player);
+        const stats = `${head}<div class="rsgrid">${panels}</div>${run.bankSoul(false)}`; // quadro de estatísticas (pedido do dono, 31/10)
         hud.showDeath(stats);
         if (coop) { coop.gameOver = 1; coop.gameOverStats = stats; }
       }
@@ -487,7 +521,7 @@ async function start() {
     if (coop && ui.winVisible && coop.gameOver !== 2) { coop.gameOver = 2; coop.gameOverStats = run.winStats || ''; }
     if ((hud.deathVisible || ui.winVisible) && (input.retry() || (coop && coop.input.retries > 0))) restart();
     // Durante o hitstop os botões apertados ficam guardados (o clique do combo não se perde).
-    if (sim > 0) { input.endFrame(); if (coop) coop.input.endFrame(); }
+    if (sim > 0 || cineNow) { input.endFrame(); if (coop) coop.input.endFrame(); }
   };
 
   // Anfitrião: lê os comandos do Jogador 2 e percebe se ele saiu.
@@ -507,7 +541,7 @@ async function start() {
     const n = h.ammo ? `${h.ammo.max} ${h.ammo.kind === 'kunai' ? 'kunais' : 'virotes'}` : `${h.combo.length}x = combo`;
     const block = !h.noShield || !!h.ability;
     const atk = h.caster ? 'magia' : h.ammo ? (h.ammo.kind === 'kunai' ? 'arremessar' : 'atirar') : 'atacar';
-    const blk = h.ability === 'smoke' ? 'fumaça' : h.ability === 'parry' ? 'aparar' : h.block && h.block.wall ? 'barreira' : 'bloquear';
+    const blk = h.ability === 'smoke' ? 'fumaça' : h.ability === 'parry' ? 'aparar' : h.block && h.block.reflect ? 'barreira (rebate)' : 'bloquear';
     return d === 'pad'
       ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span><span><b>Start</b> pausa</span>`
       : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span><span><b>Esc</b> pausa</span>`;
@@ -537,7 +571,7 @@ async function start() {
       if (client.replica.me && !client.spectator) updateHint(client.replica.me.hero);
       input.endFrame();
     } else if (selfTest.running) {
-      if (mode === 'menu') { menu.hide(); setMode('solo'); }
+      if (mode === 'menu') { menu.hide(); title.hide(); setMode('solo'); }
       // Teste automático: vários passos fixos por quadro (não depende do FPS) até um ponto congelado.
       for (let i = 0; i < selfTest.stepsPerFrame; i++) {
         const d = selfTest.update();
@@ -546,6 +580,7 @@ async function start() {
       }
     } else if (mode === 'menu') {
       if (net.a) hostNet(realDt);
+      if (!pause.visible) { if (title.visible) title.nav(input.wasPressed); else menu.nav(input.wasPressed); }
       cam.follow(player.position, realDt, 5);
       input.endFrame();
     } else {
@@ -562,9 +597,10 @@ async function start() {
     const ear = mode === 'client' && client.spectator ? cam.target : me.position;
     audio.listener.x = ear.x; audio.listener.z = ear.z;
     if (mode === 'client') {
-      pickMusic([...client.replica.enemies.values()].filter((e) => e.data.boss && e.code !== 1 && e.code !== 2), hud.deathVisible);
-    } else pickMusic(combat.enemies.filter((e) => e.data.boss && (e.alive || e.finale)), hud.deathVisible || (mode === 'solo' && player.state === 'dead'));
-    renderer.render(scene, cam.camera);
+      const live = [...client.replica.enemies.values()].filter((e) => e.code !== 1 && e.code !== 2);
+      pickMusic(live.filter((e) => e.data.boss), hud.deathVisible, live.length > 0, performance.now() / 1000, client.replica.inTavern ? 'tavern' : 'dungeon');
+    } else if (mode === 'menu') pickMusic([], false, false, simTime + 99, 'menu'); // anfitrião/sozinho: a música é escolhida no step() (funciona também no teste automático)
+    if (!document.body.classList.contains('mscene') && !title.visible) renderer.render(scene, cam.camera); // menu aberto: a cena da cripta cobre tudo
     state.frames++;
     if (DEBUG) {
       fpsAcc += realDt; fpsFrames++;
@@ -583,6 +619,7 @@ async function start() {
   setInterval(() => { if (document.hidden) frame(); }, 100);
 
   save.connect(); // progresso na conta do Claude (se der); o navegador já vale desde o começo
+  await title.show();
   loading.hide();
   state.ready = true;
 }

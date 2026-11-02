@@ -37,6 +37,7 @@ export class CoopClient {
     r.onChoice = (id, options, title) => {
       this.ui.openChoice(options, r.me.blessings || {}, (b, i) => { this.pick = [id, i]; this.send(true); }, title);
     };
+    r.onDoorAsk = (id, title, sub) => { this.ui.openConfirm(title, sub, (o, i) => { this.pick = [id, i]; this.send(true); }); };
     r.onChoiceGone = () => { if (this.ui.modal) this.ui.closeChoice(); };
     this.hud.onRetry = () => { this.cnt.rt++; };
     this.ui.onRetry = () => { this.cnt.rt++; };
@@ -86,7 +87,7 @@ export class CoopClient {
     this.net.send(this.net.a, {
       role: 'guest',
       in: [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, aim === null ? null : Math.round(aim * 100) / 100,
-        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt, c.ult],
+        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt, c.ult, !this.ui.modal && input.attackHeld() ? 1 : 0],
       pk: this.pick || 0,
       sq: this.sq,
       sv: [save.data.soul, save.data.ups, save.data.runs, save.data.best],

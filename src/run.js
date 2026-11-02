@@ -1,3 +1,4 @@
+import { statGold, resetStats } from './runstats.js';
 import { DIFF } from './difficulty.js';
 // A partida (uma descida): monta cada sala, tranca as portas, roda as ondas, dá a recompensa
 // e leva os heróis para a sala escolhida. Também cuida do mercador, do baú e da cama de descanso.
@@ -5,12 +6,12 @@ import { DIFF } from './difficulty.js';
 // com um anel da cor do dono no chão). A sala de descanso traz o parceiro caído de volta.
 import * as THREE from 'three';
 import { audio } from './audio.js';
-import { ROOMS } from './dungeon/rooms.js';
+import { ROOMS, coopRoom } from './dungeon/rooms.js';
 import { buildRoom } from './dungeon/builder.js';
 import { generateFloor, NODE_INFO, FLOORS } from './dungeon/generator.js';
 import { repairShield } from './shield.js';
 import { updateSpikes } from './traps.js';
-import { rollBlessings, rollShop, rollRisky, rollUltBlessings, RARITY, BLESSINGS } from './blessings.js';
+import { rollBlessings, rollShop, rollRisky, rollUltBlessings, ensureLegendary, RARITY, BLESSINGS, blockKind } from './blessings.js';
 import { Pickup, iconFor } from './rewards.js';
 import { Merchant } from './merchant.js';
 import { Mercenary, ALLY } from './ally.js';
@@ -42,7 +43,7 @@ export function decorateDoors(scene, ui, built, infos) {
 // Uma linha sobre cada herói (aviso da cadeira na Taverna).
 function heroDesc(h) {
   return h === 'mage' ? 'Ataca de longe com magia; barreira mágica para bloquear. Menos vida (50).'
-    : h === 'rogue' ? 'Rápido, com 25% de crítico; bomba de fumaça para sumir. 70 de vida, sem escudo.'
+    : h === 'rogue' ? 'Rápido, com armas de arremesso; as Adagas têm 25% de crítico; 10% de chance de desviar de qualquer golpe. 70 de vida, sem escudo.'
       : 'Corpo a corpo com escudo. 100 de vida.';
 }
 
@@ -55,6 +56,8 @@ export class Run {
     this.icons = [];
     this.npc = null;
     this.waves.onClear = () => this.roomCleared();
+    this.combat.kit2.waves = this.waves; // Espada e Escudo (2ª leva): Duelo, Vassalo e Espada Amaldiçoada olham as ondas
+    this.waves.hold = () => this.rewardsPending();
     this.transition = null;   // { t, node } enquanto troca de sala
     this.roomVersion = 0;     // co-op: muda a cada sala nova
     this.doorInfos = [];
@@ -84,6 +87,7 @@ export class Run {
     this.step = 0;
     this.history = [];
     this.pendingChoice = null;
+    this.doorAsk = null;
     this.hired = false;       // mercador contratado para a próxima luta de chefe
     this.banked = false;
     for (const p of this.players) { this.equipSaved(p); p.reset(0, 0); }
@@ -118,10 +122,11 @@ export class Run {
     this.history = [];        // tipos das salas visitadas (minimapa)
     this.startTime = performance.now();
     this.pendingChoice = null;
+    this.doorAsk = null;
     this.banked = false;
     this.combat.kills = 0;
     this.waves.cleared = 0;
-    for (const p of this.players) { this.equipSaved(p, opts.noUpgrades); p.reset(0, 0); }
+    for (const p of this.players) { this.equipSaved(p, opts.noUpgrades); p.reset(0, 0); resetStats(p); }
     this.hud.setBlessings({}, BLESSINGS, RARITY);
     this.enter(this.floor.first, true);
     this.hud.banner(`Andar 1 — ${FLOORS[1].name}`, 'big');
@@ -157,13 +162,14 @@ export class Run {
     if (node.kind !== 'tavern') this.history.push(node.kind === 'combat' ? node.reward : node.kind);
     // Fôlego: cura um pouco ao entrar numa sala nova.
     for (const p of this.players) {
+      p.openerReady = p.stats.opener > 0; // Quebra-Gelo: o 1º ataque desta sala dá mais dano
       const rh = p.stats.roomHeal;
       if (rh > 0 && this.history.length > 1 && p.state !== 'dead') {
         const healed = p.heal(rh);
         if (healed) this.combat.text.add(`+${healed}`, p.position, 'heal');
       }
     }
-    const room = ROOMS[node.room];
+    const room = this.coop ? coopRoom(node.room) : ROOMS[node.room]; // co-op: sala um pouco maior
     const options = this.nextOptions;
     const slots = this.chooseSlots(room, options.length);
     this.slots = slots;
@@ -173,6 +179,16 @@ export class Run {
     this.world.clear();
     built.colliders.forEach((r) => this.world.addRect(...r));
     this.world.setBounds(built.halfW, built.halfD, built.wallHalf ?? 0.5);
+    this.combat.props.setRoom(built, this.world); // objetos quebráveis
+    this.combat.props.onDrop = (pos) => { // baú quebrado (10%): poção no chão para quem pegar primeiro
+      this.addPickup(new Pickup('potion', pos, { amount: 1, free: true }));
+      this.combat.text.add('Poção!', pos, 'heal', 3);
+    };
+    this.combat.props.onCoins = (pos) => { // qualquer objeto quebrado (10%): umas moedas no chão
+      const g = this.addPickup(new Pickup('gold', pos, { amount: 5 + Math.floor(Math.random() * 8), free: true }));
+      g.group.scale.setScalar(0.75);
+      this.combat.text.add('Moedas!', pos, 'gold', 3);
+    };
     // Portas: cada uma leva a uma opção do próximo passo, com ícone em cima.
     this.doorInfos = built.doors.map((d, i) => {
       d.node = options[i];
@@ -188,6 +204,7 @@ export class Run {
       p.placeAt(built.entrance.x + off, built.entrance.z, Math.PI);
       if (p.state === 'dead') p.group.visible = false;
     });
+    for (const p of this.players) p.restRoom = node.kind === 'rest'; // sala de descanso: poção travada
     if (node.kind === 'rest') this.reviveFallen();
     const lead = this.players.find((p) => p.state !== 'dead') || this.player;
     this.cam.target.copy(lead.position);
@@ -201,11 +218,16 @@ export class Run {
     const F = FLOORS[this.floorNum] || FLOORS[1];
     if (node.waves) this.waves.start(node.waves, {
       bounds: built, delay: node.kind === 'boss' ? 2.0 : 1.3,
-      hpScale: node.kind === 'boss' ? 1 : (node.kind === 'elite' ? 1.15 : 1 + (node.level || 0) * 0.04) * F.hp,
+      hpScale: (node.kind === 'boss' ? 1 : (node.kind === 'elite' ? 1.15 : 1 + (node.level || 0) * 0.04) * F.hp) * (this.coop ? DIFF.coopHp : 1),
       dmgScale: F.dmg,
-      mult: this.coop ? DIFF.coopWaveMult : DIFF.waveMult, bossMul: this.coop ? DIFF.coopBossMul : 1, // difficulty.js (modo brutal)
+      mult: this.coop ? DIFF.coopWaveMult : DIFF.waveMult, coop: !!this.coop, bossMul: this.coop ? DIFF.coopBossMul : 1, // difficulty.js (modo brutal)
     });
     this.combat.hazards.bounds = built; // magias do Necromante usam o tamanho da sala
+    this.combat.kit2.roomStart(node); // Espada Amaldiçoada: pedido da sala
+    this.combat.axe.roomStart(); // Machado: Giro Crescente e Sede de Batalha zeram a cada sala
+    // A recompensa vem no começo da sala (pedido do dono, 30/10): a 1ª onda espera até pegarem tudo.
+    this.rewardsGiven = false;
+    if (node.waves && !this.waves.noHold && !(node.kind === 'boss' && this.floorNum >= 3)) this.giveRewards(); // (noHold = testes antigos: recompensa no fim, como antes)
     if (node.kind === 'boss') this.hud.banner(node.intro || 'O chefe desperta…', 'big');
     if (node.kind === 'merchant') this.addMerchant();
     if ((node.kind === 'boss' || node.kind === 'elite') && this.hired) this.addAlly(built);
@@ -269,14 +291,25 @@ export class Run {
     const n = this.node, at = this.built.reward;
     if (this.npc && this.npc.ally) this.npc.leave(); // luta acabou: o mercador contratado vai embora
     if (n.kind === 'boss' && this.floorNum >= 3) { this.victory(); return; } // o Ceifador: fim da partida
+    this.combat.kit2.roomClear(); // Vassalo vai embora; Espada Amaldiçoada cobra o pedido
     this.hud.banner('Sala limpa!', 'big');
     audio.play('clear', null, null);
     this.hud.hideBoss();
+    if (!this.rewardsGiven) this.giveRewards();
+    if (n.kind === 'merchant') this.openShop();
+    this.vfx.burst(at, 0xffd36a);
+    this.checkDoors();
+  }
+
+  // Recompensas da sala (bênção + prêmio da porta). Dadas na entrada da sala.
+  giveRewards() {
+    const n = this.node, at = this.built.reward;
+    this.rewardsGiven = true;
     for (const p of this.players) {
       const side = this.spot(at.clone().add(new THREE.Vector3(3, 0, 0)), p, 0).add(new THREE.Vector3(0, 0, this.coop ? (p.id === 1 ? -1 : 1) : 0));
-      // Toda sala limpa dá uma bênção (o Guardião dá uma rara ou melhor)...
+      // Toda sala dá uma bênção (o Guardião dá uma rara ou melhor)...
       const bigBoss = n.kind === 'elite' || n.kind === 'boss'; // Rei Skullbone / Necromante
-      if (bigBoss) this.ownPickup('blessing', this.spot(at, p), { minRarity: n.kind === 'boss' ? 'epic' : 'rare', color: 0xffc24a, size: 1.2 }, p);
+      if (bigBoss) this.ownPickup('blessing', this.spot(at, p), { minRarity: n.kind === 'boss' ? 'epic' : 'rare', color: 0xffc24a, size: 1.2, legend: true }, p);
       else this.ownPickup('blessing', this.spot(n.kind === 'treasure' ? at.clone().add(new THREE.Vector3(-3.5, 0, 1)) : at, p), {}, p);
       // ... mais o prêmio da porta.
       if (bigBoss) this.ownPickup('gold', side, { amount: 60 + (this.floorNum - 1) * 20 }, p);
@@ -285,9 +318,12 @@ export class Run {
       else if (n.reward === 'ult') this.ownPickup('blessing', side, { ult: true, color: 0xff9a2a, size: 1.2 }, p); // Bênção da Ultimate
       else if (n.kind === 'treasure') this.addChest(p);
     }
-    if (n.kind === 'merchant') this.openShop();
-    this.vfx.burst(at, 0xffd36a);
-    this.checkDoors();
+  }
+
+  // Ainda tem recompensa da entrada para pegar/escolher? (a 1ª onda espera; no máximo 20 s)
+  rewardsPending() {
+    if (this.pendingChoice || this.players.some((p) => p.choosing && p.state !== 'dead')) return true;
+    return this.pickups.some((p) => p.auto && !p.taken && !p.opts.free && !(p.opts.owner && p.opts.owner.state === 'dead'));
   }
 
   addPickup(p) { p.id = ++this.pickupSeq; this.pickups.push(p); this.scene.add(p.group); return p; }
@@ -295,7 +331,7 @@ export class Run {
   // As portas abrem quando não sobrou recompensa automática para pegar (de quem está vivo).
   checkDoors() {
     if (this.waves.active || this.doorsOpen) return;
-    if (this.pickups.some((p) => p.auto && !p.taken && !(p.opts.owner && p.opts.owner.state === 'dead'))) return;
+    if (this.pickups.some((p) => p.auto && !p.taken && !p.opts.free && !(p.opts.owner && p.opts.owner.state === 'dead'))) return;
     if (this.pendingChoice || this.players.some((p) => p.choosing)) return;
     this.openDoors(true);
   }
@@ -343,7 +379,8 @@ export class Run {
   // Co-op: cada jogador pode comprar cada item uma vez (com o próprio ouro).
   openShop() {
     if (!this.npc || !this.npc.alive) { this.hud.banner('O mercador está morto: sem trocas', 'small'); return; }
-    const offers = rollShop(this.player.blessings, Math.random, this.player.hero.noShield);
+    const offers = rollShop(this.player.blessings, Math.random, this.player.hero);
+    for (const pl of this.players) pl.freeBuyReady = !!pl.stats.freeBuy; // Negociador: 1ª compra desta visita grátis
     const tables = ROOMS.mercador.props.filter((p) => p[0] === 'table_small');
     const items = [{ item: 'potion' }, ...offers.map((b) => ({ item: 'blessing', blessing: b }))];
     items.forEach((it, i) => {
@@ -380,10 +417,11 @@ export class Run {
       if (ownsWeapon(sv.ups, pl.heroId, w.id)) return `Equipar ${name}<br><small>${w.desc}</small>`;
       return `Comprar ${name} · <span class="soulp">${WEAPON_PRICE}</span><br><small>${w.desc}</small>`;
     }
-    if (it.item === 'potion') return `Comprar Poção · ${it.price} ouro`;
-    if (it.item === 'hire') return `Contratar o mercador · ${it.price} ouro<br><small>Ele luta ao seu lado contra o próximo chefe: flechas, rolamentos e uma saraivada a cada minuto.</small>`;
+    const cost = pl.freeBuyReady ? '<b style="color:#7dff8a">grátis</b> (Negociador)' : `${it.price} ouro`;
+    if (it.item === 'potion') return `Comprar Poção · ${cost}`;
+    if (it.item === 'hire') return `Contratar o mercador · ${cost}<br><small>Ele luta ao seu lado contra o próximo chefe: flechas, rolamentos e uma saraivada a cada minuto.</small>`;
     const b = it.blessing;
-    return `Comprar <i style="color:${RARITY[b.rarity].color}">${b.name}</i> · ${it.price} ouro<br><small>${b.desc((owned[b.id] || 0) + 1)}</small>`;
+    return `Comprar <i style="color:${RARITY[b.rarity].color}">${b.name}</i> · ${cost}<br><small>${b.desc((owned[b.id] || 0) + 1)}</small>`;
   }
 
   // ---------- Pegar / usar ----------
@@ -393,7 +431,7 @@ export class Run {
         p.taken = true;
         this.removePickup(p);
         if (p.opts.ult) this.offerBlessings('common', p.pos, () => this.checkDoors(), 'Bênção da Ultimate', pl, true);
-        else this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl);
+        else this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl, false, !!p.opts.legend); // sala do chefe: 1 lendária garantida
         return;
       case 'gold':
         p.taken = true;
@@ -420,6 +458,7 @@ export class Run {
           this.removePickup(p);
           const i = this.world.rects.indexOf(p.rect || this.chestRect);
           if (i >= 0) this.world.rects.splice(i, 1);
+          if (Math.random() < 0.1) { pl.potions++; this.combat.text.add('+1 poção', p.pos, 'heal', 3); audio.play('potion', p.pos.x, p.pos.z); } // baú: 10% de poção
           this.offerBlessings('rare', p.pos, null, 'Tesouro! Escolha uma bênção', pl);
         });
         break;
@@ -437,12 +476,14 @@ export class Run {
       case 'shop':
         if (p.opts.item === 'weapon') { this.buyWeapon(p, pl); return; }
         if (p.opts.item === 'hero') { this.heroSeat(p, pl); return; }
-        if (pl.gold < p.opts.price) {
+        const free = !!pl.freeBuyReady; // Negociador
+        if (!free && pl.gold < p.opts.price) {
           this.combat.text.add('Ouro insuficiente', p.pos, 'miss', 2.8);
           if (pl.ux) pl.ux.goldWarn(); else this.hud.goldWarn();
           return;
         }
-        pl.gold -= p.opts.price;
+        if (free) { pl.freeBuyReady = false; this.combat.text.add('Grátis!', pl.position, 'gold', 3.2); }
+        else pl.gold -= p.opts.price;
         audio.play('gold', p.pos.x, p.pos.z);
         if (pl === this.player) this.hud.setGold(pl.gold);
         if (p.opts.item === 'potion') { pl.potions++; this.combat.text.add('+1 poção', pl.position, 'heal'); }
@@ -537,6 +578,7 @@ export class Run {
   addGold(n, pos, pl = this.player) {
     n = Math.round(n * pl.stats.goldMul);
     pl.gold += n;
+    statGold(pl, n);
     if (pl === this.player) this.hud.setGold(pl.gold);
     this.combat.text.add(`+${n} ouro`, pos, 'gold');
     audio.play('gold', pos.x, pos.z);
@@ -545,8 +587,9 @@ export class Run {
 
   // Escolha de bênção. Jogador 1: menu nesta tela. Jogador 2 (co-op): o menu abre no computador dele.
   // ult = escolha da sala "Bênção da Ultimate" (só melhorias da ultimate, sem a carta arriscada).
-  offerBlessings(minRarity, pos, after, title, pl = this.player, ult = false) {
-    const options = ult ? rollUltBlessings(pl.blessings, pl.heroId) : rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero.noShield);
+  offerBlessings(minRarity, pos, after, title, pl = this.player, ult = false, legend = false) {
+    const options = ult ? rollUltBlessings(pl.blessings, pl.heroId) : rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero);
+    if (legend && !ult) ensureLegendary(options, pl.blessings, Math.random, pl.hero);
     const risky = ult ? null : rollRisky(pl.blessings);
     if (risky && options.length) options.push(risky); // 4ª carta: arriscada (borda vermelha)
     if (!options.length) { if (after) after(); return; }
@@ -567,6 +610,8 @@ export class Run {
     const c = this.pendingChoice;
     if (!c || c.id !== id) return;
     this.pendingChoice = null;
+    this.doorAsk = null;
+    if (c.door) { if (idx < 0) { this.doorAsk = null; c.pl.choosing = false; } else c.onDoor(idx === 0); return; } // pergunta da porta
     c.pl.choosing = false;
     const b = c.options[idx];
     if (b) this.grantBlessing(b, c.pl);
@@ -618,9 +663,9 @@ export class Run {
     }
 
     // Entrar por uma porta aberta (qualquer herói vivo leva os dois).
-    if (this.doorsOpen && this.built) {
+    if (this.doorsOpen && this.built && !this.doorAsk) {
       for (const pl of this.players) {
-        if (pl.state === 'dead' || this.transition) continue;
+        if (pl.state === 'dead' || this.transition || pl.choosing || (pl.remote && this.pendingChoice)) continue;
         for (const d of this.built.doors) {
           if (!d.node || d.k < 0.6) continue;
           if (!this.atDoor(pl, d)) continue;
@@ -629,11 +674,34 @@ export class Run {
             if (!(this.waitMsg > 0)) { this.waitMsg = 3; this.hud.banner('Esperando o parceiro na porta…', 'small'); }
             continue;
           }
-          this.go(d.node);
+          if (d.declined && d.declined.has(pl)) continue; // disse "não": só pergunta de novo depois de sair da porta
+          if (this.skipDoorAsk && this.skipDoorAsk()) { this.go(d.node); break; }
+          this.askDoor(pl, d);
           break;
         }
+        if (this.doorAsk) break;
       }
     }
+    // Quem disse "não" e saiu da porta pode ser perguntado de novo.
+    if (this.built) for (const d of this.built.doors) if (d.declined) for (const pl of d.declined) if (!this.atDoor(pl, d)) d.declined.delete(pl);
+  }
+
+  // Encostou numa porta aberta: pergunta se quer entrar agora (pedido do dono, 31/10).
+  // Jogador 1: menu nesta tela (sozinho o jogo pausa). Jogador 2 (co-op): a pergunta abre no computador dele.
+  askDoor(pl, d) {
+    const i = this.built.doors.indexOf(d), info = this.doorInfos[i];
+    const title = 'Entrar na porta agora?', sub = info ? info.text : '';
+    pl.choosing = true;
+    const ask = (this.doorAsk = { pl, d });
+    const done = (yes) => {
+      if (this.doorAsk !== ask) return;
+      this.doorAsk = null;
+      pl.choosing = false;
+      if (yes && this.doorsOpen && !this.transition && pl.state !== 'dead') this.go(d.node);
+      else (d.declined ||= new Set()).add(pl);
+    };
+    if (pl.remote) { this.pendingChoice = { id: ++this.choiceSeq, door: true, options: [], title, sub, pl, onDoor: done }; return; }
+    this.ui.openConfirm(title, sub, (o, k) => done(k === 0));
   }
 
   atDoor(pl, d) { return Math.abs(pl.position.x - d.x) < 1.5 && pl.position.z < d.z + 0.5 + pl.hero.radius + 0.35; }
@@ -660,6 +728,11 @@ export class Run {
 
   // ---------- Troca de sala ----------
   go(node) {
+    // Alguém entrou: fecha a pergunta da porta que estiver aberta (co-op).
+    if (this.doorAsk) { this.doorAsk.pl.choosing = false; this.doorAsk = null; }
+    if (this.pendingChoice && this.pendingChoice.door) this.pendingChoice = null;
+    if (this.ui.choice && this.ui.choice.confirm) this.ui.closeChoice();
+    for (const d of this.built ? this.built.doors : []) d.declined = null;
     this.transition = { t: 0, node, swapped: false };
     for (const p of this.players) p.frozen = true;
     this.ui.fade(true);

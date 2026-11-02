@@ -143,7 +143,7 @@ export function runSpell(e, dt, ctx, { dist, toPlayer }) {
         combat.cam.shake(0.4);
         for (const h of combat.alivePlayers) {
           if (Math.hypot(h.position.x - e.position.x, h.position.z - e.position.z) <= N.radius + h.hero.radius) {
-            combat.hitPlayer(e, Math.round(N.damage * (e.dmgScale || 1)), { push: N.push, noRepel: true, target: h });
+            combat.hitPlayer(e, Math.round(N.damage * (e.dmgScale || 1)), { push: N.push, noRepel: true, bossSkill: true, target: h });
           }
         }
       }

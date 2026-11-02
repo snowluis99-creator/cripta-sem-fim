@@ -421,3 +421,25 @@ ROOMS.santuario = { ...ROOMS.trono, name: 'Santuário do Ceifador', doors: [], t
 export const COMBAT_ROOMS = ['guarita', 'pilares', 'deposito', 'refeitorio', 'ruinas', 'galeria', 'arsenal'];
 export const CRYPT_ROOMS = ['cemiterio', 'ossario', 'caixoes', 'capela', 'corredor', 'tumulos'];
 export const SHADOW_ROOMS = [...Object.keys(SHADOW_NAMES).map((id) => `s_${id}`), 's_catacumba'];
+
+// Co-op: salas um pouco maiores (pedido do dono, 30/10): +1 tile de cada lado na largura e +1 tile no fundo/frente
+// (largura +8, profundidade +4). Obstáculos e recompensa ficam onde estavam (coordenadas a partir do centro).
+// Paredes N/S ganham uma peça em cada ponta (índices de portas/entrada/tochas +1); W/E ganham uma peça.
+const bigCache = {};
+export function coopRoom(id) {
+  const r = ROOMS[id];
+  if (!r || r.special === 'tavern') return r;
+  if (bigCache[id]) return bigCache[id];
+  const sh = (side, i) => (side === 'N' || side === 'S' ? i + 1 : i);
+  return (bigCache[id] = {
+    ...r,
+    width: r.width + 2, depth: r.depth + 1,
+    walls: { N: ['wall', ...r.walls.N, 'wall'], S: ['wall', ...r.walls.S, 'wall'], W: [...r.walls.W, 'wall'], E: [...r.walls.E, 'wall'] },
+    doors: r.doors.map((i) => i + 1), entrance: r.entrance + 1,
+    floorDetails: r.floorDetails.map(([tx, tz, q, p]) => [tx + 1, tz, q, p]),
+    spikes: r.spikes && r.spikes.map(([tx, tz, ph]) => [tx + 1, tz, ph]),
+    torches: r.torches.map(([side, i]) => [side, sh(side, i)]),
+    wallDeco: (r.wallDeco || []).map(([n, side, i, y]) => [n, side, sh(side, i), y]),
+    big: true,
+  });
+}

@@ -1,4 +1,5 @@
 // Interface: barra de vida, poções, onda atual, avisos e tela de morte.
+import { settings } from './settings.js';
 
 const FLASK = `<svg viewBox="0 0 24 32" width="22" height="29" aria-hidden="true">
   <path d="M9 2h6v3h-1v5.5c4 1.6 7 5.3 7 9.8C21 26 17 30 12 30S3 26 3 20.3c0-4.5 3-8.2 7-9.8V5H9z"
@@ -31,7 +32,7 @@ export class Hud {
       <div class="vignette"></div>
       <div class="dead">
         <h2>Você morreu</h2>
-        <p class="stats"></p>
+        <div class="stats"></div>
         <button type="button">Voltar à Taverna</button>
         <p class="hint">Enter, R ou A no controle</p>
       </div>`;
@@ -280,3 +281,4 @@ export class Hud {
     this.vignette.style.opacity = Math.max(this.hurtAmt * 0.9, low).toFixed(3);
   }
 }
+

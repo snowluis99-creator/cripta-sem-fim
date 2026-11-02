@@ -107,6 +107,8 @@ export const input = {
   },
   attack: () => pressed.has('MouseLeft') || pressed.has('KeyJ') || pressed.has('PadX') || pressed.has('PadRB'),
   dodge: () => pressed.has('Space') || pressed.has('PadA') || pressed.has('PadB'),
+  attackHeld: () => mouse.left || down.has('KeyJ') || padHeld(2) || padHeld(5), // Pião: gira enquanto segura
+  dodgeHeld: () => down.has('Space') || padHeld(0) || padHeld(1), // Trenó de Escudo: desliza enquanto segura
   potion: () => pressed.has('KeyQ') || pressed.has('PadY'),
   interact: () => pressed.has('KeyE') || pressed.has('PadY'),
   ultimate: () => pressed.has('KeyR') || pressed.has('PadRT'),

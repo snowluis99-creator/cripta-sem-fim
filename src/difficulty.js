@@ -16,8 +16,12 @@ export const DIFF = {
   phaseAt: { necromancer: [0.75, 0.45], reaper: [0.6] },
   // Salas (run.js / waves.js)
   waveMult: 1.35,      // esqueletos por onda (sozinho)
-  coopWaveMult: 2.3,   // no co-op
-  coopBossMul: 2.7,    // vida do chefe no co-op
+  coopWaveMult: 1.35 * 1.5, // no co-op: +50% de esqueletos em relação ao sozinho (pedido do dono, 30/10)
+  coopHp: 1.5,         // no co-op: vida de TODOS os inimigos +50% (chefes também; antes o chefe tinha ×2,7)
+  coopBossMul: 1,      // extra só do chefe no co-op (além do coopHp)
+  // Máximo de cada tipo ao mesmo tempo na sala (pedido do dono, 30/10: salas lotadas demais).
+  // Vale por onda e também para os invocados pelos chefes. minion = [sozinho, co-op].
+  maxOnField: { archer: 2, warrior: 2, mage: 2, assassin: 2, minion: [5, 6] },
   floorDmg: [1.4, 1.6, 1.8], // dano dos inimigos por andar (era 1 / 1,15 / 1,25)
 };
 

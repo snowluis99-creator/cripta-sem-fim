@@ -2,6 +2,9 @@
 // escurecer entre salas e tela de fim de andar.
 import * as THREE from 'three';
 import { RARITY, describe } from './blessings.js';
+import { weaponById } from './heroes.js';
+// Bênção exclusiva: nome curto da arma ("Espada", "Kunais"...).
+const wName = (b) => { if (!b.weapon) return ''; const [h, w] = b.weapon.split('.'); return weaponById(h, w).short; };
 import { input } from './input.js';
 
 const tmp = new THREE.Vector3();
@@ -87,7 +90,7 @@ export class Ui {
       card.className = b.rarity === 'risky' ? 'card risky' : 'card';
       card.style.setProperty('--rc', r.color);
       card.innerHTML = `<span class="num">${i + 1}</span><span class="ico">${b.icon}</span><span class="nm">${b.name}</span>`
-        + `<span class="rar">${r.name}${lvl ? ` · nível ${lvl + 1}` : ''}</span><span class="ds">${describe(b, owned)}</span>`;
+        + `<span class="rar">${r.name}${b.weapon ? ` · ${wName(b)}` : ''}${lvl ? ` · nível ${lvl + 1}` : ''}</span><span class="ds">${describe(b, owned)}</span>`;
       card.addEventListener('click', () => this.pick(i));
       card.addEventListener('pointerenter', () => this.highlight(i));
       cards.appendChild(card);
@@ -96,8 +99,34 @@ export class Ui {
       ? 'Analógico escolhe · <b>A</b> confirma' : `Clique, ou ${options.map((_, i) => `<b>${i + 1}</b>`).join(' ')}, ou setas + <b>Enter</b>`;
     this.choice = { options, index: 0, onPick };
     this.highlight(0);
+    this.choiceEl.classList.remove('confirm');
     this.choiceEl.classList.add('show');
     this.navCooldown = 0.25; // evita escolher sem querer com o clique/tecla que abriu o menu
+  }
+
+  // --- Confirmação simples Sim/Não (porta). onPick(opção, i): i = 0 → Sim, 1 → Não. ---
+  openConfirm(title, sub, onPick) {
+    this.$('.choice h2').textContent = title;
+    this.$('.choice .sub').textContent = sub || '';
+    const cards = this.$('.choice .cards');
+    cards.innerHTML = '';
+    const opts = [{ id: 'yes', icon: '🚪', name: 'Sim', ds: 'Entrar agora', color: '#7dd87d' }, { id: 'no', icon: '✋', name: 'Não', ds: 'Ficar na sala', color: '#c9b79a' }];
+    opts.forEach((o, i) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'card yn';
+      card.style.setProperty('--rc', o.color);
+      card.innerHTML = `<span class="num">${i + 1}</span><span class="ico">${o.icon}</span><span class="nm">${o.name}</span><span class="ds">${o.ds}</span>`;
+      card.addEventListener('click', () => this.pick(i));
+      card.addEventListener('pointerenter', () => this.highlight(i));
+      cards.appendChild(card);
+    });
+    this.$('.choice .hint').innerHTML = input.device === 'pad'
+      ? 'Analógico escolhe · <b>A</b> confirma · <b>B</b> não' : 'Clique, ou <b>1</b> sim · <b>2</b> não, ou setas + <b>Enter</b> · <b>Esc</b> não';
+    this.choice = { options: opts, index: 0, onPick, confirm: true };
+    this.highlight(0);
+    this.choiceEl.classList.add('show', 'confirm');
+    this.navCooldown = 0.25;
   }
 
   highlight(i) {
@@ -127,6 +156,7 @@ export class Ui {
     const right = input.wasPressed('ArrowRight') || input.wasPressed('KeyD') || input.wasPressed('PadRight');
     if (left) this.highlight((this.choice.index + n - 1) % n);
     if (right) this.highlight((this.choice.index + 1) % n);
+    if (this.choice.confirm && (input.wasPressed('Escape') || input.wasPressed('PadB'))) { this.navCooldown = 0; this.pick(1); return; }
     if (input.wasPressed('Enter') || input.wasPressed('Space') || input.wasPressed('KeyE') || input.wasPressed('PadA')) {
       this.pick(this.choice.index);
     }

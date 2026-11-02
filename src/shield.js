@@ -11,7 +11,7 @@ export const SHIELD = {
   shardDamage: 40, shardRadius: 4.2, // Estilhaços: explosão quando quebra
 };
 
-export const shieldMax = (p) => (p.hero && p.hero.noShield ? 0 : SHIELD.base + (p.stats.shieldBonus || 0));
+export const shieldMax = (p) => (p.hero && p.hero.noShield ? 0 : SHIELD.base + (p.stats.shieldBonus || 0)); // Maga: a barreira gasta igual ao escudo
 
 // Liga o modelo do escudo (materiais próprios para escurecer conforme ele se desgasta).
 export function initShield(p, mesh) {
@@ -27,7 +27,7 @@ export function initShield(p, mesh) {
 export function shieldVisual(p) {
   if (!p.shieldMesh) return;
   const max = shieldMax(p), k = Math.max(0, p.shield) / max;
-  p.shieldMesh.visible = p.shield > 0;
+  p.shieldMesh.visible = p.shield > 0 && !p.shieldAway; // shieldAway: arremessado/fincado/trenó (knightkit.js)
   for (const { m, c } of p.shieldMats) m.color.copy(c).lerp(new THREE.Color(0x5a2a1a), (1 - k) * 0.55);
   p.shieldShown = p.shield;
 }

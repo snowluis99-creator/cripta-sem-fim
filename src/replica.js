@@ -1,7 +1,7 @@
 // Co-op, lado do Jogador 2: aqui nada é simulado. O computador do anfitrião manda o estado do jogo
 // e este arquivo só desenha: sala, heróis, esqueletos, recompensas, projéteis e efeitos (suavizando o movimento).
 import * as THREE from 'three';
-import { ROOMS } from './dungeon/rooms.js';
+import { ROOMS, coopRoom } from './dungeon/rooms.js';
 import { buildRoom } from './dungeon/builder.js';
 import { decorateDoors, PLAYER_COLORS } from './run.js';
 import { Enemy, ENEMIES } from './enemies.js';
@@ -131,7 +131,8 @@ export class Replica {
     if (ch && ch[0] !== this.choiceId) {
       this.choiceId = ch[0];
       const opts = ch[2].map((id) => BLESSING_BY_ID[id]).filter(Boolean);
-      if (this.onChoice) this.onChoice(ch[0], opts, ch[1]);
+      if (typeof ch[3] === 'string') { if (this.onDoorAsk) this.onDoorAsk(ch[0], ch[1], ch[3]); } // pergunta da porta
+      else if (this.onChoice) this.onChoice(ch[0], opts, ch[1]);
     } else if (!ch && this.choiceId && this.onChoiceGone) { this.onChoiceGone(); }
     if (!ch) this.choiceId = 0;
   }
@@ -140,13 +141,14 @@ export class Replica {
     this.clear();
     this.rv = s.rv;
     const [roomId, slots, infos] = s.rm;
-    const room = ROOMS[roomId];
+    const room = coopRoom(roomId); // co-op: sala um pouco maior (igual ao anfitrião)
     if (!room) return;
     const built = buildRoom(room, { doors: slots });
     this.built = built;
     this.scene.add(built.group);
     this.world.clear();
     built.colliders.forEach((r) => this.world.addRect(...r));
+    for (const b of built.breakables || []) b.rect = b.colIdx >= 0 ? this.world.rects[b.colIdx] : null;
     this.world.setBounds(built.halfW, built.halfD, built.wallHalf ?? 0.5);
     this.icons = decorateDoors(this.scene, this.ui, built, infos);
     if (room.special === 'tavern') { this.tvv = s.tvv; this.buildTavernDecor(this.world); }
@@ -345,6 +347,14 @@ export class Replica {
     const [type] = e;
     switch (type) {
       case 'U': this.playUnlock(e[1]); break;
+      case 'pb': { // objeto quebrado (props.js): some e libera a passagem
+        const b = this.built && this.built.breakables && this.built.breakables[e[1]];
+        if (b && !b.broken) {
+          b.broken = true; b.obj.visible = false;
+          if (b.rect) { const j = this.world.rects.indexOf(b.rect); if (j >= 0) this.world.rects.splice(j, 1); }
+        }
+        break;
+      }
       case 'v': { const fn = this.vfx[e[1]]; if (fn) fn.apply(this.vfx, e.slice(2).map(unvec)); break; }
       case 't': this.text.add(e[1], { x: e[2], z: e[3] }, e[4], e[5]); break;
       case 'k': this.cam.shake(e[1]); break;
@@ -412,6 +422,7 @@ export class Replica {
       ammoSmoke(p, !!(us && us[5])); // Ladino invisível: transparente também na tela do Jogador 2
       p.netDead = !!dead;
       p.anim.update(dt);
+      p.aimForward(); // besta do Ladino apontada para a frente
       if (p.weapon && p.weapon.userData.flail) updateFlail(p.weapon, dt);
     });
     this.snapHeroes = false;

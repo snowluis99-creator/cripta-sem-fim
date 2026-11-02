@@ -24,9 +24,12 @@ export function createCamera() {
   updateZoom();
   // Tremida: intensidade que cai rápido; o deslocamento é aplicado depois do lookAt.
   let shakeAmp = 0, shakeT = 0;
+  let cz = 1, czWant = 1; // zoom da cena da ultimate (chega perto do herói)
   const place = () => {
-    cam.position.set(target.x, target.y + CAMERA_CONFIG.height * zoom, target.z + CAMERA_CONFIG.back * zoom);
-    cam.lookAt(target);
+    const zz = zoom * cz;
+    const k = (1 - cz) / 0.45; // 0 = normal, 1 = cena da ultimate (câmera mais baixa, de frente para o herói)
+    cam.position.set(target.x, target.y + CAMERA_CONFIG.height * zz * (1 - 0.55 * k), target.z + CAMERA_CONFIG.back * zz);
+    if (k > 0.001) cam.lookAt(target.x, target.y + 1.3 * k, target.z); else cam.lookAt(target);
     if (shakeAmp > 0.001) {
       cam.position.x += Math.sin(shakeT * 71) * shakeAmp;
       cam.position.y += Math.sin(shakeT * 53 + 1.3) * shakeAmp * 0.6;
@@ -39,12 +42,14 @@ export function createCamera() {
     target,
     // Segue um ponto com suavidade (usado a partir do M1).
     follow(point, dt, stiffness = 6) {
-      target.lerp(point, 1 - Math.exp(-stiffness * dt));
+      target.lerp(point, 1 - Math.exp(-(czWant < 1 ? 14 : stiffness) * dt));
+      cz += (czWant - cz) * (1 - Math.exp(-(czWant < 1 ? 9 : 5) * dt));
       shakeT += dt;
       shakeAmp *= Math.exp(-14 * dt);
       place();
     },
     shake(amount) { if (settings.shake) shakeAmp = Math.max(shakeAmp, amount); }, // Configurações: tremida desligável
+    setCine(z) { czWant = z; },
     setBaseZoom(z) { baseZoom = z; updateZoom(); place(); },
     // Espectador: afasta até a sala inteira (chão e topo das paredes do fundo) caber na tela, olhando o meio dela.
     // Devolve o ponto para onde a câmera deve olhar.

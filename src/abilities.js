@@ -14,12 +14,13 @@ import { sayLine } from './voice.js';
 import { trySpell, runSpell, SPELL_STATES, SPELL_KEYS } from './necro.js';
 import { tryShadow, runShadow, SHADOW_STATES, SHADOW_KEYS } from './shadow.js';
 import { tryToss, runToss, TOSS_STATES } from './toss.js';
+import { undeadHit } from './undead.js';
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const rand = ([a, b]) => a + Math.random() * (b - a);
 
 // Estados controlados por este arquivo (o resto fica em enemies.js).
-export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'roll', 'hop', 'reload', 'grab', 'rage', ...TOSS_STATES, ...SPELL_STATES, ...SHADOW_STATES]);
+export const ABILITY_STATES = new Set(['leap', 'leapWind', 'chargeWind', 'charge', 'recover', 'spinWind', 'spinMove', 'spinGather', 'spin', 'summon', 'cast', 'aim', 'shot', 'roll', 'hop', 'reload', 'pickup', 'grab', 'rage', ...TOSS_STATES, ...SPELL_STATES, ...SHADOW_STATES]);
 
 // Avisos antigos (anéis e faixas no chão) foram removidos; nada a esconder.
 export function hideTelegraphs() {}
@@ -40,7 +41,7 @@ export function tryAbility(e, ctx, dist) {
   if (d.spin && cd.spin <= 0 && dist <= d.spin.range) return start(e, 'spinWind');
   if (d.summon && cd.summon <= 0) {
     const minions = ctx.combat.enemies.filter((o) => o.alive && o !== e).length;
-    if (minions < d.summon.cap * (ctx.combat.players.length > 1 ? 2 : 1)) return start(e, 'summon');
+    if (minions < d.summon.cap * (ctx.combat.players.length > 1 ? 2 : 1) && (!ctx.combat.summonRoom || ctx.combat.summonRoom(d.summon.list) > 0)) return start(e, 'summon');
     cd.summon = 3;
   }
   if (d.cast && cd.cast <= 0 && dist > 2.5) return start(e, 'cast');
@@ -121,6 +122,7 @@ function startLeap(e, ctx) {
   const spot = leapSpot(e, ctx, L.behind);
   if (!spot) { e.cd.leap = 1; return false; }
   start(e, 'leap');
+  e.cd.leap = rand(L.cooldown); // recarga começa no pulo (o golpe depois do pulo também renova)
   audio.play('swingHeavy', e.position.x, e.position.z);
   e.leapFrom = { x: e.position.x, z: e.position.z };
   e.leapTo = spot;
@@ -208,8 +210,18 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
         ctx.world.resolveCircle(e.position, d.radius);
         const moved = Math.hypot(e.position.x - bx, e.position.z - bz);
         if (moved < st * 0.5) stop = true; // bateu na parede
+        // Morto-vivo da Maga: atropela os inimigos no caminho (cada um uma vez).
+        if (e.undead) {
+          for (const o of combat.enemies) {
+            if (o.undead || !o.targetable || (e.chargeHit && e.chargeHit.has(o))) continue;
+            if (Math.hypot(o.position.x - e.position.x, o.position.z - e.position.z) >= d.radius + o.data.radius + 0.5) continue;
+            (e.chargeHit ||= new Set()).add(o);
+            e.hitDone = true;
+            undeadHit(combat, e, o, Math.round(C.damage * (e.dmgScale || 1)));
+          }
+        }
         // Atropela qualquer herói no caminho (co-op: cada um só uma vez por investida).
-        for (const h of combat.alivePlayers) {
+        for (const h of e.undead ? [] : combat.alivePlayers) {
           if (e.chargeHit && e.chargeHit.has(h)) continue;
           if (Math.hypot(h.position.x - e.position.x, h.position.z - e.position.z) >= d.radius + h.hero.radius + 0.5) continue;
           (e.chargeHit ||= new Set()).add(h);
@@ -282,7 +294,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
         // Enfurecido: o giro pega a sala inteira e não dá para rolar; só o escudo defende.
         for (const h of combat.alivePlayers) {
           const dh = Math.hypot(h.position.x - e.position.x, h.position.z - e.position.z);
-          if (S.global || dh <= S.radius + h.hero.radius) combat.hitPlayer(e, S.damage, { push: S.push, noRepel: true, unDodgeable: S.global, target: h });
+          if (S.global || dh <= S.radius + h.hero.radius) combat.hitPlayer(e, S.damage, { push: S.push, noRepel: true, unDodgeable: S.global, bossSkill: !!e.data.boss, target: h });
         }
       }
       if (pr >= 0.98) {
@@ -312,7 +324,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       if (e.t >= Cs.time) { e.setState('chase'); e.anim.play(d.anims.idle, { fade: 0.2 }); }
       return null; // parado, com a mão direita levantada
     }
-    case 'aim': case 'shot': case 'roll': case 'hop': case 'reload': return runRanged(e, dt, ctx, { toPlayer, dist });
+    case 'aim': case 'shot': case 'roll': case 'hop': case 'reload': case 'pickup': return runRanged(e, dt, ctx, { toPlayer, dist });
     case 'tpOut': case 'tpIn': case 'revive': case 'rain': case 'ring': case 'nova': return runSpell(e, dt, ctx, { dist, toPlayer });
     case 'tossGrab': case 'tossThrow': case 'held': case 'thrown': return runToss(e, dt, ctx, { dist, toPlayer });
     case 'vanish': case 'stalk': case 'ambushWind': case 'shadeOut': case 'shadeIn': case 'clones': case 'reap': return runShadow(e, dt, ctx, { dist, toPlayer });

@@ -100,7 +100,7 @@ export function* newTests(g, out, flags) {
   press('KeyQ');
   yield () => player.state !== 'drink';
   yield 0.1;
-  out(`  Alma Vampira: poção curou ${player.hp - 20} (metade de 35) ${ok(player.hp - 20 === 18)}`);
+  out(`  Alma Vampira: poção curou ${player.hp - 20} (20% de 35) ${ok(player.hp - 20 === 7)}`);
   fresh();
   for (const b of RISKY) player.addBlessing(b);
   run.offerBlessings('common', player.position.clone(), null, undefined, player);
@@ -111,6 +111,22 @@ export function* newTests(g, out, flags) {
   out(`  mercador nunca vende arriscada ${ok(rollShop({}).every((b) => b.rarity !== 'risky'))}`);
 
   // ---------------- 42) Mercador contratado ----------------
+  out('41b) Sorte Grande');
+  fresh();
+  run.enter({ kind: 'combat', reward: 'gold', room: 'guarita', waves: [[['minion', 1]]], level: 1 }, true);
+  waves.stop();
+  yield 0.1;
+  {
+    const pr = combat.props, rng0 = pr.rng, coins0 = pr.onCoins;
+    let coins = 0; pr.onCoins = () => { coins++; }; pr.rng = () => 0.2;
+    const items = pr.list.filter((b) => !b.broken);
+    if (items[0]) pr.smash(items[0], 0, 1, player);
+    const without = coins;
+    player.addBlessing(BLESSING_BY_ID.sorte);
+    if (items[1]) pr.smash(items[1], 0, 1, player);
+    pr.rng = rng0; pr.onCoins = coins0;
+    out(`  sorteio 0,2: sem a bênção não solta moeda ${ok(items.length >= 2 && without === 0)} | com Sorte Grande solta ${ok(coins === 1)}`);
+  }
   out('42) Mercador contratado para o chefe (250)');
   fresh();
   waves.paused = false;
@@ -129,6 +145,15 @@ export function* newTests(g, out, flags) {
   press('KeyE');
   yield 0.3;
   out(`  contratou: ouro 300 -> ${player.gold} ${ok(player.gold === 50 && run.hired)} | opção sumiu ${ok(!run.pickups.includes(hire))}`);
+  // Negociador: a 1ª compra da visita é grátis.
+  player.addBlessing(BLESSING_BY_ID.negociador);
+  run.openShop();
+  const pot = run.pickups.find((p) => p.opts.item === 'potion');
+  const bl = run.pickups.find((p) => p.opts.item === 'blessing');
+  player.gold = 0; const pots = player.potions;
+  run.take(pot, player);
+  run.take(bl, player);
+  out(`  Negociador: poção de graça ${ok(player.potions === pots + 1 && player.gold === 0)} | 2ª compra cobra ${ok(!bl.boughtBy.has(player))}`);
   // Sala do chefe (Grande Salão).
   run.enter({ kind: 'elite', reward: 'elite', room: 'salao', waves: [[['minion', 3]]], level: 5 }, true);
   const ally = run.npc;
@@ -189,7 +214,7 @@ export function* newTests(g, out, flags) {
   combat.clear();
 
   // ---------------- 43) Arqueiro: cambalhota até as costas do herói ----------------
-  out('43) Arqueiro: 1º golpe -> cambalhota até as costas do herói, pulo para longe, recarrega e atira');
+  out('43) Arqueiro: 1º golpe -> cambalhota até as costas do herói, pulo para longe e atira (sem recarregar)');
   fresh();
   yield 0.2;
   const ar = combat.spawn('archer', 0, 3.2, { awake: true, facing: Math.PI }); // com habilidades (o boneco passivo não rola)
@@ -209,9 +234,9 @@ export function* newTests(g, out, flags) {
   out(`  no ar ${ok(ar.group.position.y > 0.8, ar.group.position.y.toFixed(2))}`);
   out('  -> arqueiro pulando: CONGELADO (T continua)');
   yield 'hold';
-  yield () => ar.state === 'reload';
-  out(`  recarregando no chão ${ok(ar.group.position.y === 0)}`);
-  yield () => ar.state === 'aim' || ar.state === 'shot';
+  let sawRl = false;
+  yield () => { if (ar.state === 'reload') sawRl = true; return ar.state === 'aim' || ar.state === 'shot'; };
+  out(`  no chão sem recarregar (ainda tinha flechas) ${ok(!sawRl && ar.group.position.y === 0)}`);
   out(`  voltou a atirar ${ok(true)}`);
   combat.damageEnemy(player, ar, { damage: 1, heavy: false }, 0, 1);
   out(`  2º golpe: não rola de novo ${ok(ar.state !== 'roll')}`);
@@ -244,14 +269,15 @@ export function* newTests(g, out, flags) {
   // Efeitos — Cavaleiro.
   fresh();
   yield 0.2;
-  for (const id of ['u_carga', 'u_eterna', 'u_furia', 'u_ardente', 'u_cura', 'u_onda', 'u_eco']) player.addBlessing(BLESSING_BY_ID[id]);
-  out(`  Carga Rápida: barra de ${player.ultNeed} ${ok(player.ultNeed === 8)}`);
+  for (const id of ['u_medo', 'u_eterna', 'u_furia', 'u_ardente', 'u_cura', 'u_onda', 'u_poder']) player.addBlessing(BLESSING_BY_ID[id]);
   const near = dummy(2, 0.5, 'warrior'); near.hp = near.maxHp = 999;
   const nearHp = near.hp;
   player.hp = 40; player.ult = player.ultNeed;
   press('KeyR');
   yield 0.05;
-  out(`  domo ${player.ultTime.toFixed(1)} s ${ok(player.ultTime > 4.3)} | cura 25 ${ok(player.hp === 65, `${player.hp}`)} | explosão: -${nearHp - near.hp} ${ok(nearHp - near.hp >= 25)} | barra já em ${player.ult} ${ok(player.ult === 4)}`);
+  out(`  domo ${player.ultTime.toFixed(1)} s ${ok(player.ultTime > 4.3)} | cura 25 ${ok(player.hp === 65, `${player.hp}`)} | explosão: -${nearHp - near.hp} ${ok(nearHp - near.hp >= 25)} | Amedrontador: atordoado ${near.state === 'hurt' ? near.stunTime.toFixed(1) : near.state} ${ok(near.state === 'hurt' && near.stunTime >= 2)} | Poder Acumulado: ${player.powerLeft} combos ${ok(player.powerLeft === 2)}`);
+  player.newCombo(); const pw1 = player.powerActive; player.newCombo(); player.newCombo(); const pw3 = player.powerActive;
+  out(`  Poder Acumulado: 1º combo dobrado ${ok(pw1)} | 3º combo normal ${ok(!pw3)}`);
   const furyHp = near.hp;
   near.position.set(0, 0, 1.6); player.facing = 0;
   combat.damageEnemy(player, near, { damage: 10, heavy: false }, 0, 1);
@@ -266,7 +292,7 @@ export function* newTests(g, out, flags) {
   fresh();
   player.setHero('mage', WEAPONS.mage[0].id);
   yield 0.2;
-  for (const id of ['u_dupla', 'u_gelida', 'u_forte']) player.addBlessing(BLESSING_BY_ID[id]);
+  for (const id of ['u_dupla', 'u_acida', 'u_acida', 'u_forte']) player.addBlessing(BLESSING_BY_ID[id]);
   const mf = [dummy(-7, -6, 'warrior'), dummy(7, 5, 'warrior')];
   mf.forEach((e) => { e.hp = e.maxHp = 999; });
   player.ult = player.ultNeed;
@@ -275,9 +301,9 @@ export function* newTests(g, out, flags) {
   yield () => flags.events.filter((e) => e.type === 'ultStrike').length >= 2;
   yield 0.05;
   const lostM = 999 - mf[0].hp;
-  out(`  Chuva Dupla: caiu 2 vezes ${ok(flags.events.filter((e) => e.type === 'ultStrike').length === 2)} | Tempestade: ${lostM} de dano (2×27) ${ok(lostM === 54)} | Chuva Gélida: congelou ${ok(mf.every((e) => e.frozenT > 0))}`);
+  out(`  Chuva Dupla: caiu 2 vezes ${ok(flags.events.filter((e) => e.type === 'ultStrike').length === 2)} | Tempestade + Chuva Ácida ×2: ${lostM} de dano (27 + 35 marcado) ${ok(lostM === 62)} | marcados ${ok(mf.every((e) => e.acidT > 0 && e.acidMul === 0.3))}`);
   yield 0.2;
-  out('  -> chuva gélida: CONGELADO (T continua)');
+  out('  -> chuva ácida: CONGELADO (T continua)');
   yield 'hold';
   player.setHero('knight', WEAPONS.knight[0].id);
   combat.clear();

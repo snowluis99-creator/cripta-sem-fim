@@ -1,5 +1,6 @@
 // Inimigos: dados (fácil de balancear) + IA simples por estados.
 // Estados: spawn (levantando do chão) → chase (persegue) → attack → hurt (atordoado) / block → dead.
+import { statDamage } from './runstats.js';
 import * as THREE from 'three';
 import { Animator } from './animation.js';
 import { makeCharacter, attachWeapon, makeFlashable, setFlash } from './characters.js';
@@ -39,7 +40,8 @@ export const ENEMIES = {
     cooldown: [0.9, 1.7],
     contact: 5,          // dano ao encostar no herói
     // Salto pelas costas: pula para trás do herói, prepara (olhos + anel vermelho) e dá um golpe rápido.
-    leap: { range: [2.6, 7], cooldown: [3.5, 5.5], first: [1.0, 2.5], time: 0.5, height: 1.8, behind: 1.9, wind: 0.5,
+    // cooldown = recarga de cada um (podem pular vários juntos).
+    leap: { range: [2.6, 7], cooldown: [8, 8], first: [4, 7], time: 0.5, height: 1.8, behind: 1.9, wind: 0.5,
       grab: 0.6, afterGrab: 0.2, // encostou no herói durante o salto: agarra 0,6 s e emenda o golpe
       attack: { clip: 'Melee_1H_Attack_Slice_Horizontal', speed: 2.4, hit: 0.24, aim: 0.02, end: 0.62, reach: 2.4, arc: 160, lunge: 0.5, damage: 9, glow: false } },
     knockback: 1,        // quanto é empurrado pelos golpes
@@ -93,7 +95,13 @@ export const ENEMIES = {
     ranged: { max: 13, keep: 9, flee: 4.5, back: 1.6, aim: 0.55, aimClip: 'Ranged_2H_Aiming', shootClip: 'Ranged_2H_Shoot', recover: 0.45, speed: 19, damage: 9,
       // roll: cambalhota até as costas do herói (behind = distância atrás dele; reach = só se o herói estiver
       // a menos disso, senão rola para o lado "dist"), depois pulo de "hop" para longe e recarrega.
-      roll: { dist: 4.5, time: 0.5, behind: 2.4, reach: 7, hop: 6.5, hopTime: 0.55, hopHeight: 1.5, reload: 1.1, clip: 'Ranged_2H_Reload' } },
+      roll: { dist: 4.5, time: 0.5, behind: 2.4, reach: 7, hop: 6.5, hopTime: 0.55, hopHeight: 1.5, reload: 1.1, clip: 'Ranged_2H_Reload' },
+      // fetch: ammo = flechas na besta; cada flecha cai no chão; depois da última ele vai buscar todas, um pulo direto em cima de cada uma
+      // (hopTime..hopMax s, hopSpeed = distância por s; no ar não leva golpe) e já pega;
+      // pause = parado entre um pulo e outro; dodgeR/dodgeCd = herói atacando perto: pulo de lado (a cada dodgeCd s);
+      // pickR/pickup = pegar o virote; depois pulo para um canto da sala (inset das paredes), recarrega e atira (fireAfter s).
+      fetch: { ammo: 3, hop: 4.2, hopTime: 0.42, hopMax: 0.9, hopSpeed: 22, hopHeight: 1.2, pause: [0.3, 0.55], dodgeR: 3.6, dodgeCd: 1.2, pickR: 1.5, pickup: 0.35,
+        inset: 2.6, cornerHeight: 2.6, fireAfter: 0.35, giveUp: 10 } },
     knockback: 1.1,
     stagger: 0.45,
     staggerOnlyHeavy: false,
@@ -320,9 +328,15 @@ export function modelsForEnemy(data) {
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const lerpAngle = (a, b, t) => a + wrap(b - a) * t;
 
+// Começo de um ataque (golpe, salto, investida, giro, tiro, magia de chefe...): quem está sangrando perde vida.
+const BLEED_ON = new Set(['attack', 'leapWind', 'chargeWind', 'spinWind', 'shot', 'cast', 'ambushWind', 'tossThrow', 'nova', 'rain', 'ring', 'reap']);
+
 export class Enemy {
   constructor(type, x, z, opts = {}) {
-    const data = ENEMIES[type];
+    let data = ENEMIES[type];
+    // Morto-vivo da Maga (Cajado das Trevas): luta como quando estava vivo (salto, investida, tiros...), só que contra os inimigos.
+    if (opts.undead) data = { ...data, attackRange: data.ranged ? data.attackRange : Math.max(data.attackRange || 0, 2.0), voice: undefined };
+    this.undead = opts.undead || null;
     this.type = type;
     this.data = data;
     const { group, model } = makeCharacter(data.model);
@@ -338,7 +352,7 @@ export class Enemy {
     });
     this.weapons = [];
     if (data.weapons.right) this.weapons.push(attachWeapon(model, 'handslot.r', data.weapons.right));
-    if (data.weapons.left) this.weapons.push(attachWeapon(model, 'handslot.l', data.weapons.left));
+    if (data.weapons.left) { this.shieldMesh = attachWeapon(model, 'handslot.l', data.weapons.left); this.weapons.push(this.shieldMesh); }
     this.anim = new Animator(model);
     this.position = group.position;
     this.position.set(x, 0, z);
@@ -363,7 +377,7 @@ export class Enemy {
     this.revived = !!opts.revived;   // revivido pelo Mago: não pode ser revivido de novo
     this.group.rotation.y = this.facing;
     if (data.scale) this.group.scale.setScalar(data.scale);
-    this.abilities = !this.passive && opts.abilities !== false; // teste: sem habilidades especiais
+    this.abilities = !this.passive && opts.abilities !== false; // teste: sem habilidades especiais (mortos-vivos da Maga também usam)
     initAbilities(this);
     if (data.phases) { this.basePhases = data.phases; this.baseData = data; this.phaseIdx = 0; }
     this.slow = 0;        // tempo restante lento (gelo)
@@ -390,7 +404,7 @@ export class Enemy {
     m.opacity += (want - m.opacity) * Math.min(1, dt * 10);
     this.bubble.visible = m.opacity > 0.01;
   }
-  get targetable() { return this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
+  get targetable() { return !this.undead && this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'hop' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
 
   setState(s) {
     if (this.tele) hideTelegraphs(this);
@@ -406,13 +420,15 @@ export class Enemy {
     if (HIDDEN_STATES.has(this.state) && !HIDDEN_STATES.has(s)) this.group.position.y = 0;
     const prev = this.state;
     this.state = s; this.t = 0;
+    if (this.bleedStacks > 0 && BLEED_ON.has(s)) this.bleedPending = (this.bleedPending || 0) + this.bleedStacks; // sangra ao atacar (o dano sai no update)
     if (this.data.voice) voiceState(this, prev, s);
   }
 
   // Está protegido pelo escudo contra um golpe vindo de (fromX, fromZ)?
   shieldCovers(fromX, fromZ) {
     const sh = this.data.shield;
-    if (!sh || (this.state !== 'chase' && this.state !== 'block')) return false; // atacando ou usando habilidade: guarda aberta
+    if (!sh || this.shieldBroken || (this.state !== 'chase' && this.state !== 'block')) return false; // atacando ou usando habilidade: guarda aberta
+    if (this.offBalanceT > 0) return false; // desequilibrado pelo escudo do Cavaleiro: sem guarda
     const ang = Math.atan2(fromX - this.position.x, fromZ - this.position.z);
     return Math.abs(wrap(ang - this.facing)) <= THREE.MathUtils.degToRad(sh.arc / 2);
   }
@@ -421,6 +437,7 @@ export class Enemy {
   // noStagger: dano da Maga (magias) não empurra nem interrompe o que o esqueleto está fazendo.
   takeDamage(amount, dirX, dirZ, push, heavy, noStagger = false) {
     if (this.immune) return false;
+    statDamage(this, amount, this.hp); // estatísticas da descida
     this.hp -= amount;
     this.flash = 1;
     if (!noStagger) this.vel.set(dirX, 0, dirZ).multiplyScalar(push * this.data.knockback);
@@ -431,13 +448,41 @@ export class Enemy {
     const R = this.data.ranged;
     if (R && R.roll && !this.rolledOnce && this.abilities && this.state !== 'spawn') { this.rolledOnce = true; startRoll(this, dirX, dirZ); return false; }
     const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop'; // chefe não para o golpe especial
-    if (!armor && (heavy || !this.data.staggerOnlyHeavy)) {
+    // Desequilibrado (rebatido pelo escudo do Cavaleiro): qualquer golpe atordoa, até os resistentes.
+    if (!armor && (heavy || !this.data.staggerOnlyHeavy || this.offBalanceT > 0)) {
       this.releaseToken();
       this.setState('hurt');
       this.stunTime = this.data.staggerOnlyHeavy ? this.data.stagger : this.data.stagger * (heavy ? 1.5 : 1);
       this.anim.play(this.data.anims.hit, { once: true, restart: true, fade: 0.05, speed: 1.2 });
     }
     return false;
+  }
+
+  // Reação de golpe leve sem dano (sangramento das Garras): atordoa igual a um golpe normal.
+  hitReact() {
+    if (!this.alive || this.immune || this.frozenT > 0) return false;
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop'
+      || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || this.state === 'rage';
+    if (armor || (this.data.staggerOnlyHeavy && !(this.offBalanceT > 0))) return false;
+    this.releaseToken();
+    this.setState('hurt');
+    this.stunTime = this.data.stagger;
+    this.anim.play(this.data.anims.hit, { once: true, restart: true, fade: 0.05, speed: 1.2 });
+    return true;
+  }
+
+  // Amedrontador (bênção da ultimate): atordoado por t segundos, até os resistentes e os chefes.
+  daze(t) {
+    if (!this.alive || this.immune || this.frozenT > 0) return false;
+    if (this.undead) return false; // morto-vivo da Maga é aliado
+    const busy = this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || this.state === 'rage' || this.state === 'dead'
+      || this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop';
+    if (busy) return false;
+    this.releaseToken();
+    this.setState('hurt');
+    this.stunTime = t;
+    this.anim.play(this.data.anims.hit, { once: true, restart: true, fade: 0.05, speed: 0.8 });
+    return true;
   }
 
   // Golpe defendido pelo escudo.
@@ -456,6 +501,22 @@ export class Enemy {
     this.anim.play(this.data.anims.hit, { once: true, restart: true, fade: 0.05 });
   }
 
+  // Golpe defendido pelo escudo do Cavaleiro: o inimigo é rebatido para trás e fica desequilibrado (sem guarda,
+  // atordoado e levando mais dano por um instante) — o mesmo que acontece com o herói no escudo do Guerreiro.
+  offBalance(dirX, dirZ, time = 0.6, push = 9) {
+    if (!this.alive) return false;
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn';
+    if (armor) return false;
+    this.releaseToken();
+    this.vel.set(dirX, 0, dirZ).multiplyScalar(push * Math.max(this.data.knockback ?? 1, this.data.boss ? 0.25 : 0.6));
+    this.setState('hurt');
+    this.stunTime = this.data.boss ? Math.min(time, 0.45) : time;
+    this.offBalanceT = this.stunTime + 0.6;
+    this.cooldown = Math.max(this.cooldown, 0.4);
+    this.anim.play(this.data.anims.hit, { once: true, restart: true, fade: 0.05, speed: 1.1 });
+    return true;
+  }
+
   die() {
     this.releaseToken();
     if (this.state === 'held' || this.state === 'thrown') this.position.y = 0;
@@ -469,6 +530,7 @@ export class Enemy {
   freeze(t, combat) {
     if (!this.alive) return;
     const first = !(this.frozenT > 0);
+    if (first) this.shattered = false; // congelou de novo: o próximo ataque volta a dar dano dobrado
     this.frozenT = Math.max(this.frozenT || 0, t);
     if (!this.iceBlock) {
       const sc = this.group.scale.x || 1;
@@ -503,7 +565,7 @@ export class Enemy {
     if (this.vel.lengthSq() > 1e-4) { this.position.addScaledVector(this.vel, dt); this.vel.multiplyScalar(Math.exp(-12 * dt)); }
     ctx.world.resolveCircle(this.position, this.data.radius);
     if (this.burn > 0) { this.burn -= dt; this.burnTick -= dt; if (this.burnTick <= 0) { this.burnTick = 0.5; ctx.combat.burnDamage(this, Math.max(1, Math.round(this.burnDps * 0.5))); } }
-    if (this.bleed > 0) { this.bleed -= dt; this.bleedTick -= dt; if (this.bleedTick <= 0) { this.bleedTick = 0.5; ctx.combat.bleedDamage(this, Math.max(1, Math.round(this.bleedDps * 0.5))); } }
+    if (this.bleedPending > 0 && this.alive) { const b = this.bleedPending; this.bleedPending = 0; ctx.combat.bleedDamage(this, b); }
     return true;
   }
 
@@ -520,6 +582,10 @@ export class Enemy {
     this.t += dt;
     this.cooldown -= dt * (this.slow > 0 ? 0.5 : 1);
     if (this.slow > 0) this.slow -= dt;
+    if (this.offBalanceT > 0) this.offBalanceT -= dt;
+    if (this.markT > 0) this.markT -= dt;
+    if (this.acidT > 0) this.acidT -= dt; // Chuva Ácida
+    if (this.turnedT > 0) this.turnedT -= dt; // virado de costas pela Rapieira
     tickCooldowns(this, dt);
     if (d.voice) voiceTick(this, dt);
     if (d.phantom) shadowTick(this, dt, combat);
@@ -533,11 +599,10 @@ export class Enemy {
       }
     }
     // Sangramento (Garras do Ladino).
-    if (this.bleed > 0 && this.alive) {
-      this.bleed -= dt;
-      this.bleedTick -= dt;
-      if (this.bleedTick <= 0) { this.bleedTick = 0.5; combat.bleedDamage(this, Math.max(1, Math.round(this.bleedDps * 0.5))); }
-    }
+    if (this.bleedPending > 0 && this.alive) { const b = this.bleedPending; this.bleedPending = 0; combat.bleedDamage(this, b); }
+    // Sangria (bênção das Garras): o sangramento também tira vida a cada 2 s.
+    const bt = this.bleedStacks > 0 && this.alive && this.bleedBy && this.bleedBy.stats && this.bleedBy.stats.w && this.bleedBy.stats.w.bleedTick;
+    if (bt) { this.bleedClock = (this.bleedClock || 0) + dt; if (this.bleedClock >= bt) { this.bleedClock = 0; combat.bleedDamage(this, this.bleedStacks); } }
     // Chefe com metade da vida: se enfurece (uma vez).
     if (d.rage && !this.raged && this.alive && this.state !== 'spawn' && this.hp <= this.maxHp * d.rage.at && this.abilities) {
       startRage(this, combat);
@@ -556,7 +621,8 @@ export class Enemy {
       case 'chase': {
         if (p.state === 'dead') { this.anim.play(d.anims.idle); break; }
         if (this.passive) { this.anim.play(d.anims.idle); break; }
-        target = toPlayer; turn = d.turnSpeed;
+        target = toPlayer; turn = this.turnedT > 0 ? 0 : d.turnSpeed;
+        if (this.turnedT > 0) { this.anim.play(d.anims.idle); break; } // acabou de ser virado de costas: demora para se virar
         if (this.abilities && tryAbility(this, ctx, dist)) break;
         if (d.ranged) { archerChase(this, dt, ctx, dist, dx, dz); break; }
         const slot = combat.attackers < combat.maxAttackers;

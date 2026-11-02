@@ -44,34 +44,6 @@ export function* shadowTests(g, out, flags) {
   const bed = run.pickups.find((p) => p.kind === 'bed');
   run.take(bed, player);
   out(`  descansar na cama conserta: escudo ${player.shield}/${shieldMax(player)} ${ok(player.shield === shieldMax(player))}`);
-  // Bênçãos de escudo.
-  fresh(); player.shield = 2; give('reforco');
-  out(`  Escudo Reforçado: máximo ${shieldMax(player)} ${ok(shieldMax(player) === 14)} | consertou ${ok(player.shield === 14)}`);
-  fresh(); give('aparar');
-  e = dummy(0, 0.4); face(e);
-  keyDown('KeyK'); yield 0.05;
-  combat.hitPlayer(e, 10);
-  const parried = flags.last('blockedHero')?.res === 'parry';
-  yield 0.4; player.iframes = 0; face(e);
-  combat.hitPlayer(e, 10);
-  keyUp('KeyK');
-  out(`  Aparar: no instante certo não gasta ${ok(parried)} | depois gasta normal ${ok(player.shield === 9, `${player.shield}`)}`);
-  fresh(); give('estilhacos');
-  e = dummy(0, 0.4); const near = dummy(2, 1.5); near.hp = 999; face(e);
-  keyDown('KeyK'); yield 0.35;
-  player.shield = 1; face(e);
-  combat.hitPlayer(e, 10);
-  keyUp('KeyK');
-  out(`  Estilhaços: quebrou e explodiu, vizinho -${999 - near.hp} ${ok(near.hp < 999)}`);
-  fresh(); give('forja'); player.shield = 0;
-  yield 6.3;
-  out(`  Forja Viva: 6 s depois de quebrar, escudo ${player.shield} ${ok(player.shield === 1)}`);
-  fresh(); give('mitral'); give('mitral');
-  e = dummy(0, 0.4); face(e);
-  keyDown('KeyK'); yield 0.35;
-  for (let i = 0; i < 10; i++) { face(e); combat.hitPlayer(e, 5); yield 0.02; }
-  keyUp('KeyK');
-  out(`  Placas de Mitral (50%): 10 bloqueios gastaram ${10 - player.shield} ${ok(player.shield > 0 && player.shield < 10)}`);
   out(`  Eco do Golpe lendário: ${ok(BLESSING_BY_ID.eco.rarity === 'legendary')} | Ossos Explosivos e Corrente de Raios lendários ${ok(BLESSING_BY_ID.explosao.rarity === 'legendary' && BLESSING_BY_ID.raio.rarity === 'legendary')}`);
 
   // ---------------- 30) Rei Skullbone imune ----------------

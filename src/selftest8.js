@@ -65,9 +65,9 @@ export function* mageTests(g, out, flags) {
   out(`  cadeira -> Maga de novo ${ok(player.heroId === 'mage' && save.data.ups.eh === 1)}`);
   save.update((s) => { s.soul = 2000; });
   run.take(rack(1), player);
-  out(`  comprou a Varinha ${ok(player.weaponId === 'varinha' && save.data.ups.w_mage_varinha === 1)}`);
+  out(`  comprou o Cajado Elétrico ${ok(player.weaponId === 'eletrico' && save.data.ups.w_mage_eletrico === 1)}`);
   yield 0.5;
-  out('  -> Maga com a Varinha na Taverna: CONGELADO (T continua)');
+  out('  -> Maga com o Cajado Elétrico na Taverna: CONGELADO (T continua)');
   yield 'hold';
 
   // ---------------- 38) Magias ----------------
@@ -93,30 +93,34 @@ export function* mageTests(g, out, flags) {
   let es = yield* fire('cajado', 0, [[0, -1], [0.3, 1.6]]);
   out(`  Cajado: orbe para no 1º ${ok(hit(es) === 1 && es[1].hp < 9999)}`);
   es = yield* fire('cajado', 2, [[0, 0], [1.4, -0.6], [-1.3, 0.6], [6, 0]]);
-  out(`  Cajado forte: só 1 alvo, sem área (${hit(es)}) ${ok(hit(es) === 1)} | mais forte ${ok(9999 - es[0].hp > player.hero.combo[0].damage)}`);
-  player.setWeapon('varinha');
-  out(`  Varinha: combo de 5 ${ok(player.hero.combo.length === 5)} | alcance menor ${ok(player.hero.attackRange < 4.5)}`);
-  es = yield* fire('varinha', 4, [[-1.2, 0.2], [0, 0], [1.2, 0.2]]);
-  out(`  Varinha 5º tiro: 3 estrelas em cone (${hit(es)}) ${ok(hit(es) === 3)}`);
-  es = yield* fire('grimorio', 0, [[0, 2.5], [0.2, 1], [-0.3, -0.3], [0, -5]], 0.3);
-  out(`  Grimório: raio atravessa os 3 da linha ${ok(hit(es) === 3)} | não passa do alcance ${ok(es[3].hp === 9999)}`);
+  out(`  Cajado forte: explode em área (${hit(es)}) ${ok(hit(es) === 3 && es[3].hp === 9999)} | mais forte ${ok(9999 - es[0].hp > player.hero.combo[0].damage)}`);
+  player.setWeapon('eletrico');
+  out(`  Elétrico: alcance menor ${ok(player.hero.attackRange < 4.5)} | mesmo dano do Cajado, sem golpe forte ${ok(player.hero.combo.every((c) => c.damage === 3 && !c.heavy))}`);
+  es = yield* fire('eletrico', 0, [[0, 0], [1.6, 0.6], [6, -1]]);
+  out(`  Elétrico: o raio pula para o vizinho (${hit(es)}) ${ok(hit(es) === 2 && es[2].hp === 9999)}`);
+  es = yield* fire('eletrico', 2, [[0, 0], [8, -6], [-8, -8]]);
+  out(`  Elétrico 3º: 1 de dano em todos da sala ${ok(es[1].hp === 9998 && es[2].hp === 9998, `${9999 - es[1].hp}/${9999 - es[2].hp}`)}`);
+  player.setWeapon('trevas');
+  out(`  Trevas: mesmo alcance ${ok(player.hero.attackRange === 4.5)} | +1 de dano ${ok(player.hero.combo.every((c) => c.damage === 4))}`);
+  es = yield* fire('trevas', 2, [[0, 0]]);
+  out(`  Trevas 3º: marca ${ok(!!es[0].darkMark)} | 1º não marca ${ok(!player.hero.combo[0].cast.darkMark)}`);
   es = yield* fire('cajado', 0, [[0, -4]], 1.0);
   out(`  alcance curto: orbe não chega a 8 de distância ${ok(es[0].hp === 9999)}`);
   player.stats.rangeMul = 1.5;
   es = yield* fire('cajado', 0, [[0, -4]], 1.0);
   out(`  Lâmina Longa aumenta o alcance ${ok(es[0].hp < 9999)}`);
   player.stats.rangeMul = 1;
-  { // magia não interrompe: esqueleto atacando continua atacando
+  { // magia interrompe igual à espada (pedido do dono, 26/10): esqueleto atacando é atordoado
     combat.clear(); player.setWeapon('cajado');
     player.position.set(0, 0, 4); player.facing = Math.PI; player.setState('idle');
     const atk = combat.spawn('minion', 0, 1.5, { awake: true }); atk.hp = atk.maxHp = 9999; atk.shieldCovers = () => false;
     player.iframes = 99;
     yield () => atk.state === 'attack';
-    const s0 = atk.state, a0 = atk.anim.currentName, z0 = atk.position.z;
+    const s0 = atk.state, a0 = atk.anim.currentName, d0 = Math.hypot(atk.position.x - player.position.x, atk.position.z - player.position.z);
     player.facing = Math.atan2(atk.position.x - player.position.x, atk.position.z - player.position.z); // a IA nova cerca pelos lados: mira nele
     combat.playerStrike(player, player.hero.combo[2]);
     yield 0.25;
-    out(`  magia não interrompe o ataque (${s0} -> ${atk.state}) ${ok(atk.hp < 9999 && atk.state !== 'hurt' && (atk.state === 'attack' || atk.anim.currentName === a0 || atk.state === 'chase'))} | sem empurrão ${ok(atk.position.z - z0 < 0.3, (atk.position.z - z0).toFixed(2))}`);
+    out(`  magia interrompe o ataque (${s0} -> ${atk.state}) ${ok(atk.hp < 9999 && atk.state === 'hurt', a0)} | empurra ${(() => { const dd = Math.hypot(atk.position.x - player.position.x, atk.position.z - player.position.z) - d0; return ok(dd > 0.1, dd.toFixed(2)); })()}`); // para longe do herói (o lacaio pode estar de qualquer lado)
     player.iframes = 0;
   }
   es = yield* fire('gelo', 0, [[0, 0]], 0.6);
@@ -226,7 +230,7 @@ export function* mageTests(g, out, flags) {
     yield 0.5;
     const z0 = w.position.z, hp0 = w.hp;
     for (let i = 0; i < 3; i++) { combat.playerStrike(player, player.hero.combo[0]); yield 0.25; }
-    out(`  Guerreiro bloqueia a magia e continua andando ${ok(w.hp === hp0 && w.position.z - z0 > 0.8, (w.position.z - z0).toFixed(2))} | estado ${w.state} ${ok(w.state !== 'block' && w.state !== 'hurt')}`);
+    out(`  Guerreiro bloqueia a magia (igual à espada) ${ok(w.hp === hp0, (w.position.z - z0).toFixed(2))} | estado ${w.state} ${ok(w.state !== 'hurt')}`);
     w.position.set(0, 0, -4); w.cd.charge = 0; w.setState('chase');
     yield () => w.state === 'chargeWind' || w.state === 'charge';
     const seen = new Set([w.state]);
@@ -256,29 +260,92 @@ export function* mageTests(g, out, flags) {
     yield () => !combat.finale.active;
     out(`  magia mata o Rei Skullbone: cena até o fim ${ok(!combat.finale.active && player.state !== 'cine', player.state)} | sem erro ${ok(window.__game.errors.length === err0)}`);
   }
-  out('39) Barreira mágica (bloqueio da Maga)');
+  out('39) Barreira da Maga: não segura golpes, rebate projéteis, segura habilidade de chefe; magias seguem o inimigo');
   combat.clear();
   player.setWeapon('cajado'); player.reset(0, 2); player.facing = Math.PI;
-  const foe = combat.spawn('warrior', 0, -0.5, { awake: true, passive: true });
-  out(`  tem barreira (10) ${ok(shieldMax(player) === 10 && player.shield === 10)}`);
-  player.enterBlock(null);
+  out(`  barreira com 10 ${ok(shieldMax(player) === 10 && player.shield === 10)}`);
+  const realInput = player.input;
+  const holdBlock = (face = Math.PI) => { player.input = Object.assign(Object.create(realInput), {
+    blocking: () => true, attack: () => false, dodge: () => false, potion: () => false, interact: () => false,
+    moveDir: (o) => o.set(0, 0, 0), aimAngle: () => face }); player.facing = face; if (player.state !== 'block') player.enterBlock(null); };
+  holdBlock();
+  yield 0.1;
+  const foe = combat.spawn('warrior', 0, 0.8, { awake: true, passive: true });
   const hpB = player.hp;
   combat.hitPlayer(foe, 20, { target: player });
-  player.updateWall(0.2);
-  out(`  bloqueou de frente: vida ${player.hp} ${ok(player.hp === hpB)} | gastou 1 ${ok(player.shield === 9)} | barreira aparecendo ${ok(player.wall && player.wall.visible)}`);
-  // Segura o bloqueio sem teclado (só para a foto).
-  const realInput = player.input;
-  player.input = Object.assign(Object.create(realInput), {
-    blocking: () => true, attack: () => false, dodge: () => false, potion: () => false, interact: () => false,
-    moveDir: (o) => o.set(0, 0, 0), aimAngle: () => Math.PI,
-  });
-  if (player.state !== 'block') player.enterBlock(null);
-  yield 0.3;
-  out('  -> barreira na frente: CONGELADO (T continua)');
+  out(`  golpe passa pela barreira (vida ${hpB} -> ${player.hp}) ${ok(player.hp < hpB)} | não gastou ${ok(player.shield === 10)}`);
+  combat.clear(); player.reset(0, 2); player.iframes = 0; yield 0.1;
+  holdBlock();
+  yield 0.2;
+  // Flecha de um arqueiro: volta nele com o mesmo dano
+  const ar = combat.spawn('archer', 0, -8, { awake: true, passive: true, facing: 0 }); ar.hp = ar.maxHp = 500;
+  flags.events.length = 0;
+  const hpA = player.hp;
+  combat.projectiles.fire(0, -6.5, 0, { speed: 19, damage: 9, owner: ar });
+  yield () => flags.last('reflectHit') || flags.last('arrow');
+  out(`  gastou 1 ${ok(player.shield === 9)} | flecha rebatida ${ok(!!flags.last('reflected'))} | Maga sem dano ${ok(player.hp === hpA)} | voltou no arqueiro: ${500 - ar.hp} de dano ${ok(ar.hp === 491)}`);
+  // Orbe do Mago Esqueleto (magia inimiga)
+  const mg = combat.spawn('mage', 4, -7, { awake: true, passive: true, facing: 0 }); mg.hp = mg.maxHp = 500;
+  flags.events.length = 0;
+  combat.projectiles.fire(3, -5.5, Math.atan2(-3, 7.5), { speed: 12, damage: 11, kind: 'orb', color: 0xb070ff, owner: mg });
+  { const t0 = performance.now(); yield () => flags.last('reflectHit') || flags.last('arrow') || performance.now() - t0 > 5000; }
+  out(`  orbe inimigo rebatido de volta no Mago ${ok(mg.hp === 489, `${500 - mg.hp} | ${flags.events.filter((e) => /reflect|arrow/.test(e.type)).map((e) => e.type).join(',')} | estado ${player.state}`)}`);
+  yield 0.2;
+  out('  -> barreira rebatendo: CONGELADO (T continua)');
   yield 'hold';
-  player.input = realInput;
-  for (let i = 0; i < 9; i++) { player.setState('block'); combat.hitPlayer(foe, 20, { target: player }); }
-  out(`  quebra com 10 ${ok(player.shield === 0)} | não bloqueia mais ${ok(!player.enterBlock(null))}`);
+  // Pelas costas não rebate (sem Barreira Total); com ela, rebate
+  combat.clear(); player.reset(0, 2); player.iframes = 0; holdBlock(); yield 0.1;
+  const ar2 = combat.spawn('archer', 0, 9, { awake: true, passive: true, facing: Math.PI }); ar2.hp = ar2.maxHp = 500;
+  flags.events.length = 0; const hpC = player.hp;
+  combat.projectiles.fire(0, 7, Math.PI, { speed: 19, damage: 9, owner: ar2 });
+  yield () => flags.last('reflected') || flags.last('arrow');
+  out(`  flecha pelas costas: acerta ${ok(!!flags.last('arrow') && player.hp < hpC)}`);
+  player.iframes = 0; player.stats.reflectArc = 360; holdBlock(); yield 0.6; player.iframes = 0;
+  flags.events.length = 0;
+  combat.projectiles.fire(0, 7, Math.PI, { speed: 19, damage: 9, owner: ar2 });
+  yield () => flags.last('reflected') || flags.last('arrow');
+  out(`  Barreira Total: rebate pelas costas ${ok(!!flags.last('reflected'))}`);
+  player.stats.reflectArc = 0;
+  // Habilidade de chefe (giro da Lâmina dos Mortos): a barreira segura
+  combat.clear(); player.reset(0, 2); player.iframes = 0; holdBlock(); yield 0.1;
+  const kb = combat.spawn('guardian', 0, -3, { awake: true, passive: true, facing: 0 });
+  const hpK = player.hp;
+  combat.hitPlayer(kb, 40, { push: 10, noRepel: true, unDodgeable: true, bossSkill: true, target: player });
+  out(`  giro do Rei Skullbone: barreira segura ${ok(player.hp === hpK, `${hpK}->${player.hp} ${player.state}`)} | gastou 1 ${ok(player.shield === 9)}`);
+  player.shield = 1; holdBlock(); yield 0.05;
+  combat.hitPlayer(kb, 40, { push: 10, noRepel: true, unDodgeable: true, bossSkill: true, target: player });
+  out(`  com 1: segura e quebra ${ok(player.hp === hpK && player.shield === 0)} | não levanta mais ${ok(!player.enterBlock(null))}`);
+  const ar3 = combat.spawn('archer', 0, -8, { awake: true, passive: true, facing: 0 });
+  player.iframes = 0; player.setState('idle'); yield 0.05; flags.events.length = 0;
+  combat.projectiles.fire(0, -6.5, 0, { speed: 19, damage: 9, owner: ar3 });
+  { const t0 = performance.now(); yield () => flags.last('reflected') || flags.last('arrow') || performance.now() - t0 > 4000; }
+  out(`  barreira quebrada: a flecha acerta ${ok(!!flags.last('arrow') && !flags.last('reflected'))}`);
+  player.shield = 10; player.iframes = 0;
+  player.input = realInput; player.setState('idle');
+  combat.hitPlayer(kb, 40, { push: 10, noRepel: true, unDodgeable: true, bossSkill: true, target: player });
+  out(`  sem bloquear: acerta ${ok(player.hp < hpK)}`);
+  // Magias seguem o inimigo (dentro do alcance de sempre)
+  combat.clear(); player.reset(0, 2); player.iframes = 99; yield 0.1;
+  for (const wid of ['cajado', 'gelo', 'eletrico', 'trevas']) {
+    player.setWeapon(wid); yield 0.05;
+    const R = player.hero.attackRange * 0.7, A = 0.6; // dentro do alcance, ~35° para o lado
+    const t = combat.spawn('minion', Math.sin(Math.PI + A) * R, 2 + Math.cos(Math.PI + A) * R, { awake: true, passive: true }); t.hp = t.maxHp = 999; t.shieldCovers = () => false;
+    player.position.set(0, 0, 2); player.facing = Math.PI; // virada para a frente, o lacaio está de lado (~35°)
+    flags.events.length = 0;
+    combat.playerStrike(player, player.hero.combo[0]);
+    yield 0.6;
+    const far = combat.spawn('minion', 0, -40, { awake: true, passive: true }); far.hp = 999;
+    out(`  ${wid}: a magia curvou e acertou o lacaio ${ok(t.hp < 999, 999 - t.hp)}`);
+    combat.clear();
+  }
+  // Fora do alcance não persegue
+  player.setWeapon('cajado'); yield 0.05;
+  const longe = combat.spawn('minion', 0, 2 - 12, { awake: true, passive: true }); longe.hp = 999;
+  player.position.set(0, 0, 2); player.facing = Math.PI;
+  combat.playerStrike(player, player.hero.combo[0]);
+  yield 1.0;
+  out(`  fora do alcance (12): não acerta ${ok(longe.hp === 999)}`);
+  player.iframes = 0;
   combat.clear();
   player.setHero('knight', 'espada');
   player.reset(0, 0);

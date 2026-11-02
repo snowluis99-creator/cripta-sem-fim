@@ -137,6 +137,60 @@ export function makeWeaponFx(kind, tip = 1) {
       });
       break;
     }
+    case 'storm': { // Cajado Elétrico: esfera azul com faíscas pulando em volta
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), bright(0xe8fbff));
+      core.position.y = 0.2;
+      const halo = glowSprite(0x7fd8ff, 1.1);
+      halo.position.y = 0.2;
+      g.add(core, halo);
+      const arcs = [];
+      const mat = new THREE.LineBasicMaterial({ color: 0xbff0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+      for (let i = 0; i < 3; i++) {
+        const geo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 5 }, () => new THREE.Vector3()));
+        const l = new THREE.Line(geo, mat);
+        g.add(l); arcs.push(l);
+      }
+      let flick = 0;
+      ticks.push((dt) => {
+        core.rotation.y += dt * 4; core.rotation.x += dt * 3;
+        halo.material.opacity = 0.6 + 0.4 * Math.random();
+        flick -= dt;
+        if (flick > 0) return;
+        flick = 0.06;
+        for (const l of arcs) { // zigue-zague do centro para fora, sorteado de novo a cada instante
+          const a = Math.random() * Math.PI * 2, b = (Math.random() - 0.3) * 1.2, pos = l.geometry.attributes.position;
+          for (let k = 0; k < 5; k++) {
+            const r = (k / 4) * 0.42, j = k && k < 4 ? 0.06 : 0;
+            pos.setXYZ(k, Math.cos(a) * r + (Math.random() - 0.5) * j, 0.2 + Math.sin(b) * r + (Math.random() - 0.5) * j, Math.sin(a) * r + (Math.random() - 0.5) * j);
+          }
+          pos.needsUpdate = true;
+          l.visible = Math.random() < 0.75;
+        }
+      });
+      break;
+    }
+    case 'dark': { // Cajado das Trevas: caveirinha roxa com fumaça escura girando
+      const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), bright(0xd8c0ff));
+      skull.scale.set(1, 0.95, 1.05);
+      skull.position.y = 0.16;
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.1), bright(0xb8a0e8));
+      jaw.position.y = 0.05;
+      const halo = glowSprite(0x8a3aff, 1.2);
+      halo.position.y = 0.15;
+      g.add(halo, skull, jaw);
+      const wisps = [];
+      for (let i = 0; i < 5; i++) { const d = glowSprite(i % 2 ? 0x5a1a9a : 0x9a4dff, 0.22); g.add(d); wisps.push({ d, o: Math.random() * 6 }); }
+      ticks.push((dt) => {
+        skull.rotation.y = Math.sin(t * 1.3) * 0.5;
+        halo.material.opacity = 0.55 + 0.25 * Math.sin(t * 3);
+        wisps.forEach((w, i) => {
+          const a = t * 2.2 + (i / wisps.length) * Math.PI * 2, k = (t * 0.5 + w.o) % 1;
+          w.d.position.set(Math.cos(a) * 0.3, 0.05 + k * 0.5, Math.sin(a) * 0.3);
+          w.d.material.opacity = 1 - k;
+        });
+      });
+      break;
+    }
     default: break;
   }
   g.userData.tick = (dt) => { t += dt; for (const f of ticks) f(dt); };

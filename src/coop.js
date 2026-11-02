@@ -39,6 +39,7 @@ export class RemoteInput {
     this.mz = Math.max(-1, Math.min(1, num(arr[1])));
     this.aim = Number.isFinite(arr[2]) ? arr[2] : null;
     this.blk = !!arr[3];
+    this.atkHeld = !!arr[10]; // Pião (Machado): segurando o ataque
     const c = { atk: num(arr[4]), dge: num(arr[5]), pot: num(arr[6]), use: num(arr[7]), rt: num(arr[8]), ult: num(arr[9]) };
     if (this.last) {
       for (const k of ['atk', 'dge', 'pot', 'use', 'ult']) this.pend[k] = Math.min(3, this.pend[k] + Math.max(0, c[k] - this.last[k]));
@@ -66,6 +67,7 @@ export class RemoteInput {
   interact() { return this.now.use; }
   ultimate() { return this.now.ult; }
   blocking() { return this.blk; }
+  attackHeld() { return this.atkHeld || this.now.atk; }
 }
 
 export class CoopHost {
@@ -80,6 +82,7 @@ export class CoopHost {
     this.lastChoicePick = 0;
     this.wrap();
     this.run.onUnlock = (h) => this.event(['U', h]); // cena de desbloqueio também na tela do Jogador 2
+    this.combat.props.onBreak = (i) => this.event(['pb', i]); // objeto quebrado também some na tela do Jogador 2
   }
 
   // Tudo que é "efeito" (faíscas, números de dano, tremidas, avisos) também vai para o Jogador 2.
@@ -88,8 +91,8 @@ export class CoopHost {
     // Sons: o Jogador 2 toca os mesmos (com o volume pela distância até o herói dele).
     audio.onPlay = (name, x, z, v) => push(['s', name, x == null ? null : r1(x), z == null ? null : r1(z), v ?? 1]);
     const vfx = this.vfx;
-    for (const name of ['heavyImpact', 'dust', 'sparks', 'puff', 'spawnMarker', 'ice', 'burst', 'bolt', 'smoke', 'beam', 'beamLine', 'flameCone', 'ring']) {
-      const fn = vfx[name].bind(vfx);
+    for (const name of ['heavyImpact', 'dust', 'sparks', 'puff', 'spawnMarker', 'ice', 'burst', 'bolt', 'smoke', 'beam', 'beamLine', 'flameCone', 'ring', 'lightning', 'sector']) {
+      const fn = ((vfx.__orig ||= {})[name] ||= vfx[name].bind(vfx)); // original guardado: um 2º Jogador 2 não embrulha de novo
       // Só a chamada "de fora" vai pela rede (burst chama sparks por dentro: não duplica).
       vfx[name] = (...args) => {
         if (!this.vfxDepth) push(['v', name, ...args.map(vec)]);
@@ -97,15 +100,15 @@ export class CoopHost {
         try { return fn(...args); } finally { this.vfxDepth--; }
       };
     }
-    const text = this.combat.text, add = text.add.bind(text);
+    const text = this.combat.text, add = (text.__add ||= text.add.bind(text));
     text.add = (t, pos, cls = '', h = 2.4) => { push(['t', String(t), r2(pos.x), r2(pos.z), cls, h]); return add(t, pos, cls, h); };
     const cam = this.cam;
-    cam.shakeLocal = cam.shake.bind(cam);
+    cam.shakeLocal ||= cam.shake.bind(cam);
     cam.shake = (a) => { push(['k', r2(a)]); cam.shakeLocal(a); };
     const hud = this.hud;
-    hud.bannerLocal = hud.banner.bind(hud);
+    hud.bannerLocal ||= hud.banner.bind(hud);
     hud.banner = (t, size = 'big') => { push(['b', t, size]); hud.bannerLocal(t, size); };
-    const hz = this.combat.hazards, spawn = hz.spawnCircles.bind(hz), remove = hz.remove.bind(hz);
+    const hz = this.combat.hazards, spawn = (hz.__spawn ||= hz.spawnCircles.bind(hz)), remove = (hz.__remove ||= hz.remove.bind(hz));
     hz.spawnCircles = (spots, cfg) => {
       const before = hz.circles.length;
       spawn(spots, cfg);
@@ -113,7 +116,7 @@ export class CoopHost {
       push(['hz', ids, cfg.radius, cfg.warn, cfg.life]);
     };
     hz.remove = (c) => { if (hz.circles.includes(c)) push(['hzr', c.id]); remove(c); };
-    const pr = this.combat.projectiles, rain = pr.rain.bind(pr);
+    const pr = this.combat.projectiles, rain = (pr.__rain ||= pr.rain.bind(pr));
     pr.rain = (spots, cfg) => { push(['rain', spots.map((s) => [r2(s.x), r2(s.z), r2(s.delay || 0)]), cfg.fall, cfg.radius]); rain(spots, cfg); };
   }
 
@@ -204,7 +207,7 @@ export class CoopHost {
       go: this.gameOver || 0,
       gs: this.gameOver ? this.gameOverStats || '' : '',
       pr: run.remotePrompt ? [run.remotePrompt.text, r2(run.remotePrompt.pos.x), r2(run.remotePrompt.pos.y), r2(run.remotePrompt.pos.z)] : 0,
-      ch: run.pendingChoice ? [run.pendingChoice.id, run.pendingChoice.title, run.pendingChoice.options.map((b) => b.id)] : 0,
+      ch: run.pendingChoice ? [run.pendingChoice.id, run.pendingChoice.title, run.pendingChoice.options.map((b) => b.id), run.pendingChoice.door ? run.pendingChoice.sub || '' : 0] : 0,
       om: this.team ? this.team.shapes.slice(0, 14) : 0,
       t: r2(this.simTime || 0),
       sp: this.net.spectators ? this.net.spectators() : 0,

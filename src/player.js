@@ -7,9 +7,13 @@ import { baseStats } from './blessings.js';
 import { audio } from './audio.js';
 import { initShield, updateShield, shieldMax, shieldVisual } from './shield.js';
 import { heroWith, HEROES } from './heroes.js';
+import { applyWeaponMods } from './weaponbless.js';
 import { instance } from './assets.js';
 import { tickWeaponFx } from './weaponfx.js';
 import { updateFlail } from './flail.js';
+import { applyKit, kitReset, kitCanBlock, kitSwordGuard, kitOnGuard, kitTryPickup, kitBlockTick, kitStartDodge, kitSledTick } from './knightkit.js';
+import { kit2StartDodge, kit2HorseTick, kit2TryKick } from './knightkit2.js';
+import { applyAxe, axeReset, axeOnStart, axeStartDodge, axeApplyRoll, axeTryTop, axeTopTick } from './axekit.js';
 
 // Quando o herói está "congelado" (troca de sala, menus) ele ignora os controles.
 const NO_INPUT = {
@@ -89,6 +93,8 @@ function makeMagicWall() {
   return g;
 }
 
+const aimTmp = { v: new THREE.Vector3(), x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3(), m: new THREE.Matrix4(), q: new THREE.Quaternion(), pq: new THREE.Quaternion() };
+
 export class Player {
   // opts: { input (de onde vêm os comandos; padrão = teclado/mouse/controle deste PC), cape (cor da capa), id (1 ou 2) }
   constructor(hero, opts = {}) {
@@ -159,6 +165,9 @@ export class Player {
     // Sem escudo (Ladino): a peça da mão esquerda é uma arma (adaga, garra), não gasta nem some.
     this.offhand = this.hero.noShield ? left : null;
     this.shieldMesh = this.hero.noShield ? null : left;
+    // Garras: guardam a rotação normal para voltar depois de apontar para o inimigo.
+    this.aimParts = [[this.weapon, ws.right], [left, ws.left]].filter(([o, c]) => o && c && c.aim).map(([o]) => ({ o, rest: o.quaternion.clone() }));
+    this.aimW = 0;
   }
 
   get weaponId() { return this.hero.weaponId; }
@@ -169,8 +178,10 @@ export class Player {
     if (heroId === this.heroId) return this.setWeapon(wid || this.hero.weaponId);
     this.group.remove(this.model);
     if (this.wall) { this.group.remove(this.wall); this.wall = null; }
+    kitReset(this);
+    axeReset(this);
     this.heroId = heroId;
-    this.hero = heroWith(heroId, wid);
+    this.hero = applyWeaponMods(heroWith(heroId, wid), this.stats.w);
     const model = instance(this.hero.model);
     model.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
     this.group.add(model);
@@ -182,6 +193,8 @@ export class Player {
     this.attachArms();
     this.anim = new Animator(model);
     initShield(this, this.shieldMesh);
+    applyKit(this);
+    applyAxe(this);
     this.syncWeaponSize(this.stats.rangeMul);
     this.combo = 0;
     this.refillAmmo();
@@ -212,11 +225,16 @@ export class Player {
   // Troca de arma (Taverna). Mantém vida, bênçãos e ouro.
   setWeapon(wid) {
     if (!wid || wid === this.hero.weaponId) return false;
+    kitReset(this);
+    axeReset(this);
     for (const m of [this.weapon, this.shieldMesh, this.offhand]) if (m && m.parent) m.parent.remove(m);
-    this.hero = heroWith(this.heroId, wid);
+    this.hero = applyWeaponMods(heroWith(this.heroId, wid), this.stats.w);
     this.glow = 0;
     this.attachArms();
     initShield(this, this.shieldMesh);
+    if (this.kit) this.kit.swapMesh = null;
+    applyKit(this);
+    applyAxe(this);
     this.syncWeaponSize(this.stats.rangeMul);
     this.combo = 0;
     this.refillAmmo();
@@ -228,6 +246,9 @@ export class Player {
   }
 
   setState(s) { this.state = s; this.stateTime = 0; }
+
+  // Dá para levantar a guarda agora? (escudo inteiro e na mão; Mãos Trocadas: a espada na mão)
+  canGuard() { return !this.hero.noShield && kitCanBlock(this) && (kitSwordGuard(this) || this.shield > 0); }
 
   // Munição (Kunais/Besta do Ladino): cheia. O que estava no chão some (rogue.js cuida disso pelo onRefill).
   refillAmmo() {
@@ -245,7 +266,7 @@ export class Player {
       this.spectralGlow.position.y = 0.12;
       this.group.add(this.spectralGlow);
     }
-    const target = this.spectralReady ? 0.55 + 0.2 * Math.sin(performance.now() / 200) : 0;
+    const target = this.spectralReady || this.potionGuard ? 0.55 + 0.2 * Math.sin(performance.now() / 200) : 0;
     const m = this.spectralGlow.material;
     m.opacity += (target - m.opacity) * Math.min(1, dt * 8);
     this.spectralGlow.visible = m.opacity > 0.01;
@@ -256,8 +277,9 @@ export class Player {
   get ultNeed() { return Math.max(3, this.stats.ultNeed || 10); }
   // Bênçãos com efeito por tempo/condição (M4).
   get lowHp() { return this.hp < this.maxHp * 0.4; }
-  get atkSpeed() { return this.stats.attackSpeed + (this.reflexTime > 0 ? 0.3 : 0); }
-  get moveMul() { return this.stats.speedMul * (this.stats.fury && this.lowHp ? 1.2 : 1); }
+  // Reflexo: +30% durante o combo depois de escapar rolando. Fúria Desesperada: +30% com pouca vida.
+  get atkSpeed() { return this.stats.attackSpeed + (this.reflexCombo === 'active' ? 0.3 : 0) + (this.stats.fury && this.lowHp ? 0.3 : 0) + (this.hasteT > 0 ? (this.stats.w.critHaste || 0) : 0); }
+  get moveMul() { return this.stats.speedMul; }
   get ctl() { return this.frozen || this.choosing ? NO_INPUT : this.input; }
 
   heal(n) {
@@ -269,8 +291,17 @@ export class Player {
   addBlessing(b) {
     this.blessings[b.id] = (this.blessings[b.id] || 0) + 1;
     b.apply(this.stats, this);
+    if (b.weapon) this.rebuildHero(); // bênção exclusiva da arma: muda os dados dos golpes
     if (this.hp > this.maxHp) this.hp = this.maxHp; // bênção arriscada pode tirar vida máxima
     this.syncWeaponSize();
+  }
+
+  // Refaz os dados do herói (mesma arma) com as bênçãos da arma. Não troca modelos.
+  rebuildHero() {
+    this.hero = applyWeaponMods(heroWith(this.heroId, this.hero.weaponId), this.stats.w);
+    applyKit(this); // Espada e Escudo: combo conforme o que está na mão (knightkit.js)
+    applyAxe(this); // Machado: Arremesso Mortal (4º golpe)
+    if (this.combo >= this.hero.combo.length) this.combo = 0;
   }
 
   // Lâmina Longa: a espada cresce junto com o alcance do golpe. A lâmina aponta para +Y no modelo;
@@ -323,6 +354,12 @@ export class Player {
   }
 
   // O escudo protege de um ataque vindo de (x, z)?
+  // Barreira da Maga: rebate um projétil vindo de (x, z)? (Barreira Total = de qualquer lado)
+  reflects(x, z) {
+    if (!this.hero.block || !this.hero.block.reflect || this.state !== 'block' || this.shield <= 0) return false;
+    return this.stats.reflectArc >= 360 || this.blocksFrom(x, z);
+  }
+
   blocksFrom(x, z) {
     if (this.state !== 'block') return false;
     if (this.backToBack) return true; // co-op: de costas com o parceiro, os dois cobrem todos os lados
@@ -346,6 +383,7 @@ export class Player {
   hurt(dmg, nx, nz, push) {
     const h = this.hero;
     this.hp -= dmg;
+    this.perfectStacks = 0; // Perfect: tomou dano, a contagem recomeça
     audio.play('hurt', this.position.x, this.position.z);
     this.hurtFlash = 1;
     if (this.state === 'rooted') {
@@ -424,6 +462,7 @@ export class Player {
   }
 
   tryDrink() {
+    if (this.restRoom) { if (this.onRestPotion) this.onRestPotion(this); return false; } // sala de descanso: sem poção
     const full = this.hp >= this.maxHp && !(this.canShareHeal && this.canShareHeal(this));
     if (this.potions <= 0 || full) { if (this.onPotionFail) this.onPotionFail(this); return false; }
     this.setState('drink');
@@ -438,6 +477,10 @@ export class Player {
     this.potions = this.hero.potions;
     this.stats = baseStats();
     this.blessings = {};
+    kitReset(this);
+    axeReset(this);
+    this.rebuildHero(); // sem bênçãos de arma
+    this.hasteT = 0; this.wbDodgeT = 0; this.rampT = 0; this.rampStacks = 0; this.wbHealCd = 0;
     this.syncWeaponSize(1);
     this.frozen = false;
     this.choosing = false;
@@ -446,6 +489,8 @@ export class Player {
     this.hp = this.maxHp;
     this.iframes = 0; this.vel.set(0, 0, 0); this.hurtFlash = 0; this.combo = 0;
     this.reflexTime = 0; this.counterReady = false; this.spectralCd = 0; this.backToBack = false;
+    this.reflexCombo = false; this.potionGuard = false; this.dodgeUltCd = 0; this.perfectStacks = 0; this.openerReady = false;
+    this.powerLeft = 0; this.powerActive = false;
     this.ult = 0; this.ultTime = 0; this.ultCasting = false;
     this.stealth = 0; this.smokeCd = 0; this.sneakCrit = false; this.parryCrit = false; this.parryCd = 0;
     this.refillAmmo();
@@ -474,25 +519,37 @@ export class Player {
     // Saiu da fumaça atacando: volta a aparecer (o golpe sai crítico: sneakCrit).
     if (this.stealth > 0) this.stealth = 0;
     const step = this.hero.combo[this.combo];
+    if (this.combo === 0) this.newCombo();
     this.setState('attack');
     this.queued = false;
     this.hitDone = false;
     if (!this.frozen) this.facing = this.aimAngle(camera);
     audio.play(step.heavy ? 'swingHeavy' : 'swing', this.position.x, this.position.z);
     this.anim.play(step.clip, { once: true, speed: step.speed * this.atkSpeed, restart: true, fade: 0.08 });
+    axeOnStart(this, step); // Giro Voraz
+  }
+
+  // Começo de um combo novo: Reflexo (vale para 1 combo) e Poder Acumulado (2 combos depois da ultimate).
+  newCombo() {
+    this.reflexCombo = this.reflexCombo === 'armed' ? 'active' : false;
+    if (this.powerLeft > 0) { this.powerLeft--; this.powerActive = true; } else this.powerActive = false;
   }
 
   startDodge() {
     const h = this.hero;
+    if (kit2StartDodge(this)) return; // Cavalo Fantasma: galopa em vez de rolar
+    if (kitStartDodge(this)) return; // Trenó de Escudo: desliza em vez de rolar
     this.ctl.moveDir(this.dodgeDir);
     if (this.dodgeDir.lengthSq() === 0) this.dodgeDir.set(Math.sin(this.facing), 0, Math.cos(this.facing));
     else this.dodgeDir.normalize();
     this.facing = angleTo(this.dodgeDir.x, this.dodgeDir.z);
     this.setState('dodge');
     this.combo = 0;
+    if (this.rollHits) this.rollHits.clear(); // Saque Rápido: cada rolamento acerta cada inimigo uma vez
     this.setGlow(0);
-    this.anim.play(h.dodge.pose, { fade: 0.06, restart: true });
+    if (!axeStartDodge(this)) this.anim.play(h.dodge.pose, { fade: 0.06, restart: true }); // Rolagem Giratória: gira com o machado
     audio.play('dodge', this.position.x, this.position.z);
+    if (this.stats.w.dodgeDmg || this.stats.w.dodgeCrit) this.wbDodgeT = 1.8; // Pés Ligeiros / Dança das Lâminas (rolamento + 1,5 s)
     if (this.onDodge) this.onDodge(this, 'start');
   }
 
@@ -534,7 +591,7 @@ export class Player {
     this.model.position.set(0, c - c * Math.cos(a) - Math.sin(k * Math.PI) * 0.35, -c * Math.sin(a));
   }
 
-  clearRoll() { this.model.rotation.x = 0; this.model.position.set(0, 0, 0); }
+  clearRoll() { this.model.rotation.set(0, 0, 0); this.model.position.set(0, 0, 0); }
 
   update(dt, camera, world) {
     if (this.grabImmune > 0) this.grabImmune -= dt;
@@ -550,6 +607,7 @@ export class Player {
     this.stateTime += dt;
     this.iframes = Math.max(0, this.iframes - dt);
     this.reflexTime = Math.max(0, (this.reflexTime || 0) - dt);
+    this.dodgeUltCd = Math.max(0, (this.dodgeUltCd || 0) - dt); // Esquiva Envolvente: 1 vez por minuto
     this.bumpGrace = Math.max(0, (this.bumpGrace || 0) - dt);
     this.bumpWindow = Math.max(0, (this.bumpWindow || 0) - dt);
     // Escudo Espectral: recarrega em 12 s; brilho azul em volta quando pronto.
@@ -581,12 +639,14 @@ export class Player {
     let turnRate = h.turnSpeed;
 
     // Esquiva tem prioridade sobre tudo (menos outra esquiva).
-    if (this.state === 'cine') { this.anim.update(dt); return; } // a cena controla o herói
-    if (input.dodge() && this.state !== 'dodge' && this.state !== 'rooted' && this.state !== 'stagger' && this.dodgeCooldown <= 0) this.startDodge();
+    if (this.state === 'cine') { this.anim.update(dt); this.aimForward(); return; } // a cena controla o herói
+    if (input.dodge() && !this.axeAway && this.state !== 'dodge' && this.state !== 'sled' && this.state !== 'horse' && this.state !== 'rooted' && this.state !== 'stagger' && this.dodgeCooldown <= 0) this.startDodge();
 
     switch (this.state) {
       case 'idle':
       case 'run': {
+        // Arremesso Mortal: parado esperando o machado voltar.
+        if (this.axeAway) { if (this.state !== 'idle') { this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.15 }); } break; }
         if (input.attack()) { this.combo = 0; this.startAttack(camera); break; }
         if (input.potion() && !this.noPotion && this.tryDrink()) break;
         if (abilPress && this.useAbility(camera)) break;
@@ -601,6 +661,9 @@ export class Player {
         break;
       }
       case 'attack': {
+        // Bloqueio/aparar é instantâneo: corta o golpe na hora, em qualquer momento (pedido do dono).
+        if (!h.ability && input.blocking() && this.canGuard()) { this.combo = 0; this.queued = false; this.setGlow(0); this.enterBlock(camera); break; }
+        if (abilPress && h.ability === 'parry' && this.useAbility(camera)) { this.combo = 0; this.queued = false; this.setGlow(0); break; }
         const step = h.combo[this.combo];
         // Golpes com end > 1: o clipe toca rápido e o herói segura a pose final até o tempo do golpe acabar
         // (ex.: giro do machado). O progresso conta pelo tempo do golpe, não para em 1.
@@ -609,7 +672,7 @@ export class Player {
           : this.anim.progress();
         // Avanço do golpe (só no começo).
         if (p < step.hit) {
-          const v = (step.lunge / (step.hit * this.anim.current.getClip().duration / (step.speed * this.atkSpeed)));
+          const v = (step.lunge * (h.lungeMul ?? 1) / (step.hit * this.anim.current.getClip().duration / (step.speed * this.atkSpeed)));
           this.move(Math.sin(this.facing), Math.cos(this.facing), v * dt, world);
         }
         if (!this.hitDone && p >= step.hit) {
@@ -621,13 +684,15 @@ export class Player {
         const last = this.combo === h.combo.length - 1;
         // Golpe forte: a espada acende enquanto ele levanta e apaga depois do impacto.
         if (step.heavy) this.setGlow(p < step.hit ? p / step.hit : Math.max(0, 1 - (p - step.hit) * 5));
-        if (this.queued && !last && p >= win && this.hitDone) {
+        if (this.queued && !last && p >= win && this.hitDone && axeTryTop(this, step, input)) {
+          // Pião: segurando o ataque no fim do giro, continua girando
+        } else if (this.queued && !last && p >= win && this.hitDone) {
           this.combo++;
           this.startAttack(camera);
         } else if (p >= (step.end || 0.98)) {
           this.combo = 0;
           // Último golpe com clique guardado: recomeça o combo na hora (não fica parado).
-          if (last && this.queued) { this.startAttack(camera); break; }
+          if (last && this.queued && !this.axeAway) { this.startAttack(camera); break; }
           this.queued = false;
           this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.2 });
         } else if (moving && (last
@@ -635,9 +700,6 @@ export class Player {
           : p >= (step.cancel ?? h.attackCancel) && !this.queued)) {
           this.combo = 0; this.queued = false;
           this.setState('run'); this.anim.play(h.anims.run, { fade: 0.2 });
-        } else if (input.blocking() && p >= win && this.shield > 0) {
-          this.combo = 0;
-          this.enterBlock(camera);
         } else if (abilPress && this.hitDone && this.useAbility(camera)) {
           this.combo = 0; this.queued = false;
         }
@@ -647,7 +709,7 @@ export class Player {
       case 'dodge': {
         const speed = h.dodge.distance * this.stats.dodgeMul / h.dodge.time;
         this.move(this.dodgeDir.x, this.dodgeDir.z, speed * dt, world);
-        this.applyRoll(this.stateTime / h.dodge.time);
+        if (this.axeRoll) axeApplyRoll(this, this.stateTime / h.dodge.time); else this.applyRoll(this.stateTime / h.dodge.time);
         if (this.stateTime >= h.dodge.time) {
           this.clearRoll();
           if (this.onDodge) this.onDodge(this, 'end');
@@ -656,6 +718,23 @@ export class Player {
           this.setState(moving ? 'run' : 'idle');
           this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.12 });
         }
+        turnRate = 0;
+        break;
+      }
+      case 'sled': { // Trenó de Escudo (knightkit.js)
+        kitSledTick(this, dt, world, input, tmpMove);
+        turnRate = 0;
+        break;
+      }
+      case 'spin': { // Pião (axekit.js): girando sem parar enquanto segura o ataque
+        if (axeTopTick(this, dt, world, input, tmpMove) === 'heavy') { this.combo = Math.max(0, h.heavyIdx); this.startAttack(camera); }
+        turnRate = 0;
+        break;
+      }
+      case 'horse': { // Cavalo Fantasma (knightkit2.js)
+        const r = kit2HorseTick(this, dt, world, input, tmpMove);
+        if (r === 'attack') { this.combo = 0; this.startAttack(camera); }
+        else if (r === 'end') { this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
         turnRate = 0;
         break;
       }
@@ -695,6 +774,8 @@ export class Player {
         break;
       }
       case 'hurt': {
+        if (!h.ability && input.blocking() && this.canGuard() && this.enterBlock(camera)) break; // bloqueio instantâneo
+        if (abilPress && h.ability === 'parry' && this.useAbility(camera)) break;
         if (this.stateTime >= h.hurt.time) {
           this.setState(moving ? 'run' : 'idle');
           this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 });
@@ -704,9 +785,15 @@ export class Player {
       }
       case 'drink': {
         // Bebe a poção: cura no meio da animação. Rolar cancela (sem gastar a poção, se for antes da cura).
+        // Bloqueio/aparar também cancela na hora (antes da cura não gasta a poção).
+        if (!h.ability && input.blocking() && this.canGuard() && this.enterBlock(camera)) break;
+        if (abilPress && h.ability === 'parry' && this.useAbility(camera)) break;
         if (!this.drank && this.anim.progress() >= 0.5) {
           this.drank = true;
-          this.potions--;
+          // Poção Premiada: chance de não gastar a poção.
+          if (this.stats.potionSave > 0 && Math.random() < this.stats.potionSave) { if (this.onText) this.onText(this, 'Poção salva!', 'gold'); }
+          else this.potions--;
+          if (this.stats.potionGuard) this.potionGuard = true; // Poção Concentrada: anula o próximo dano
           audio.play('potion', this.position.x, this.position.z);
           const before = this.hp, total = Math.round((h.potionHeal + this.stats.potionBonus) * this.stats.potionMul);
           this.hp = Math.min(this.maxHp, this.hp + total);
@@ -735,7 +822,8 @@ export class Player {
         turnRate = h.turnSpeed * 1.5;
         if (moving && h.blockMoveSpeed > 0) this.position.addScaledVector(tmpMove, h.blockMoveSpeed * dt);
         if (input.potion() && !this.noPotion && this.tryDrink()) break;
-        if (!input.blocking() || this.shield <= 0) { this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.15 }); }
+        if (!input.blocking() || !this.canGuard()) { this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.15 }); }
+        else if (kitBlockTick(this)) break; // Escudo Plantado: segurou o bloqueio, fincou o escudo
         else if (input.attack()) { this.combo = 0; this.startAttack(camera); }
         break;
       }
@@ -746,6 +834,35 @@ export class Player {
     this.group.rotation.y = this.facing;
     world.resolveCircle(this.position, h.radius);
     this.anim.update(dt);
+    if (this.aimParts && this.aimParts.length) this.aimClaws(dt);
+    this.aimForward();
+  }
+
+  // Besta do Ladino (pedido do dono, 31/10): a mão gira de lado nas animações; a besta fica sempre
+  // deitada e apontada para a frente do herói, presa na mão.
+  aimForward() {
+    const w = this.weapon, ws = this.hero && this.hero.weapons;
+    if (!w || !ws || !ws.right || !ws.right.forward || !w.parent) return;
+    const q = (this._fwdQ ||= w.quaternion.clone()).identity();
+    for (let o = w.parent; o && o !== this.model; o = o.parent) q.premultiply(o.quaternion);
+    w.quaternion.copy(q.invert());
+  }
+
+  // Garras do Ladino: atacando, as lâminas (eixo -X do modelo) apontam para a frente do herói.
+  aimClaws(dt) {
+    this.aimW += ((this.state === 'attack' ? 1 : 0) - this.aimW) * Math.min(1, dt * 18);
+    const fwd = aimTmp.v.set(Math.sin(this.facing), -0.12, Math.cos(this.facing)).normalize();
+    for (const a of this.aimParts) {
+      if (this.aimW < 0.01) { a.o.quaternion.copy(a.rest); continue; }
+      const parent = a.o.parent; parent.updateWorldMatrix(true, false);
+      // base: lâmina = -fwd, "cima" da garra = cima do mundo
+      const x = aimTmp.x.copy(fwd).negate(), y = aimTmp.y.set(0, 1, 0), z = aimTmp.z.crossVectors(x, y).normalize(); y.crossVectors(z, x);
+      aimTmp.m.makeBasis(x, y, z);
+      const want = aimTmp.q.setFromRotationMatrix(aimTmp.m);
+      parent.getWorldQuaternion(aimTmp.pq);
+      want.premultiply(aimTmp.pq.invert());
+      a.o.quaternion.copy(a.rest).slerp(want, this.aimW);
+    }
   }
 
   // Toca uma animação "de cena" (ex.: Interact, Cheering). hold = fica parado no fim.
@@ -781,7 +898,10 @@ export class Player {
   enterBlock(camera) {
     const h = this.hero;
     if (h.noShield) return false; // arma de duas mãos: sem escudo, sem bloqueio
-    if (this.shield <= 0) {
+    if (kitTryPickup(this)) return false; // Escudo Plantado: perto dele, pega de volta
+    if (kit2TryKick(this)) return false; // Mesa Virada: objeto na frente do escudo é chutado
+    if (!kitCanBlock(this)) return false; // escudo longe (arremessado/fincado) ou espada longe (Mãos Trocadas)
+    if (this.shield <= 0 && !kitSwordGuard(this)) {
       if (!this.noShieldCd && this.onNoShield) this.onNoShield(this);
       this.noShieldCd = 1.2;
       return false;
@@ -792,6 +912,7 @@ export class Player {
       once: true, speed: 2.2, fade: 0.08, restart: true,
       onFinish: () => { if (this.state === 'block') this.anim.play(h.anims.blocking, { fade: 0.1 }); },
     });
+    kitOnGuard(this); // Corrente no Escudo
     return true;
   }
 }

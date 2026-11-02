@@ -141,7 +141,7 @@ function land(e, ctx) {
   audio.play('boom', e.position.x, e.position.z);
   for (const h of combat.alivePlayers) {
     const d = Math.hypot(h.position.x - e.position.x, h.position.z - e.position.z);
-    if (d <= T.radius + h.hero.radius) combat.hitPlayer(e, Math.round(T.damage * ((by && by.dmgScale) || e.dmgScale || 1)), { push: T.push, noRepel: true, target: h });
+    if (d <= T.radius + h.hero.radius) combat.hitPlayer(e, Math.round(T.damage * ((by && by.dmgScale) || e.dmgScale || 1)), { push: T.push, noRepel: true, bossSkill: true, target: h });
   }
   e.setState('hurt');
   e.stunTime = T.stun;
