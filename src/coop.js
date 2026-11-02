@@ -12,7 +12,7 @@ import { audio } from './audio.js';
 
 export const ENEMY_TYPES = Object.keys(ENEMIES);
 export const PICKUP_KINDS = ['blessing', 'gold', 'potion', 'chest', 'shop', 'bed'];
-const SEND_EVERY = 1 / 15;
+const SEND_EVERY = 1 / 25;
 const r2 = (v) => Math.round(v * 100) / 100;
 const r1 = (v) => Math.round(v * 10) / 10;
 const clipIdx = (anim) => clipNames.indexOf(anim.currentName);
@@ -223,7 +223,8 @@ export class CoopHost {
     const free = (p.state === 'idle' || p.state === 'run') && !p.frozen && !p.choosing ? 1 : 0;
     const d = p.hero.dodge;
     return [this.input.seq, r2(Math.max(0, this.time - this.input.seqAt)), free, r2(p.hero.moveSpeed * p.moveMul),
-      r2(d.distance * p.stats.dodgeMul), r2(d.time), p.dodgeCooldown <= 0 ? 1 : 0, r2(d.cooldown)];
+      r2(d.distance * p.stats.dodgeMul), r2(d.time), p.dodgeCooldown <= 0 ? 1 : 0, r2(d.cooldown),
+      r2(p.atkSpeed || 1), r2(p.stats.rangeMul || 1), p.state === 'attack' ? 1 : 0]; // combo previsto no Jogador 2
   }
 
   fx() {

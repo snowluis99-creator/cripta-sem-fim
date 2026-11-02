@@ -6,7 +6,7 @@ import { Predictor } from './predict.js';
 
 const tmp = new THREE.Vector3();
 
-const SEND_EVERY = 1 / 20;
+const SEND_EVERY = 1 / 30;
 const LOST_AFTER = 5; // segundos sem o anfitrião = caiu a conexão
 
 export class CoopClient {
@@ -28,6 +28,7 @@ export class CoopClient {
     this.sq = 0;
     if (this.spectator) { this.hud.setSpectator(true); return; }
     r.pred = new Predictor(r.world);
+    r.pred.onHit = (p, step, range) => r.localHit(p, step, range); // acerto mostrado na hora
     // Medidor de ping (ida e volta até o anfitrião) e quadros por segundo, no canto da tela do Jogador 2.
     this.sentAt = new Map(); this.ping = 0; this.fpsN = 0; this.fpsT = 0; this.fps = 0;
     this.pingEl = document.createElement('div');

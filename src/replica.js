@@ -33,6 +33,7 @@ import { input } from './input.js';
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const smooth = (dt, k = 14) => 1 - Math.exp(-k * dt);
+const AHEAD_MAX = 0.12; // s: entre um pacote e outro, quem está andando continua andando (no máximo isso à frente)
 const unvec = (a) => (a && a.v ? new THREE.Vector3(a.v[0], a.v[1], a.v[2]) : a);
 
 // Repete a animação que o outro computador começou (mesmo clipe, velocidade e "uma vez/loop").
@@ -358,7 +359,7 @@ export class Replica {
       case 'v': { const fn = this.vfx[e[1]]; if (fn) fn.apply(this.vfx, e.slice(2).map(unvec)); break; }
       case 't': this.text.add(e[1], { x: e[2], z: e[3] }, e[4], e[5]); break;
       case 'k': this.cam.shake(e[1]); break;
-      case 's': audio.play(e[1], e[2] ?? undefined, e[3] ?? undefined, { net: false, v: e[4] }); break;
+      case 's': if (this.echoSound(e[1], e[2], e[3])) break; audio.play(e[1], e[2] ?? undefined, e[3] ?? undefined, { net: false, v: e[4] }); break;
       case 'fl': this.hud.flash(e[1], e[2]); break;
       case 'b': this.hud.banner(e[1], e[2]); break;
       case 'T': {
@@ -377,6 +378,50 @@ export class Replica {
       case 'hzr': { const c = this.hazards.circles.find((o) => o.id === e[1]); if (c) this.hazards.remove(c); break; }
       default: break;
     }
+  }
+
+  // Posição "agora" de quem anda na tela do anfitrião: última posição + velocidade × tempo desde o pacote.
+  // (x, z) = última posição recebida; a velocidade é medida entre pacotes no relógio do anfitrião.
+  ahead(o, x, z, time) {
+    const ht = this.hostTime || 0;
+    if (o.nx !== x || o.nz !== z) {
+      const dtH = ht - (o.nT ?? -1);
+      if (o.nx !== undefined && dtH > 0.005 && dtH < 0.4) {
+        const vx = (x - o.nx) / dtH, vz = (z - o.nz) / dtH;
+        const sp = Math.hypot(vx, vz);
+        if (sp < 18) { o.nvx = vx; o.nvz = vz; } else { o.nvx = 0; o.nvz = 0; } // pulo grande (teleporte, salto) = sem prever
+      } else { o.nvx = 0; o.nvz = 0; }
+      o.nx = x; o.nz = z; o.nT = ht; o.nAt = time;
+    } else if (time - (o.nAt ?? time) > 0.25) { o.nvx = 0; o.nvz = 0; } // parado
+    const a = Math.min(AHEAD_MAX, Math.max(0, time - (o.nAt ?? time)));
+    return [x + (o.nvx || 0) * a, z + (o.nvz || 0) * a];
+  }
+
+  // Golpe do Jogador 2 acertou (previsto aqui, na hora): esqueletos na frente piscam e o som toca.
+  // O dano de verdade (e o número) continua vindo do anfitrião.
+  localHit(p, step, range) {
+    const arc = ((step.arc || p.hero.attackArc) / 2) * Math.PI / 180;
+    let n = 0;
+    for (const e of this.enemies.values()) {
+      if (e.code === 1 || e.code === 2 || !e.group.visible || e.netImmune) continue;
+      const dx = e.position.x - p.position.x, dz = e.position.z - p.position.z, dist = Math.hypot(dx, dz) || 0.001;
+      if (dist > range + e.data.radius || Math.abs(wrap(Math.atan2(dx, dz) - p.facing)) > arc) continue;
+      e.localFlash = 1;
+      n++;
+    }
+    if (!n) return;
+    const ix = p.position.x + Math.sin(p.facing) * 1.2, iz = p.position.z + Math.cos(p.facing) * 1.2;
+    audio.play(step.heavy ? 'hitHeavy' : 'hit', ix, iz, { net: false });
+    this.pred.echo.hit.push(this.pred.time);
+  }
+
+  // Som mandado pelo anfitrião: golpe/acerto do Jogador 2 que já tocou aqui na hora não toca de novo.
+  echoSound(name, x, z) {
+    const pr = this.pred, me = this.heroes[1];
+    if (!pr || !me || x == null || Math.hypot(x - me.position.x, z - me.position.z) > 4.5) return false;
+    if (name === 'swing' || name === 'swingHeavy') return pr.echoed('swing');
+    if (name === 'hit' || name === 'hitHeavy') return pr.echoed('hit');
+    return false;
   }
 
   // ---------- A cada quadro ----------
@@ -399,13 +444,17 @@ export class Replica {
       if (pr) p.facing += wrap(pr.facing - p.facing) * smooth(dt, pr.local ? 22 : 14);
       else {
         if (this.snapHeroes) p.position.set(x, 0, z);
-        else { p.position.x += (x - p.position.x) * k; p.position.z += (z - p.position.z) * k; }
+        else {
+          const [gx, gz] = this.ahead(p, x, z, time);
+          p.position.x += (gx - p.position.x) * k; p.position.z += (gz - p.position.z) * k;
+        }
         p.facing += wrap(f - p.facing) * k;
       }
       p.position.y += (y - p.position.y) * k; // levantado pelo Rei Skullbone
       p.group.rotation.y = p.facing;
       p.group.visible = !!vis;
-      if (!pr || !pr.local) { if (!(pr && this.pred.adopt(p.anim, pid, clipNames[clip], spd))) syncAnim(p.anim, pid, clip, spd, once); }
+      if (pr && pr.local) { if (this.pred.note(p, p.anim, pid, clipNames[clip])) syncAnim(p.anim, pid, clip, spd, once); }
+      else if (!(pr && this.pred.adopt(p.anim, pid, clipNames[clip], spd))) syncAnim(p.anim, pid, clip, spd, once);
       // Cambalhota: continua girando entre um pacote e outro (a do Jogador 2 já gira aqui na hora).
       if (pr && pr.roll) { /* rolamento feito aqui */ } else if (roll >= 0) {
         if (this.rolls[i] < 0 || Math.abs(this.rolls[i] - roll) > 0.35) this.rolls[i] = roll;
@@ -460,11 +509,13 @@ export class Replica {
     // Esqueletos.
     for (const e of this.enemies.values()) {
       if (e.tx === undefined) continue;
-      e.position.x += (e.tx - e.position.x) * k;
-      e.position.z += (e.tz - e.position.z) * k;
+      const [gx, gz] = this.ahead(e, e.tx, e.tz, time);
+      e.position.x += (gx - e.position.x) * k;
+      e.position.z += (gz - e.position.z) * k;
       e.facing += wrap(e.tf - e.facing) * k;
       e.group.rotation.y = e.facing;
-      setFlash(e.bodyMats, (e.netFlash || 0) * 1.6);
+      if (e.localFlash > 0) e.localFlash = Math.max(0, e.localFlash - dt * 6);
+      setFlash(e.bodyMats, Math.max((e.netFlash || 0) * 1.6, e.localFlash || 0));
       if (e.eyes.length) setFlash(e.eyes, e.netEyes || 0, 1, 0.1, 0.05);
       e.anim.update(dt);
       if (e.boneSword) e.boneSword.update(dt);
