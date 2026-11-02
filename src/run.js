@@ -610,8 +610,8 @@ export class Run {
     const c = this.pendingChoice;
     if (!c || c.id !== id) return;
     this.pendingChoice = null;
-    this.doorAsk = null;
-    if (c.door) { if (idx < 0) { this.doorAsk = null; c.pl.choosing = false; } else c.onDoor(idx === 0); return; } // pergunta da porta
+    // Pergunta da porta: o onDoor (askDoor.done) confere o doorAsk e libera o herói; não zerar antes (travava o Jogador 2).
+    if (c.door) { if (idx < 0) { this.doorAsk = null; c.pl.choosing = false; } else c.onDoor(idx === 0); return; }
     c.pl.choosing = false;
     const b = c.options[idx];
     if (b) this.grantBlessing(b, c.pl);
@@ -653,6 +653,8 @@ export class Run {
     }
     if (this.victoryTimer > 0 && (this.victoryTimer -= dt) <= 0) this.showVictory();
     if (this.waitMsg > 0) this.waitMsg -= dt;
+    // Segurança (co-op): Jogador 2 "escolhendo" sem nenhuma escolha aberta para ele = solta o herói.
+    for (const p of this.players) if (p.remote && p.choosing && !(this.pendingChoice && this.pendingChoice.pl === p) && !(this.doorAsk && this.doorAsk.pl === p)) p.choosing = false;
     if (this.transition) { this.updateTransition(dt); return; }
 
     for (const pl of this.players) {
