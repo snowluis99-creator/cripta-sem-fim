@@ -42,7 +42,7 @@ import { shieldMax } from './shield.js';
 import { save } from './save.js';
 import { TAVERN_MODELS } from './tavern.js';
 import { RogueKit, ROGUE_MODELS, ammoInfo } from './rogue.js';
-import { gfxAtStart, bindRenderer } from './graphics.js';
+import { gfxAtStart, bindRenderer, dynRes } from './graphics.js';
 
 // Modo de teste: tecla I dentro do jogo (ou ?debug=1 local).
 let DEBUG = new URLSearchParams(location.search).has('debug') || location.hash.startsWith('#debug');
@@ -56,7 +56,7 @@ export const CAPE_P2 = 0x2f6fe0; // capa azul do Jogador 2
 
 async function start() {
   // Renderizador
-  const renderer = new THREE.WebGLRenderer({ antialias: gfxAtStart.aa });
+  const renderer = new THREE.WebGLRenderer({ antialias: gfxAtStart.aa, powerPreference: 'high-performance' }); // placa de vídeo dedicada, se houver
   renderer.localClippingEnabled = true; // Corte ao Meio (machado): metades do esqueleto
   bindRenderer(renderer); // resolução conforme Configurações → Gráficos
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -240,7 +240,7 @@ async function start() {
 
   addEventListener('resize', () => {
     cam.resize();
-    renderer.setSize(innerWidth, innerHeight);
+    if (dynRes.apply) dynRes.apply(); else renderer.setSize(innerWidth, innerHeight); // o teto de pixels depende do tamanho da janela
   });
 
   // ---------- Menu e co-op ----------
@@ -631,6 +631,7 @@ async function start() {
   const frame = () => {
     const elapsed = clock.getDelta();
     const realDt = Math.min(elapsed, 0.1);
+    if (!selfTest.running) dynRes.tick(elapsed); // resolução dinâmica: baixa se a placa de vídeo não dá conta
     input.poll();
     save.sandbox(selfTest.running); // teste automático não grava no save do jogador
     // Start do controle: abre ou volta no menu de pausa (Esc é tratado na hora, no keydown).
@@ -680,7 +681,7 @@ async function start() {
     if (DEBUG) {
       fpsAcc += realDt; fpsFrames++;
       if (fpsAcc >= 0.5) {
-        dbg.textContent = `FPS ${Math.round(fpsFrames / fpsAcc)} | ${mode} | draw ${renderer.info.render.calls} | ${player.state}`
+        dbg.textContent = `FPS ${Math.round(fpsFrames / fpsAcc)} | res ${Math.round(dynRes.scale * 100)}% | ${mode} | draw ${renderer.info.render.calls} | ${player.state}`
           + ` | vida ${player.hp} | inimigos ${combat.aliveCount} (atacando ${combat.attackers})`
           + `${god ? ' | INVENCÍVEL' : ''}${state.timeScale !== 1 ? ' | lento' : ''}`
           + `${p2 ? ` | J2 ${p2.state} ${Math.ceil(p2.hp)} (${p2.position.x.toFixed(1)}, ${p2.position.z.toFixed(1)})` : ''}`

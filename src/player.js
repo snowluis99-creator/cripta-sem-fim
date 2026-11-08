@@ -580,7 +580,7 @@ export class Player {
     this.hitDone = false;
     if (!this.frozen && !step.keepFacing) this.facing = this.aimAngle(camera);
     audio.play(step.heavy ? 'swingHeavy' : 'swing', this.position.x, this.position.z);
-    this.anim.play(step.clip, { once: true, speed: step.speed * this.atkSpeed, restart: true, fade: 0.08 });
+    this.anim.play(step.clip, { once: true, speed: step.speed * this.atkSpeed, restart: true, fade: 0.05 }); // golpe aparece mais rápido (era 0,08)
     axeOnStart(this, step); // Giro Voraz
     lanceOnStart(this, step); // Âncora
   }
@@ -727,7 +727,7 @@ export class Player {
         if (moving) {
           this.move(tmpMove.x, tmpMove.z, h.moveSpeed * this.moveMul * dt, world);
           targetFacing = angleTo(tmpMove.x, tmpMove.z);
-          if (this.state !== 'run') { this.setState('run'); this.anim.play(h.anims.run); }
+          if (this.state !== 'run') { this.setState('run'); this.anim.play(h.anims.run, { fade: 0.08 }); } // começa a correr logo (era 0,15)
         } else if (this.state !== 'idle') {
           this.setState('idle'); this.anim.play(h.anims.idle);
         }

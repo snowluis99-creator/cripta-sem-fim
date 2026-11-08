@@ -14,10 +14,37 @@ export const gfx = () => GFX[settings.gfx] || GFX.high;
 // O que só vale ao abrir o jogo (fica fixo nesta sessão).
 export const gfxAtStart = gfx();
 
-export function pixelRatio() {
+// Teto de pixels desenhados por quadro (tela grande/alta densidade no Alto pesava e atrasava os comandos).
+const PIXEL_BUDGET = { high: 2560 * 1440, medium: 1920 * 1080, low: 1600 * 900 };
+export function basePixelRatio() {
   const g = gfx();
-  return Math.min(window.devicePixelRatio || 1, g.maxRatio) * g.scale;
+  let r = Math.min(window.devicePixelRatio || 1, g.maxRatio) * g.scale;
+  const area = Math.max(1, innerWidth * innerHeight);
+  const budget = PIXEL_BUDGET[settings.gfx] || PIXEL_BUDGET.high;
+  if (area * r * r > budget) r = Math.sqrt(budget / area);
+  return r;
 }
+export function pixelRatio() { return basePixelRatio() * dynRes.scale; }
+
+// Resolução dinâmica (08/11): se o jogo cai abaixo de ~50 quadros por segundo, a placa de vídeo está
+// atrasada e os comandos aparecem na tela um ou dois quadros depois. Baixa a resolução aos poucos
+// (até 60%) e sobe de novo quando sobra folga. Medido pelo intervalo real entre quadros.
+export const dynRes = {
+  scale: 1, min: 0.6, acc: 0, n: 0, fast: 0, cool: 0, apply: null,
+  tick(elapsed) {
+    if (document.hidden || !(elapsed > 0) || elapsed > 0.25) return; // aba escondida ou engasgo de carregamento
+    this.cool = Math.max(0, this.cool - elapsed);
+    this.acc += elapsed; this.n++;
+    if (this.acc < 1) return;
+    const avg = this.acc / this.n; this.acc = 0; this.n = 0;
+    if (this.cool > 0) return;
+    let next = this.scale;
+    if (avg > 1 / 50) { next = Math.max(this.min, this.scale * 0.85); this.fast = 0; } // lento: −15%
+    else if (avg < 1 / 57) { if (++this.fast >= 4 && this.scale < 1) { next = Math.min(1, this.scale * 1.1); this.fast = 0; } } // 4 s com folga: +10%
+    else this.fast = 0;
+    if (next !== this.scale) { this.scale = next; this.cool = 1.5; if (this.apply) this.apply(); }
+  },
+};
 
 // Iluminação simples (Baixo): troca o material "físico" por um mais barato, mantendo textura e cores.
 export function simplifyMaterial(m) {
@@ -64,8 +91,10 @@ export function applyTorchQuality(torches) {
 // Renderizador: liga a resolução à configuração.
 export function bindRenderer(renderer) {
   const apply = () => { renderer.setPixelRatio(pixelRatio()); renderer.setSize(innerWidth, innerHeight); };
+  dynRes.apply = apply;
   settings.onChange((s, key) => {
     if (key && key !== 'gfx') return;
+    if (key) dynRes.scale = 1; // mudou a qualidade: recomeça a medir
     apply();
     if (key) rooms.forEach(applyTorchQuality);
   });
