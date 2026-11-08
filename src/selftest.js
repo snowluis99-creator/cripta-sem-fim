@@ -15,6 +15,33 @@ import { newWeaponTests } from './selftest13.js';
 import { changes30Tests } from './selftest14.js';
 import { kitTests } from './selftest15.js';
 import { axeTests } from './selftest16.js';
+import { axe3Tests } from './selftest18.js';
+import { sceneTests } from './selftest17.js';
+import { flailTests } from './selftest19.js';
+import { lanceTests } from './selftest20.js';
+import { fistTests } from './selftest21.js';
+import { arcTests } from './selftest22.js';
+import { eleTests } from './selftest23.js';
+import { darkTests } from './selftest24.js';
+import { iceTests } from './selftest26.js';
+import { fireTests } from './selftest27.js';
+import { daggerTests } from './selftest28.js';
+import { kunaiTests } from './selftest29.js';
+import { clawTests } from './selftest30.js';
+import { rapTests } from './selftest31.js';
+import { boltTests } from './selftest32.js';
+import { save as SAVE } from './save.js';
+const FIST_KEYS = [';', 'ç', 'Ç']; // tecla Ç (teclado ABNT) = só a Manopla
+const ICE_KEYS = ["'", '"']; // tecla ' (aspas) = só o Cajado de Gelo (bênçãos novas)
+const CLAW_CODES = ['End']; // tecla End = só as Garras (bênçãos novas)
+const BOLT_CODES = ['PageDown', 'Insert']; // PageDown = só a Besta (bênçãos novas), corrido; Insert = com as pausas de screenshot
+const RAP_CODES = ['Home', 'PageUp']; // Home = só a Rapieira (bênçãos novas), corrido; PageUp = com as pausas de screenshot
+const KUNAI_CODES = ['BracketLeft']; // tecla ´ (ao lado do P no teclado ABNT) = só as Kunais (bênçãos novas)
+const DAGGER_CODES = ['IntlBackslash']; // tecla \ (ao lado do Z no teclado ABNT) = só as Duas Adagas (bênçãos novas)
+const FIRE_KEYS = ['~', '^', 'Dead']; // tecla ~ (til, ao lado do Ç no teclado ABNT) = só o Cajado de Fogo
+const DARK_KEYS = ['/', '?']; // tecla / = só o Cajado das Trevas (bênçãos novas)
+const ELE_KEYS = ['.', '>']; // tecla . (ponto) = só o Cajado Elétrico
+const ARC_KEYS = [',', '<']; // tecla , (vírgula) = só o Cajado Arcano (pelo caractere: o navegador do app nem sempre manda o código)
 import { newTests } from './selftest9.js';
 import { rogueTests } from './selftest10.js';
 // Teste automático de combate (tecla T, só com o modo de teste ligado pela tecla I).
@@ -123,6 +150,21 @@ function* script(g, out, flags) {
   yield* changes30Tests(g, out, flags);
   yield* kitTests(g, out, flags);
   yield* axeTests(g, out, flags);
+  yield* axe3Tests(g, out, flags);
+  yield* sceneTests(g, out, flags);
+  yield* flailTests(g, out, flags);
+  yield* lanceTests(g, out, flags);
+  yield* fistTests(g, out, flags);
+  yield* arcTests(g, out, flags);
+  yield* eleTests(g, out, flags);
+  yield* darkTests(g, out, flags);
+  yield* iceTests(g, out, flags);
+  yield* fireTests(g, out, flags);
+  yield* daggerTests(g, out, flags);
+  yield* kunaiTests(g, out, flags);
+  yield* clawTests(g, out, flags);
+  yield* rapTests(g, out, flags);
+  yield* boltTests(g, out, flags);
   waves.paused = false;
   out('FIM (partida nova começou)');
   g.restart();
@@ -436,6 +478,7 @@ export function createSelfTest(state, game, isDebug) {
   };
   const out = (s) => { log.push(s); render(); };
   window.__testLog = () => log; // para o teste local (tests/run_selftest.py --log)
+  window.__testHolding = () => holding; // para tirar screenshot nas pausas (tests/shots_rap.py)
   addEventListener('keydown', (e) => {
     if (!log.length) return;
     const pages = Math.max(1, Math.ceil(log.length / 38));
@@ -466,18 +509,19 @@ export function createSelfTest(state, game, isDebug) {
   };
 
   // T = teste com pausas para screenshot; Y = teste corrido (sem pausas); U = rápido mas parando nas pausas.
-  let fast = false, skipHolds = false;
+  let fast = false, skipHolds = false, saveBackup = null;
   addEventListener('keydown', (e) => {
-    if (!['KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Digit5', 'Digit4', 'Digit3', 'Digit2', 'Digit1', 'Minus'].includes(e.code) || !isDebug()) return;
+    if (!['Equal', 'KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Digit5', 'Digit4', 'Digit3', 'Digit2', 'Digit1', 'Minus', 'Backslash', 'BracketRight', 'Semicolon', 'Comma', 'Period'].includes(e.code) && !FIST_KEYS.includes(e.key) && !ARC_KEYS.includes(e.key) && !ELE_KEYS.includes(e.key) && !DARK_KEYS.includes(e.key) && !ICE_KEYS.includes(e.key) && !FIRE_KEYS.includes(e.key) && e.code !== 'Quote' && !DAGGER_CODES.includes(e.code) && !KUNAI_CODES.includes(e.code) && !CLAW_CODES.includes(e.code) && !RAP_CODES.includes(e.code) && !BOLT_CODES.includes(e.code) || !isDebug()) return;
     if (running) { holding = false; return; }
     if (game.ui && game.ui.modal) return; // menu aberto (ex.: pergunta da porta): os números escolhem, não rodam teste
     fast = e.code !== 'KeyT';
-    skipHolds = e.code === 'KeyY';
+    skipHolds = e.code === 'KeyY' || DAGGER_CODES.includes(e.code) || KUNAI_CODES.includes(e.code) || CLAW_CODES.includes(e.code) || e.code === 'Home' || e.code === 'PageDown' || DARK_KEYS.includes(e.key) || ICE_KEYS.includes(e.key) || FIRE_KEYS.includes(e.key) || e.code === 'Quote' || ARC_KEYS.includes(e.key) || e.code === 'Comma' || ((ELE_KEYS.includes(e.key) || e.code === 'Period') && !e.shiftKey && e.key !== '>'); // > (Shift+ponto) = Cajado Elétrico com pausas // vírgula: corrido (o resultado fica na tela)
     running = true; holding = false; log = []; page = -1; wait = 0; waitFn = null;
+    saveBackup = JSON.parse(JSON.stringify(SAVE.data)); // os testes mexem no progresso: no fim volta tudo como estava
     if (game.ult) game.ult.cinematic = false; // testes antigos: a ultimate sai na hora (a cena tem teste próprio)
     if (game.combat) game.combat.noEvade = true;
     if (game.waves) game.waves.noHold = true; // testes antigos: a onda não espera pegarem a recompensa da entrada // desvio de 10% do Ladino desligado nos testes antigos (tem teste próprio)
-    gen = e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : e.code === 'Digit5' ? (function* () { yield 0.5; yield* tweakTests(game, out, flags); })() : e.code === 'Digit4' ? (function* () { yield 0.5; yield* wbTests(game, out, flags); })() : e.code === 'Digit3' ? (function* () { yield 0.5; yield* newWeaponTests(game, out, flags); })() : e.code === 'Digit2' ? (function* () { yield 0.5; yield* changes30Tests(game, out, flags); })() : e.code === 'Digit1' ? (function* () { yield 0.5; yield* kitTests(game, out, flags); })() : e.code === 'Minus' ? (function* () { yield 0.5; yield* axeTests(game, out, flags); })() : script(game, out, flags);
+    gen = BOLT_CODES.includes(e.code) ? (function* () { yield 0.5; yield* boltTests(game, out, flags); })() : RAP_CODES.includes(e.code) ? (function* () { yield 0.5; yield* rapTests(game, out, flags); })() : CLAW_CODES.includes(e.code) ? (function* () { yield 0.5; yield* clawTests(game, out, flags); })() : KUNAI_CODES.includes(e.code) ? (function* () { yield 0.5; yield* kunaiTests(game, out, flags); })() : DAGGER_CODES.includes(e.code) ? (function* () { yield 0.5; yield* daggerTests(game, out, flags); })() : ICE_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* iceTests(game, out, flags); })() : (FIRE_KEYS.includes(e.key) || e.code === 'Quote') ? (function* () { yield 0.5; yield* fireTests(game, out, flags); })() : DARK_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* darkTests(game, out, flags); })() : e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : e.code === 'Digit5' ? (function* () { yield 0.5; yield* tweakTests(game, out, flags); })() : e.code === 'Digit4' ? (function* () { yield 0.5; yield* wbTests(game, out, flags); })() : e.code === 'Digit3' ? (function* () { yield 0.5; yield* newWeaponTests(game, out, flags); })() : e.code === 'Digit2' ? (function* () { yield 0.5; yield* changes30Tests(game, out, flags); })() : e.code === 'Digit1' ? (function* () { yield 0.5; yield* kitTests(game, out, flags); })() : e.code === 'Minus' ? (function* () { yield 0.5; yield* axeTests(game, out, flags); yield* axe3Tests(game, out, flags); })() : e.code === 'Backslash' ? (function* () { yield 0.5; yield* flailTests(game, out, flags); })() : e.code === 'BracketRight' ? (function* () { yield 0.5; yield* lanceTests(game, out, flags); })() : (e.code === 'Semicolon' || FIST_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* fistTests(game, out, flags); })() : (e.code === 'Comma' || ARC_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* arcTests(game, out, flags); })() : (e.code === 'Period' || ELE_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* eleTests(game, out, flags); })() : e.code === 'Equal' ? (function* () { yield 0.5; yield* sceneTests(game, out, flags); })() : script(game, out, flags);
     box.style.display = 'block';
     out('TESTE AUTOMÁTICO DE COMBATE');
   });
@@ -486,6 +530,7 @@ export function createSelfTest(state, game, isDebug) {
     const r = gen.next();
     if (r.done) {
       running = false;
+      if (saveBackup) { const b = saveBackup; saveBackup = null; SAVE.update((s) => Object.assign(s, b, { rev: Math.max(s.rev, b.rev) + 1 })); }
       if (game.ult) game.ult.cinematic = true;
       if (game.combat) game.combat.noEvade = false;
       if (game.waves) game.waves.noHold = false;

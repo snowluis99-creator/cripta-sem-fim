@@ -1,6 +1,7 @@
 // Teste automático, parte 11: ajustes pedidos pelo dono em 26/10/2026 (bloqueio instantâneo, Varinha atordoa,
 // Grimório mira no grupo e empurra, gelo estilhaça, linha de fogo, Kunais zeram ao levar dano, Rapieira apara
 // projéteis, Besta com 1 virote forte e lento). Tecla Y = tudo; tecla 5 = só esta parte.
+import { BLESSINGS } from './blessings.js';
 const ok = (c, extra = '') => (c ? `✔${extra ? ` ${extra}` : ''}` : `ERRO${extra ? ` (${extra})` : ''}`);
 const holdKey = (code, down) => dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code }));
 const press = (code) => { holdKey(code, true); holdKey(code, false); };
@@ -96,17 +97,18 @@ export function* tweakTests(g, out, flags) {
   fresh('rogue', 'rapieira'); yield 0.2;
   const ar = dummy(0, -8, 'archer', 0);
   const hp0 = player.hp;
+  player.addBlessing(BLESSINGS.find((x) => x.id === 'w_rap31')); // 07/11: o aparar saiu; o Ripostar (bênção) também segura flechas
   holdKey('ShiftLeft', true); yield 0.03; holdKey('ShiftLeft', false);
   combat.projectiles.fire(0, 2 - 1.6, 0, { speed: 19, damage: 9, owner: ar });
   yield 0.12;
-  out(`  aparou a flecha ${ok(!!flags.last('parry') && player.hp === hp0, `${hp0} -> ${player.hp}`)} | flecha sumiu ${ok(!combat.projectiles.list.some((a) => a && a.owner === ar))}`);
+  out(`  Ripostar negou a flecha ${ok(!!flags.last('rapRipCatch') && player.hp === hp0, `${hp0} -> ${player.hp}`)} | flecha sumiu ${ok(!combat.projectiles.list.some((a) => a && a.owner === ar))}`);
   yield PARRY_WAIT;
-  // Aparar também é instantâneo no meio do golpe
-  fake(); player.iframes = 0; player.parryCd = 0;
+  // Ripostar também é instantâneo no meio do golpe
+  fake(); player.iframes = 0; player.rapRipCd = 0;
   player.startAttack(cam); yield 0.03;
   player.input = realInput;
   holdKey('ShiftLeft', true); yield 0.03; holdKey('ShiftLeft', false);
-  out(`  no meio do golpe: aparar na hora ${ok(player.state === 'parry', player.state)}`);
+  out(`  no meio do golpe: Ripostar na hora ${ok(player.state === 'rapRiposte', player.state)}`);
   yield 0.6;
   combat.clear();
   // Besta

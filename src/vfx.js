@@ -32,6 +32,14 @@ function ringTexture() {
   return t;
 }
 
+// Libera material (e geometria de grupos, como o raio) de um efeito que acabou.
+function disposeObj(o) {
+  if (o.material) { o.material.dispose(); return; }
+  const mats = new Set();
+  o.traverse((m) => { if (m.geometry) m.geometry.dispose(); if (m.material) mats.add(m.material); });
+  for (const m of mats) m.dispose();
+}
+
 export class Vfx {
   constructor(scene) {
     this.scene = scene;
@@ -202,35 +210,62 @@ export class Vfx {
     this.sparks(b, color, 6);
   }
 
-  // Raio elétrico grosso em zigue-zague (Cajado Elétrico): segmentos de tubo brilhante + núcleo branco + 2 galhos.
+  // Raio elétrico (Cajado Elétrico): linha fina em zigue-zague (miolo claro + contorno na cor do raio) cheia de ramificações.
+  // width = "grossura" do golpe: não engrossa a linha, só aumenta quantos galhos saem dela.
   lightning(a, b, color = 0x7fd8ff, width = 0.22) {
-    const len = a.distanceTo(b), n = Math.max(4, Math.round(len / 0.7));
-    const pts = [a.clone()];
-    for (let i = 1; i < n; i++) pts.push(a.clone().lerp(b, i / n).add(new THREE.Vector3((Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.8)));
-    pts.push(b.clone());
-    const up = new THREE.Vector3(0, 1, 0);
-    const seg = (p0, p1, w, c, op, life) => {
-      const d = p0.distanceTo(p1);
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(w, w, d, 6, 1, true),
-        new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-      m.position.copy(p0).add(p1).multiplyScalar(0.5);
-      m.quaternion.setFromUnitVectors(up, p1.clone().sub(p0).normalize());
-      this.add(m, life, (o, k) => { o.material.opacity = op * (1 - k) * (k < 0.5 && Math.random() < 0.3 ? 0.4 : 1); });
+    const jag = (p0, p1, step, amp) => { // zigue-zague entre dois pontos
+      const n = Math.max(2, Math.round(p0.distanceTo(p1) / step)), out = [p0.clone()];
+      for (let i = 1; i < n; i++) out.push(p0.clone().lerp(p1, i / n).add(new THREE.Vector3((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp * 0.5, (Math.random() - 0.5) * amp)));
+      out.push(p1.clone());
+      return out;
     };
-    for (let i = 0; i < pts.length - 1; i++) {
-      seg(pts[i], pts[i + 1], width, color, 0.85, 0.3);
-      seg(pts[i], pts[i + 1], width * 0.35, 0xffffff, 1, 0.18);
-    }
-    // Galhos finos saindo do meio.
-    for (let k = 0; k < 2; k++) {
-      const i = 1 + Math.floor(Math.random() * (pts.length - 2));
-      const end = pts[i].clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.6, -0.3 - Math.random() * 0.6, (Math.random() - 0.5) * 1.6));
-      seg(pts[i], end, width * 0.4, color, 0.6, 0.18);
-    }
+    const up = new THREE.Vector3(0, 1, 0);
+    const outC = new THREE.Color(color), inC = new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.75);
+    const layers = [{ r: 0.05, c: outC, ro: 21 }, { r: 0.022, c: inC, ro: 22 }];
+    const mats = layers.map((L) => new THREE.MeshBasicMaterial({ color: L.c, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide }));
+    // Todos os pedacinhos de cada camada viram uma malha só (raio com muitos galhos sem pesar).
+    const bufs = layers.map(() => []), mtx = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+    const path = (pts, scale) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i], p1 = pts[i + 1], d = p0.distanceTo(p1);
+        const q = new THREE.Quaternion().setFromUnitVectors(up, p1.clone().sub(p0).normalize());
+        mtx.compose(p0.clone().add(p1).multiplyScalar(0.5), q, one);
+        layers.forEach((L, j) => {
+          const r = L.r * scale, geo = new THREE.CylinderGeometry(r, r, d + r * 1.5, 4, 1, true).toNonIndexed();
+          geo.applyMatrix4(mtx); bufs[j].push(geo.attributes.position.array); geo.dispose();
+        });
+      }
+    };
+    const main = jag(a, b, 0.45, 0.6);
+    path(main, 1);
+    // Galhos: quanto mais grosso o golpe, mais galhos (largura padrão 0,22 = 8 galhos).
+    const dir = b.clone().sub(a); dir.y = 0; const len = dir.length() || 1; dir.normalize();
+    const nb = Math.max(4, Math.round(8 * width / 0.22) + Math.round(len / 3));
+    const branch = (from, depth, size) => {
+      const ang = (Math.random() - 0.5) * 2.2, cs = Math.cos(ang), sn = Math.sin(ang);
+      const bd = new THREE.Vector3(dir.x * cs - dir.z * sn, -0.2 - Math.random() * 0.5, dir.x * sn + dir.z * cs).normalize();
+      const end = from.clone().addScaledVector(bd, size * (0.6 + Math.random() * 0.6));
+      const pts = jag(from, end, 0.3, 0.35);
+      path(pts, depth ? 0.5 : 0.75);
+      if (!depth && Math.random() < 0.6) branch(pts[1 + Math.floor(Math.random() * (pts.length - 2))] || end, 1, size * 0.5);
+    };
+    for (let k = 0; k < nb; k++) branch(main[1 + Math.floor(Math.random() * (main.length - 2))], 0, 0.8 + Math.random() * 0.8);
+    const group = new THREE.Group();
+    bufs.forEach((list, j) => {
+      const arr = new Float32Array(list.reduce((n, x) => n + x.length, 0));
+      let off = 0; for (const x of list) { arr.set(x, off); off += x.length; }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const m = new THREE.Mesh(geo, mats[j]); m.renderOrder = layers[j].ro; m.frustumCulled = false; group.add(m);
+    });
+    this.add(group, 0.26, (o, k) => {
+      const f = (k < 0.6 && Math.random() < 0.25 ? 0.4 : 1) * (k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45);
+      mats.forEach((m) => { m.opacity = f; });
+    });
     const flash = this.sprite(this.iceTex);
     if (flash) {
-      flash.position.copy(b); flash.scale.setScalar(1.8);
-      this.add(flash, 0.2, (o, k) => { o.material.opacity = 1 - k; o.scale.setScalar(1.8 + k * 1.2); });
+      flash.material.color.set(color);
+      flash.position.copy(b); flash.scale.setScalar(1.4);
+      this.add(flash, 0.2, (o, k) => { o.material.opacity = 1 - k; o.scale.setScalar(1.4 + k * 1.0); });
     }
     this.sparks(b, color, 8);
   }
@@ -321,7 +356,7 @@ export class Vfx {
 
   // Remove tudo (troca de sala).
   clear() {
-    for (const it of this.items) { this.scene.remove(it.obj); it.obj.material.dispose(); }
+    for (const it of this.items) { this.scene.remove(it.obj); disposeObj(it.obj); }
     this.items.length = 0;
   }
 
@@ -333,7 +368,7 @@ export class Vfx {
       it.tick(it.obj, k, dt);
       if (k >= 1) {
         this.scene.remove(it.obj);
-        it.obj.material.dispose();
+        disposeObj(it.obj);
         this.items.splice(i, 1);
       }
     }

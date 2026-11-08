@@ -321,7 +321,7 @@ export function runRanged(e, dt, ctx, { toPlayer }) {
         const fx = e.position.x + Math.sin(a) * (0.9 * s), fz = e.position.z + Math.cos(a) * (0.9 * s);
         ctx.combat.projectiles.fire(fx, fz, a, {
           speed: R.speed, damage: Math.round(R.damage * (e.dmgScale || 1)), scale: R.scale || 1, height: 0.55 * s + 0.6, owner: e,
-          kind: R.kind, homing: R.homing, color: R.color, hits: e.undead ? 'undead' : undefined, // morto-vivo da Maga: acerta inimigos
+          kind: R.kind, homing: R.homing, color: R.color, hits: e.undead ? 'undead' : e.betrayLeft > 0 ? 'betray' : undefined, // morto-vivo da Maga: acerta inimigos (Traição: o marcado atira nos aliados)
           onEnd: fetchShot ? (x, z, ang, dx, dz) => landBolt(e, ctx.combat, x, z, ang, dx, dz) : undefined,
         });
       }

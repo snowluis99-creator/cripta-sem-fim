@@ -196,7 +196,7 @@ export function* rogueTests(g, out, flags) {
   combat.clear();
 
   // ---------------- 49) Rapieira ----------------
-  out('49) Rapieira: 1 alvo, crítico pelas costas, aparar no instante exato');
+  out('49) Rapieira: 1 alvo, crítico pelas costas (o aparar saiu em 07/11)');
   fresh('rapieira');
   yield 0.2;
   const front = dummy(0, -2.5, 'minion', 0); front.hp = front.maxHp = 1e6;  // de frente para o herói
@@ -210,23 +210,14 @@ export function* rogueTests(g, out, flags) {
   for (let i = 0; i < 20; i++) { flags.events.length = 0; combat.damageEnemy(player, back, player.hero.combo[0], 0, -1); if (hits()[0].dmg >= 10) bs++; }
   out(`  pelas costas: crítico ${bs}/20 ${ok(bs === 20)}`);
   combat.clear();
-  const atk = dummy(0, -1.6, 'warrior', 0); atk.passive = false;
+  const atk = dummy(0, -1.6, 'warrior', 0); atk.passive = true;
   const hp1 = player.hp;
   yield* ability();
-  out(`  botão direito: aparar ${ok(player.state === 'parry')}`);
-  combat.hitPlayer(atk, 20, { target: player });
-  atk.passive = true; // daqui em diante ele não ataca sozinho
-  out(`  golpe no instante certo: aparou ${ok(!!flags.last('parry') && player.hp === hp1)} | atordoou ${ok(atk.state === 'hurt' && atk.stunTime >= PARRY.stun - 0.01)} | próximo golpe crítico ${ok(player.parryCrit)}`);
-  yield 0.2;
-  out('  -> aparou: CONGELADO (T continua)');
-  yield 'hold';
-  yield PARRY.total + PARRY.cooldown + 0.2;
-  flags.events.length = 0;
-  yield* ability();
-  yield PARRY.window + 0.08;
+  out(`  botão direito sem bênção: nada ${ok(player.state !== 'parry' && player.state !== 'rapRiposte', player.state)}`);
   player.iframes = 0;
   combat.hitPlayer(atk, 20, { target: player });
-  out(`  errou o tempo: levou o golpe ${ok(!flags.last('parry') && player.hp < hp1, `${hp1} -> ${player.hp}`)}`);
+  out(`  golpe entra normal ${ok(!flags.last('parry') && player.hp < hp1, `${hp1} -> ${player.hp}`)}`);
+  void PARRY;
   combat.clear();
 
   // ---------------- 50) Besta ----------------

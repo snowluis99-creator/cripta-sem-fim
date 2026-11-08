@@ -10,6 +10,9 @@ const KEYS = [
   ['WASD / setas', 'andar'], ['Mouse', 'mirar'], ['Clique', 'atacar (combo)'], ['Espaço', 'rolar'],
   ['Botão direito / Shift', 'bloquear'], ['Q', 'beber poção'], ['E', 'usar / pegar'], ['R', 'ultimate'], ['Esc', 'pausa'],
 ];
+const P2KEYS = [
+  ['Setas', 'andar'], ['J', 'atacar'], ['K', 'rolar'], ['L', 'bloquear'], ['U', 'poção'], ['O', 'usar / pegar'], ['P', 'ultimate'],
+];
 const PAD = [
   ['Analógico esq.', 'andar'], ['Analógico dir.', 'mirar'], ['X / RB', 'atacar (combo)'], ['A', 'rolar'],
   ['LB / LT', 'bloquear'], ['Y', 'poção / usar'], ['RT', 'ultimate'], ['Start', 'pausa'],
@@ -48,6 +51,8 @@ export class PauseMenu {
             <div class="keys"><h3>Teclado e mouse</h3>${list(KEYS)}</div>
             <div class="keys"><h3>Controle</h3>${list(PAD)}</div>
           </div>
+          <p class="note">2 jogadores no mesmo PC: o Jogador 2 usa um controle (com 2 controles, cada um usa o seu)
+            ou o teclado: ${P2KEYS.map(([k, v]) => `<b>${k}</b> ${v}`).join(' · ')}. O Jogador 1 fica com WASD e o mouse.</p>
           <button type="button" class="ghost" data-a="back">Voltar</button>
         </section>
         <section data-s="confirm">

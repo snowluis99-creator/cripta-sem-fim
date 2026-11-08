@@ -5,7 +5,7 @@ import { settings } from './settings.js';
 
 const VOL = { master: 0.9, music: 0.36, sfx: 0.6, voice: 0.25 }; // 31/10: efeitos um pouco mais baixos para combinar com as músicas (antes sfx 0,75 e voz 0,3)
 // Ajuste fino de volume por efeito (os sopros e chiados saem mais baixos que os impactos).
-const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4 };
+const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4, thunder: 1.5 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
 
@@ -168,6 +168,27 @@ function metal(A, t, base, dur, peak, out) {
 export const SFX = {
   swing: (A, t, o) => hiss(A, t, 'bandpass', 900, 2600, 1.4, 0.16, 0.5, o, 0.03),
   swingHeavy: (A, t, o) => { hiss(A, t, 'bandpass', 500, 1800, 1.2, 0.28, 0.7, o, 0.05); tone(A, t, 'sine', 160, 70, 0.25, 0.25, o, 0.04); },
+  bladeSing: (A, t, o) => {     // Lâmina Cantante: a rapieira vibra (metal que canta)
+    metal(A, t, 1320, 0.9, 0.35, o);
+    tone(A, t, 'sine', 1980, 1960, 0.7, 0.12, o, 0.01);
+  },
+  pistol: (A, t, o) => {        // Mosqueteiro: estampido seco
+    hiss(A, t, 'lowpass', 3000, 400, 0.8, 0.22, 1.2, o, 0.002);
+    tone(A, t, 'triangle', 180, 50, 0.18, 0.7, o, 0.002);
+    hiss(A, t + 0.02, 'bandpass', 900, 300, 1.2, 0.5, 0.25, o, 0.02);
+  },
+  bell: (A, t, o) => {          // Sino (Besta): sininho tocando
+    metal(A, t, 980, 1.3, 0.32, o);
+    metal(A, t + 0.32, 980, 1.0, 0.22, o);
+  },
+  reload: (A, t, o) => {        // Recarga Perfeita (Besta): clique da corda armando
+    metal(A, t, 2200, 0.12, 0.25, o);
+    tone(A, t + 0.04, 'square', 900, 1500, 0.06, 0.12, o, 0.002);
+  },
+  jam: (A, t, o) => {           // besta travou: estalo seco
+    tone(A, t, 'square', 160, 70, 0.12, 0.3, o, 0.002);
+    hiss(A, t, 'lowpass', 1200, 300, 1, 0.1, 0.4, o);
+  },
   hit: (A, t, o) => {           // lâmina no osso
     hiss(A, t, 'bandpass', 2600, 1400, 2.5, 0.07, 0.8, o);
     tone(A, t, 'triangle', 420, 160, 0.08, 0.5, o);
@@ -211,6 +232,14 @@ export const SFX = {
   },
   arrow: (A, t, o) => { tone(A, t, 'triangle', 260, 120, 0.12, 0.35, o, 0.001); hiss(A, t, 'highpass', 3000, 6000, 0.7, 0.15, 0.2, o); },
   zap: (A, t, o) => { hiss(A, t, 'highpass', 2500, 5000, 1.2, 0.18, 0.55, o, 0.002); tone(A, t, 'sawtooth', 1400, 180, 0.22, 0.12, o, 0.002); hiss(A, t + 0.03, 'bandpass', 900, 300, 2, 0.25, 0.4, o, 0.01); },
+  // Raio (Cajado Elétrico): estalo seco + crepitar + ronco curto de trovão.
+  thunder: (A, t, o) => {
+    hiss(A, t, 'highpass', 1500, 900, 0.8, 0.09, 1.0, o, 0.001);
+    for (let i = 0; i < 5; i++) hiss(A, t + 0.01 + Math.random() * 0.12, 'bandpass', 2500 + Math.random() * 3500, 2000, 3, 0.025, 0.5, o, 0.001);
+    tone(A, t, 'sawtooth', 900, 120, 0.12, 0.12, o, 0.001);
+    hiss(A, t + 0.02, 'lowpass', 500, 110, 1, 0.65, 0.7, o, 0.02);
+    tone(A, t + 0.02, 'sine', 75, 38, 0.55, 0.45, o, 0.02);
+  },
   orb: (A, t, o) => { tone(A, t, 'sine', 300, 900, 0.3, 0.2, o, 0.02); tone(A, t, 'triangle', 450, 1300, 0.3, 0.08, o, 0.02); },
   // Cena de desbloqueio na Taverna.
   fireRoar: (A, t, o) => {     // fogo pegando em tudo (rugido + estalos)
@@ -243,12 +272,35 @@ export const SFX = {
   bigShatter: (A, t, o) => { SFX.boom(A, t, o); SFX.bones(A, t, o); SFX.bones(A, t + 0.12, o); SFX.bones(A, t + 0.3, o); },
   headThud: (A, t, o) => { tone(A, t, 'sine', 140, 60, 0.3, 0.9, o); hiss(A, t, 'lowpass', 900, 200, 1, 0.2, 0.6, o); SFX.bones(A, t + 0.02, o); },
   grab: (A, t, o) => { hiss(A, t, 'bandpass', 700, 1500, 1.4, 0.2, 0.5, o, 0.02); SFX.creak(A, t + 0.1, o); },
+  warcry: (A, t, o) => {        // Grito de Guerra: rugido grave
+    tone(A, t, 'sawtooth', 120, 85, 0.9, 0.35, o, 0.03); tone(A, t, 'sawtooth', 182, 120, 0.8, 0.2, o, 0.03);
+    hiss(A, t, 'bandpass', 500, 300, 1.5, 0.8, 0.6, o, 0.04); SFX.boom(A, t + 0.02, o);
+  },
   thump: (A, t, o) => { tone(A, t, 'sine', 110, 45, 0.25, 0.8, o); hiss(A, t, 'lowpass', 700, 200, 1, 0.12, 0.5, o); },
   select: (A, t, o) => {        // capa: clicou para entrar na cripta (brilho + sino grave)
     hiss(A, t, 'bandpass', 1200, 5200, 1.1, 0.35, 0.35, o, 0.03);
     [0, 7, 12, 19].forEach((s, i) => tone(A, t + 0.03 + i * 0.055, 'triangle', mtof(74 + s), mtof(74 + s), 0.55, 0.16, o, 0.004));
     metal(A, t + 0.02, 330, 1.1, 0.22, o);
     tone(A, t, 'sine', 110, 82, 0.6, 0.45, o, 0.01);
+  },
+  // Coração de Fênix: grito de ave de rapina (dois "kiaaa" descendo, com vibrato).
+  phoenixCry: (A, t, o) => {
+    for (const [d, f0, f1, len] of [[0, 2500, 1500, 0.5], [0.58, 2900, 1250, 0.85]]) {
+      const ctx = A.ctx, osc = ctx.createOscillator(), g = ctx.createGain(), bp = ctx.createBiquadFilter(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+      const s = t + d;
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f0 * 0.75, s);
+      osc.frequency.exponentialRampToValueAtTime(f0, s + 0.07);
+      osc.frequency.exponentialRampToValueAtTime(f1, s + len);
+      lfo.frequency.value = 34; lg.gain.value = f0 * 0.035;
+      lfo.connect(lg); lg.connect(osc.frequency);
+      bp.type = 'bandpass'; bp.frequency.value = f0 * 1.05; bp.Q.value = 2.2;
+      env(g, s, 0.03, 0.4, len);
+      osc.connect(bp); bp.connect(g); g.connect(o);
+      osc.start(s); osc.stop(s + len + 0.1); lfo.start(s); lfo.stop(s + len + 0.1);
+      tone(A, s, 'square', f0 * 0.5, f1 * 0.5, len * 0.9, 0.05, o, 0.03);
+      hiss(A, s, 'bandpass', 3800, 2200, 3, len * 0.8, 0.14, o, 0.02);
+    }
   },
   win: (A, t, o) => {
     [[62, 0], [66, 0.18], [69, 0.36], [74, 0.54], [78, 0.72]].forEach(([m, d]) => {

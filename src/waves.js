@@ -28,6 +28,7 @@ export class WaveManager {
   start(waves, opts) {
     this.waves = waves;
     this.opts = opts;
+    this.combat.waveList = waves; // Xeque-Mate (Rapieira): o mais forte de todas as ondas da sala
     this.combat.hazards.bounds = opts.bounds; // círculos do Guardião cobrindo o chão
     this.wave = -1;
     this.queue = [];

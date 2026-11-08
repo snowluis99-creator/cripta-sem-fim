@@ -42,30 +42,59 @@ export function initInput(canvas) {
   });
 }
 
-// Lê o controle (chamar uma vez por quadro, antes de atualizar o jogo).
-function pollPad() {
-  let gp = null;
-  try {
-    const list = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const g of list) if (g && g.connected) { gp = g; break; }
-  } catch (e) { gp = null; } // o navegador pode bloquear o controle dentro de alguns sites
-  pad.connected = !!gp;
-  pad.prev = pad.buttons;
-  if (!gp) { pad.buttons = []; pad.lx = pad.lz = pad.rx = pad.rz = 0; return; }
-  pad.buttons = gp.buttons.map((b) => b.pressed || b.value > 0.5);
-  pad.lx = stick(gp.axes[0] || 0); pad.lz = stick(gp.axes[1] || 0);
-  pad.rx = stick(gp.axes[2] || 0); pad.rz = stick(gp.axes[3] || 0);
-  const names = { 0: 'PadA', 1: 'PadB', 2: 'PadX', 3: 'PadY', 4: 'PadLB', 5: 'PadRB', 6: 'PadLT', 7: 'PadRT', 8: 'PadBack', 9: 'PadStart', 12: 'PadUp', 13: 'PadDown', 14: 'PadLeft', 15: 'PadRight' };
-  let active = Math.hypot(pad.lx, pad.lz) > 0 || Math.hypot(pad.rx, pad.rz) > 0;
-  pad.buttons.forEach((b, i) => {
+// Lê os controles (chamar uma vez por quadro, antes de atualizar o jogo).
+// Co-op local (05/11): cada controle tem um dono. P1 = controle de índice slots.p1 (-1 = nenhum: só teclado/mouse),
+// P2 = slots.p2. Os botões do P1 viram "PadX", os do P2 "P2PadX"; os de qualquer controle também "AnyPadX" (menus).
+const PAD_NAMES = { 0: 'PadA', 1: 'PadB', 2: 'PadX', 3: 'PadY', 4: 'PadLB', 5: 'PadRB', 6: 'PadLT', 7: 'PadRT', 8: 'PadBack', 9: 'PadStart', 12: 'PadUp', 13: 'PadDown', 14: 'PadLeft', 15: 'PadRight' };
+const blankPad = () => ({ side: 0, connected: false, lx: 0, lz: 0, rx: 0, rz: 0, buttons: [], prev: [] });
+const pads = new Map();          // índice do controle -> estado
+const pad2 = blankPad();          // controle do Jogador 2 (co-op local)
+let local = false;                // co-op local ligado
+const slots = { p1: 0, p2: -1 };
+function readPad(gp, st) {
+  st.connected = true;
+  st.prev = st.buttons;
+  st.buttons = gp.buttons.map((b) => b.pressed || b.value > 0.5);
+  st.lx = stick(gp.axes[0] || 0); st.lz = stick(gp.axes[1] || 0);
+  st.rx = stick(gp.axes[2] || 0); st.rz = stick(gp.axes[3] || 0);
+}
+function edges(st, prefix, out) {
+  let active = Math.hypot(st.lx, st.lz) > 0 || Math.hypot(st.rx, st.rz) > 0;
+  st.buttons.forEach((b, i) => {
     if (b) active = true;
-    if (b && !pad.prev[i] && names[i]) pressed.add(names[i]);
+    if (b && !st.prev[i] && PAD_NAMES[i]) out.push(PAD_NAMES[i]);
   });
-  // Analógico empurrado para os lados conta como "apertou" (para navegar nos menus).
-  const side = pad.lx < -0.6 ? -1 : pad.lx > 0.6 ? 1 : 0;
-  if (side !== pad.side) { if (side < 0) pressed.add('PadLeft'); if (side > 0) pressed.add('PadRight'); }
-  pad.side = side;
-  if (active) setDevice('pad');
+  // Analógico empurrado para os lados/cima/baixo conta como "apertou" (para navegar nos menus).
+  const side = st.lx < -0.6 ? -1 : st.lx > 0.6 ? 1 : 0;
+  if (side !== st.side) { if (side < 0) out.push('PadLeft'); if (side > 0) out.push('PadRight'); }
+  st.side = side;
+  return active;
+}
+function pollPad() {
+  let list = [];
+  try { list = navigator.getGamepads ? [...navigator.getGamepads()].filter((g) => g && g.connected) : []; } catch (e) { list = []; } // o navegador pode bloquear o controle
+  // Quem é quem: 2+ controles = P1 no 1º e P2 no 2º; 1 controle no co-op local = é do P2 (P1 fica no teclado).
+  if (local) { slots.p1 = list.length >= 2 ? list[0].index : -1; slots.p2 = list.length >= 2 ? list[1].index : list.length ? list[0].index : -1; }
+  else { slots.p1 = list.length ? list[0].index : -1; slots.p2 = -1; }
+  const seen = new Set();
+  for (const gp of list) {
+    seen.add(gp.index);
+    const st = pads.get(gp.index) || blankPad();
+    pads.set(gp.index, st);
+    readPad(gp, st);
+    const names = [];
+    const active = edges(st, '', names);
+    for (const n of names) {
+      pressed.add('Any' + n);
+      if (gp.index === slots.p1) pressed.add(n);
+      if (gp.index === slots.p2) pressed.add('P2' + n);
+    }
+    if (active && gp.index === slots.p1) setDevice('pad');
+  }
+  for (const k of [...pads.keys()]) if (!seen.has(k)) pads.delete(k);
+  const mine = pads.get(slots.p1), theirs = pads.get(slots.p2);
+  Object.assign(pad, mine ? { connected: true, lx: mine.lx, lz: mine.lz, rx: mine.rx, rz: mine.rz, buttons: mine.buttons } : { connected: false, lx: 0, lz: 0, rx: 0, rz: 0, buttons: [] });
+  Object.assign(pad2, theirs ? { connected: true, lx: theirs.lx, lz: theirs.lz, rx: theirs.rx, rz: theirs.rz, buttons: theirs.buttons } : { connected: false, lx: 0, lz: 0, rx: 0, rz: 0, buttons: [] });
 }
 const padHeld = (i) => !!pad.buttons[i];
 
@@ -75,14 +104,20 @@ export const input = {
   get padConnected() { return pad.connected; },
   onDevice(cb) { onDeviceChange = cb; },
   isDown: (code) => down.has(code),
-  wasPressed: (code) => pressed.has(code),
+  wasPressed: (code) => pressed.has(code) || (code.startsWith('Pad') && pressed.has('Any' + code)), // menus: qualquer controle
+  // Co-op local ligado/desligado (divide teclado e controles entre os 2 jogadores).
+  setLocal(on) { local = !!on; },
+  isPressedOwn: (code) => pressed.has(code), // só o que é do Jogador 1 (sem "qualquer controle")
+  get local() { return local; },
+  get pads() { return pads.size; },
   // Direção de movimento (x, z) normalizada, já pensando na câmera olhando para -z.
   moveDir(out) {
     let x = 0, z = 0;
-    if (down.has('KeyW') || down.has('ArrowUp')) z -= 1;
-    if (down.has('KeyS') || down.has('ArrowDown')) z += 1;
-    if (down.has('KeyA') || down.has('ArrowLeft')) x -= 1;
-    if (down.has('KeyD') || down.has('ArrowRight')) x += 1;
+    const ar = !local; // co-op local: as setas são do Jogador 2
+    if (down.has('KeyW') || (ar && down.has('ArrowUp'))) z -= 1;
+    if (down.has('KeyS') || (ar && down.has('ArrowDown'))) z += 1;
+    if (down.has('KeyA') || (ar && down.has('ArrowLeft'))) x -= 1;
+    if (down.has('KeyD') || (ar && down.has('ArrowRight'))) x += 1;
     if (x === 0 && z === 0 && (pad.lx || pad.lz)) {
       // Analógico: mantém a intensidade (meio empurrado = mais devagar).
       out.set(pad.lx, 0, pad.lz);
@@ -105,16 +140,16 @@ export const input = {
     }
     return null;
   },
-  attack: () => pressed.has('MouseLeft') || pressed.has('KeyJ') || pressed.has('PadX') || pressed.has('PadRB'),
+  attack: () => pressed.has('MouseLeft') || (!local && pressed.has('KeyJ')) || pressed.has('PadX') || pressed.has('PadRB'),
   dodge: () => pressed.has('Space') || pressed.has('PadA') || pressed.has('PadB'),
-  attackHeld: () => mouse.left || down.has('KeyJ') || padHeld(2) || padHeld(5), // Pião: gira enquanto segura
+  attackHeld: () => mouse.left || (!local && down.has('KeyJ')) || padHeld(2) || padHeld(5), // Pião: gira enquanto segura
   dodgeHeld: () => down.has('Space') || padHeld(0) || padHeld(1), // Trenó de Escudo: desliza enquanto segura
   potion: () => pressed.has('KeyQ') || pressed.has('PadY'),
   interact: () => pressed.has('KeyE') || pressed.has('PadY'),
   ultimate: () => pressed.has('KeyR') || pressed.has('PadRT'),
-  pause: () => pressed.has('PadStart'),
-  retry: () => pressed.has('Enter') || pressed.has('KeyR') || pressed.has('PadA'),
-  blocking: () => mouse.right || down.has('ShiftLeft') || down.has('KeyK') || padHeld(4) || padHeld(6),
+  pause: () => pressed.has('AnyPadStart'),
+  retry: () => pressed.has('Enter') || pressed.has('KeyR') || pressed.has('AnyPadA'),
+  blocking: () => mouse.right || down.has('ShiftLeft') || (!local && down.has('KeyK')) || padHeld(4) || padHeld(6),
   // Ponto do chão (y = 0) sob o mouse.
   aimPoint(camera, out) {
     ndc.set((mouse.x / innerWidth) * 2 - 1, -(mouse.y / innerHeight) * 2 + 1);
@@ -125,4 +160,51 @@ export const input = {
   clear() { down.clear(); pressed.clear(); mouse.left = mouse.right = false; },
   // Chamar no fim de cada quadro.
   endFrame() { pressed.clear(); },
+};
+
+// Jogador 2 no mesmo computador (co-op local): controle do P2 ou, sem controle, teclado
+// (setas = andar, J = atacar, K = rolar, L = bloquear, U = poção, O = usar, P = ultimate).
+// Mesma "cara" do input do P1 / RemoteInput (o Player não sabe a diferença).
+const p2Held = (i) => !!pad2.buttons[i];
+const P2 = (n) => pressed.has('P2' + n);
+export const input2 = {
+  remote: false,
+  retries: 0,
+  beginFrame() {}, endFrame() {},
+  get device() { return pad2.connected ? 'pad' : 'keys'; },
+  moveDir(out) {
+    let x = 0, z = 0;
+    if (down.has('ArrowUp')) z -= 1;
+    if (down.has('ArrowDown')) z += 1;
+    if (down.has('ArrowLeft')) x -= 1;
+    if (down.has('ArrowRight')) x += 1;
+    if (x === 0 && z === 0 && (pad2.lx || pad2.lz)) {
+      out.set(pad2.lx, 0, pad2.lz);
+      if (out.lengthSq() > 1) out.normalize();
+      return out;
+    }
+    out.set(x, 0, z);
+    if (out.lengthSq() > 0) out.normalize();
+    return out;
+  },
+  aimAngle() {
+    if (Math.hypot(pad2.rx, pad2.rz) > 0.3) return Math.atan2(pad2.rx, pad2.rz);
+    const m = this.moveDir(tmpDir);
+    if (m.lengthSq() > 0.04) return Math.atan2(m.x, m.z);
+    return null;
+  },
+  attack: () => pressed.has('KeyJ') || pressed.has('Numpad1') || P2('PadX') || P2('PadRB'),
+  dodge: () => pressed.has('KeyK') || pressed.has('Numpad2') || P2('PadA') || P2('PadB'),
+  attackHeld: () => down.has('KeyJ') || down.has('Numpad1') || p2Held(2) || p2Held(5),
+  dodgeHeld: () => down.has('KeyK') || down.has('Numpad2') || p2Held(0) || p2Held(1),
+  potion: () => pressed.has('KeyU') || pressed.has('Numpad4') || P2('PadY'),
+  interact: () => pressed.has('KeyO') || pressed.has('Numpad5') || P2('PadY'),
+  ultimate: () => pressed.has('KeyP') || pressed.has('Numpad6') || P2('PadRT'),
+  blocking: () => down.has('KeyL') || down.has('Numpad3') || p2Held(4) || p2Held(6),
+  // Menus do P2 (bênção / porta)
+  menu: () => ({
+    left: pressed.has('ArrowLeft') || P2('PadLeft'), right: pressed.has('ArrowRight') || P2('PadRight'),
+    ok: pressed.has('KeyJ') || pressed.has('Numpad1') || pressed.has('NumpadEnter') || P2('PadA'),
+    no: P2('PadB'),
+  }),
 };

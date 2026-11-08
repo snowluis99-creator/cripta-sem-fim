@@ -129,7 +129,7 @@ export function axeOnKill(combat, e, by) {
 
 // Rolar: Rolagem Giratória (gira com o machado em vez da cambalhota).
 export function axeStartDodge(p) {
-  p.axeRoll = isAxe(p) && !!W(p).rollSpin && !p.axeAway;
+  p.axeRoll = isAxe(p) && !!W(p).rollSpin && !p.axeAway && !p.axeSaw;
   if (!p.axeRoll) return false;
   p.axeRollHits = new Set();
   p.anim.play('Melee_2H_Attack_Spinning', { once: true, restart: true, fade: 0.04, speed: 0.67 / p.hero.dodge.time });
@@ -183,6 +183,16 @@ export function axeSpinning(p) {
   if (p.state !== 'attack') return false;
   const s = p.hero.combo[p.combo];
   return isSpinStep(s) && p.stateTime < 0.72 / (s.speed * (p.atkSpeed || 1));
+}
+
+// Redemoinho: do giro (2º golpe) até o fim do combo, esbarrões não machucam.
+export function axeWhirlGuard(p) {
+  const w = (p && p.stats && p.stats.w) || {};
+  if (!w.whirl || !isAxe(p)) return false;
+  if (p.state === 'spin') return true;
+  if (p.state !== 'attack') return false;
+  const combo = p.hero.combo, i = combo.findIndex(isSpinStep);
+  return i >= 0 && p.combo >= i;
 }
 
 // ---------- Coisas na sala (machado voando) ----------

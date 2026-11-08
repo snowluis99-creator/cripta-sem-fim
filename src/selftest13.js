@@ -85,10 +85,8 @@ export function* newWeaponTests(g, out, flags) {
   out(`  Exército das Trevas: o 1º golpe também marca ${ok(!!mk.darkMark)}`);
 
   // ---------------- 61) Elétrico + bênçãos ----------------
-  out('61) Cajado Elétrico: bênçãos Condutor e Fúria da Tempestade');
+  out('61) Cajado Elétrico: bênção Fúria da Tempestade');
   fresh('mage', 'eletrico'); yield 0.1;
-  player.addBlessing(BLESSINGS.find((b) => b.id === 'w_ele3'));
-  out(`  Condutor: pulo vai até 4 ${ok(player.hero.combo[0].cast.chain === 4)}`);
   player.addBlessing(BLESSINGS.find((b) => b.id === 'w_ele10'));
   const far = dummy(9, -8);
   combat.playerStrike(player, player.hero.combo[0]);

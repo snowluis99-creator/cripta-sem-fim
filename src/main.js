@@ -5,7 +5,7 @@ import { createLoadingScreen, loadAll } from './assets.js';
 import { createCamera } from './camera.js';
 import { ROOMS } from './dungeon/rooms.js';
 import { piecesForRoom } from './dungeon/builder.js';
-import { initInput, input } from './input.js';
+import { initInput, input, input2 } from './input.js';
 import { ANIM_FILES, buildClipLibrary } from './animation.js';
 import { HEROES, allHeroModels } from './heroes.js';
 import { ENEMIES, modelsForEnemy } from './enemies.js';
@@ -34,6 +34,7 @@ import { CoopClient } from './client.js';
 import { Teamwork } from './teamwork.js';
 import { coopUpdate } from './coopbless.js';
 import { Ultimates } from './ultimate.js';
+import { phoenixScene } from './phoenix.js';
 import { audio } from './audio.js';
 import { Music, bossTrack } from './music.js';
 import './voice.js';
@@ -56,6 +57,7 @@ export const CAPE_P2 = 0x2f6fe0; // capa azul do Jogador 2
 async function start() {
   // Renderizador
   const renderer = new THREE.WebGLRenderer({ antialias: gfxAtStart.aa });
+  renderer.localClippingEnabled = true; // Corte ao Meio (machado): metades do esqueleto
   bindRenderer(renderer); // resolução conforme Configurações → Gráficos
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -129,6 +131,7 @@ async function start() {
   const run = new Run({ scene, player, combat, waves, world, vfx, debris, hud, ui, cam });
   const team = new Teamwork({ scene, combat, run, hud, vfx, cam, world }); // jogadas em dupla (co-op)
   const ult = new Ultimates({ combat, vfx, hud, run, cam, flash: (c, t) => team.flash(c, t) }); // ultimate (R / RT)
+  combat.ult = ult; // cenas que congelam o jogo (Vassalo)
   const rogue = new RogueKit({ scene, combat, vfx, run }); // Ladino: kunais, virotes, fumaça, aparar
   combat.rogue = rogue;
   let mode = 'menu';           // menu | solo | host | client
@@ -166,11 +169,10 @@ async function start() {
       vfx.dust(h.position, h.dodgeDir, phase === 'start' ? 7 : 4);
       if (phase === 'start' && h.stats.iceTrail) h.iceTimer = 0.3;
     };
-    p.onRevive = (h) => {
-      h.ux.banner('Coração de Fênix!', 'big');
-      vfx.burst(h.position, 0xffc24a);
+    p.onRevive = (h) => { // Coração de Fênix: cena com a fênix (phoenix.js)
       if (h === player) hud.setBlessings(h.blessings, BLESSINGS, RARITY);
       h.ux.shake(0.4);
+      ult.scene(phoenixScene(h, { vfx, hud: h.ux, combat, flash: (c, t) => team.flash(c, t) }));
     };
     p.onHit = (h, step) => { combat.playerStrike(h, step); if (step.heavy) team.heavy(h); };
     p.canShareHeal = (h) => team.partnerNeedsHeal(h);
@@ -254,12 +256,12 @@ async function start() {
   state.pause = pause; // testes
   const pauseOpts = () => ({
     coop: mode === 'host' || mode === 'client',
-    canQuit: mode === 'solo' && !run.inTavern && !run.won,
-    canMenu: mode === 'solo',
+    canQuit: (mode === 'solo' || mode === 'local') && !run.inTavern && !run.won,
+    canMenu: mode === 'solo' || mode === 'local',
   });
   const setPaused = (on) => {
     document.body.classList.toggle('paused', on);
-    audio.setHold(on && mode === 'solo');
+    audio.setHold(on && (mode === 'solo' || mode === 'local'));
     input.clear();
   };
   const openPause = () => { if (pause.visible) return; pause.open('pause', pauseOpts()); setPaused(true); };
@@ -276,7 +278,7 @@ async function start() {
     restart();
   };
   pause.on.quit = () => { setPaused(false); giveUp(); hud.banner('Você voltou para a Taverna', 'small'); };
-  pause.on.mainmenu = () => { setPaused(false); giveUp(); setMode('menu'); title.show(); };
+  pause.on.mainmenu = () => { setPaused(false); giveUp(); if (mode === 'local') endLocal(); setMode('menu'); title.show(); };
   menu.on.config = () => pause.open('config', {});
   menu.on.controls = () => pause.open('controls', {});
   // Dicas de controle na tela (Configurações).
@@ -290,6 +292,7 @@ async function start() {
   const leaveNet = () => { net.leave(); if (unLobby) { unLobby(); unLobby = null; } };
 
   menu.on.solo = () => menu.enter(() => setMode('solo')); // espiral "Rumo à Taverna…" e entra
+  menu.on.local = () => menu.enter(() => startLocal()); // co-op local: 2 heróis no mesmo PC
   menu.on.back = () => { leaveNet(); menu.show('main'); };
   menu.on.msgok = () => menu.show('main');
   menu.on.host = async () => {
@@ -353,6 +356,59 @@ async function start() {
     p2 = null;
     hud.setAlly(null);
     hud.banner('O Jogador 2 saiu', 'small');
+  };
+
+  // Co-op local (05/11): o Jogador 2 joga neste mesmo computador (controle dele ou setas + J K L U O P).
+  // Tudo igual ao co-op pela rede, só que sem rede: os menus dele abrem nesta tela, com a cor azul.
+  const startLocal = () => {
+    input.setLocal(true);
+    coop = { local: true, input: input2, gameOver: 0, update() {}, event() {} };
+    team.emit = () => {};
+    p2 = new Player(hero, { id: 2, input: input2, cape: CAPE_P2 });
+    p2.localGuest = true;
+    // Mesmos heróis e armas do Jogador 1; o ouro dele no fim também vira Ouro de Alma da conta.
+    p2.saveData = { soul: 0, ups: { ...(save.data.ups || {}) }, runs: 0, best: 0, rev: 0 };
+    p2.ux = {
+      hurt: () => {}, shake: (a) => cam.shake(a * 0.7), potionWarn: () => {}, shieldWarn: () => {},
+      goldWarn: () => hud.banner('Jogador 2: ouro insuficiente', 'small'),
+      banner: (t, size = 'big') => hud.banner(size === 'small' ? `Jogador 2: ${t}` : t, size),
+    };
+    setupHero(p2);
+    heroLight(p2);
+    scene.add(p2.group);
+    p2.group.add(ownerRing(PLAYER_COLORS[2], 0.95));
+    localRing = ownerRing(PLAYER_COLORS[1], 0.95);
+    player.group.add(localRing);
+    combat.players.push(p2);
+    localShown = 0;
+    setMode('local');
+    restart();
+    hud.banner('2 jogadores!', 'big');
+    hud.banner(input.pads ? 'Jogador 2: controle' : 'Jogador 2: setas · J ataca · K rola · L bloqueia · U poção · O usar · P ultimate', 'small');
+  };
+  const endLocal = () => {
+    if (!p2) { input.setLocal(false); return; }
+    run.resolveRemoteChoice(run.pendingChoice?.id, -1);
+    team.breakPair();
+    combat.players.splice(combat.players.indexOf(p2), 1);
+    scene.remove(p2.group);
+    if (localRing) { player.group.remove(localRing); localRing = null; }
+    p2 = null; coop = null;
+    hud.setAlly(null);
+    ui.setPrompt2(null);
+    cam.setSpread(1);
+    input.setLocal(false);
+    restart();
+  };
+  let localShown = 0, localRing = null;
+  // Menus do Jogador 2 (bênção / pergunta da porta) abrem nesta tela, um de cada vez.
+  const localChoices = () => {
+    const c = run.pendingChoice;
+    if (!c || c.id === localShown) return;
+    localShown = c.id;
+    const id = c.id;
+    if (c.door) ui.openConfirm(`Jogador 2: ${c.title}`, c.sub, (o, k) => run.resolveRemoteChoice(id, k === 0 ? 0 : 1), 2);
+    else ui.openChoice(c.options, c.pl.blessings, (b, i) => run.resolveRemoteChoice(id, i), `Jogador 2: ${c.title}`, '', 2);
   };
 
   // Jogador 2: o jogo deste computador para de simular e só desenha o que o anfitrião manda.
@@ -459,9 +515,10 @@ async function start() {
   // Um passo do jogo. Durante o hitstop (pausa no impacto) a simulação para, mas a câmera e os números continuam.
   let simTime = 0;
   const players = combat.players;
+  const midPos = new THREE.Vector3();
   const step = (dt) => {
     // Menu de bênção aberto: sozinho, o jogo pausa; no co-op continua (só este herói fica parado escolhendo).
-    if (ui.modal && players.length < 2) {
+    if (ui.modal && (players.length < 2 || mode === 'local')) { // co-op local: a tela é uma só, então pausa também
       ui.updateModal(dt);
       ui.update(dt, cam.camera);
       input.endFrame();
@@ -492,8 +549,17 @@ async function start() {
     pickMusic(combat.enemies.filter((e) => e.data.boss && (e.alive || e.finale)), hud.deathVisible || (mode === 'solo' && player.state === 'dead'), combat.aliveCount > 0, simTime, run.inTavern ? 'tavern' : 'dungeon');
     // Câmera no herói deste computador (caído: no parceiro).
     const follow = ult.cine ? ult.cine.p : player.state === 'dead' && p2 && p2.state !== 'dead' ? p2 : player;
-    cam.follow(run.unlock.active ? run.unlock.focus : follow.position, dt, run.unlock.active ? 2.5 : 5); // cena da Taverna: câmera no meio
-    if (run.built) run.built.updateFrontWall([...players.filter((p) => p.group.visible).map((p) => p.position), ...combat.enemies.filter((e) => e.alive).map((e) => e.position)], dt);
+    let followPos = ult.cine && ult.cine.focus ? ult.cine.focus : follow.position; // cena do Vassalo: meio dos dois
+    if (mode === 'local' && p2 && !ult.cine) { // co-op local: câmera no meio dos dois e afasta quando se separam
+      const alive = players.filter((p) => p.state !== 'dead' && p.group.visible);
+      if (alive.length === 2) {
+        followPos = midPos.copy(alive[0].position).add(alive[1].position).multiplyScalar(0.5);
+        const d = alive[0].position.distanceTo(alive[1].position);
+        cam.setSpread(Math.min(1.7, Math.max(1, 1 + (d - 7) / 22)));
+      } else cam.setSpread(1);
+    }
+    cam.follow(run.unlock.active ? run.unlock.focus : followPos, dt, run.unlock.active ? 2.5 : 5); // cena da Taverna: câmera no meio
+    if (run.built) run.built.updateFrontWall([...(ult.cine ? [{ x: 0, z: 1e6 }] : []), ...players.filter((p) => p.group.visible).map((p) => p.position), ...combat.enemies.filter((e) => e.alive).map((e) => e.position)], dt);
     combat.text.update(dt, cam.camera);
     ui.update(dt, cam.camera);
     hud.setHealth(player.hp, player.maxHp);
@@ -501,12 +567,19 @@ async function start() {
     hud.setGold(player.gold);
     hud.setShield(player.shield, shieldMax(player));
     hud.setAmmo(ammoInfo(player));
-    hud.setSmoke(player.hero.ability === 'smoke' ? player.smokeCd || 0 : -1, player.stealth > 0);
+    const ripOn = player.hero.ability === 'riposte' && !!(player.stats.w && player.stats.w.rRiposte); // Ripostar (Rapieira)
+    if (ripOn) hud.setSmoke(Math.max(0, player.rapRipCd || 0), false, 'ripostar', '⇄');
+    else hud.setSmoke(player.hero.ability === 'smoke' ? player.smokeCd || 0 : -1, player.stealth > 0);
     hud.setUlt(player.ult, player.ultNeed, input.device === 'pad' ? 'RT' : 'R');
     updateHint(player.hero);
     hud.setSoul(save.data.soul, run.inTavern);
     hud.update(dt, player.hp / player.maxHp);
     if (p2) hud.setAlly('Jogador 2', p2.hp, p2.maxHp, `#${PLAYER_COLORS[2].toString(16)}`);
+    if (mode === 'local') {
+      localChoices();
+      const rp = run.remotePrompt;
+      if (rp && p2 && p2.state !== 'dead' && !run.transition) ui.setPrompt2(rp.text, rp.pos); else ui.setPrompt2(null);
+    }
     if (deathTimer > 0) {
       deathTimer -= dt;
       if (deathTimer <= 0) {
@@ -537,20 +610,21 @@ async function start() {
   // Muda com a arma: combo de 3 ou 4; sem escudo, sem "bloquear".
   const hint = document.getElementById('controls');
   let hintDev = 'keys', hintKey = '';
-  const hintHtml = (d, h) => {
+  const hintHtml = (d, h, rip) => {
     const n = h.ammo ? `${h.ammo.max} ${h.ammo.kind === 'kunai' ? 'kunais' : 'virotes'}` : `${h.combo.length}x = combo`;
-    const block = !h.noShield || !!h.ability;
+    const block = h.ability === 'riposte' ? rip : (!h.noShield || !!h.ability); // Rapieira: botão direito só com o Ripostar
     const atk = h.caster ? 'magia' : h.ammo ? (h.ammo.kind === 'kunai' ? 'arremessar' : 'atirar') : 'atacar';
-    const blk = h.ability === 'smoke' ? 'fumaça' : h.ability === 'parry' ? 'aparar' : h.block && h.block.reflect ? 'barreira (rebate)' : 'bloquear';
+    const blk = h.ability === 'smoke' ? 'fumaça' : h.ability === 'parry' ? 'aparar' : h.ability === 'riposte' ? 'ripostar' : h.block && h.block.reflect ? 'barreira (rebate)' : 'bloquear';
     return d === 'pad'
       ? `<span><b>Analógico</b> andar</span><span><b>X</b> ${atk} (${n})</span><span><b>A</b> rolar</span>${block ? `<span><b>LB</b> ${blk}</span>` : ''}<span><b>Y</b> poção / usar</span><span><b>RT</b> ultimate</span><span><b>Analógico dir.</b> mirar</span><span><b>Start</b> pausa</span>`
       : `<span><b>WASD</b> andar</span><span><b>Clique</b> ${atk} (${n})</span><span><b>Espaço</b> rolar</span>${block ? `<span><b>Botão direito</b> ou <b>Shift</b> ${blk}</span>` : ''}<span><b>Q</b> poção</span><span><b>E</b> usar</span><span><b>R</b> ultimate</span><span><b>Esc</b> pausa</span>`;
   };
   const updateHint = (h) => {
-    const k = `${hintDev}|${h.id}|${h.weaponId}`;
+    const rip = h.ability === 'riposte' && !!(player.stats.w && player.stats.w.rRiposte);
+    const k = `${hintDev}|${h.id}|${h.weaponId}|${rip}`;
     if (k === hintKey) return;
     hintKey = k;
-    hint.innerHTML = hintHtml(hintDev, h);
+    hint.innerHTML = hintHtml(hintDev, h, rip);
   };
   input.onDevice((d) => { hintDev = d === 'pad' ? 'pad' : 'keys'; });
 
@@ -558,12 +632,13 @@ async function start() {
     const elapsed = clock.getDelta();
     const realDt = Math.min(elapsed, 0.1);
     input.poll();
+    save.sandbox(selfTest.running); // teste automático não grava no save do jogador
     // Start do controle: abre ou volta no menu de pausa (Esc é tratado na hora, no keydown).
     if (!selfTest.running) {
       if (input.pause()) togglePause();
       else if (pause.visible) pause.nav(input.wasPressed);
     }
-    if (pause.visible && mode === 'solo' && !selfTest.running) {
+    if (pause.visible && (mode === 'solo' || mode === 'local') && !selfTest.running) {
       // Sozinho: tudo congelado, só desenha.
       input.endFrame();
     } else if (mode === 'client') {
@@ -594,7 +669,7 @@ async function start() {
     }
     // Som: ouvido no herói deste computador; música conforme a luta.
     const me = mode === 'client' ? client.replica.me : (player.state === 'dead' && p2 && p2.state !== 'dead' ? p2 : player);
-    const ear = mode === 'client' && client.spectator ? cam.target : me.position;
+    const ear = (mode === 'client' && client.spectator) || mode === 'local' ? cam.target : me.position;
     audio.listener.x = ear.x; audio.listener.z = ear.z;
     if (mode === 'client') {
       const live = [...client.replica.enemies.values()].filter((e) => e.code !== 1 && e.code !== 2);

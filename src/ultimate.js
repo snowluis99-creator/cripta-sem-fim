@@ -64,6 +64,22 @@ export class Ultimates {
     return this.fire(p);
   }
 
+  // Cena curta que congela o jogo igual à ultimate (Coração de Fênix, Vassalo).
+  // o: { p, time, zoom, focus (Vector3 opcional), actors (outros com .anim), start(), tick(t, dt), end() }
+  scene(o) {
+    if (!this.cinematic) { // testes antigos: a cena acontece na hora
+      if (o.start) o.start();
+      if (o.tick) o.tick(o.time, o.time);
+      if (o.end) o.end();
+      return;
+    }
+    if (this.cine) { (this.queue || (this.queue = [])).push(o); return; }
+    this.cine = { ...o, t: 0, custom: true };
+    bars(true);
+    if (this.cam && this.cam.setCine) this.cam.setCine(o.zoom ?? ULT.cine.zoom);
+    if (o.start) o.start();
+  }
+
   // Começa a cena da ultimate (tudo congela; só o herói se mexe).
   startCine(p) {
     const C = ULT.cine, kind = ULT[p.heroId] ? p.heroId : 'knight';
@@ -90,6 +106,17 @@ export class Ultimates {
     const p = c.p;
     c.t += dt;
     p.anim.update(dt);
+    if (c.custom) {
+      for (const a of c.actors || []) if (a.anim && a !== p) a.anim.update(dt);
+      if (c.tick) c.tick(c.t, dt);
+      if (c.t < c.time) return;
+      this.cine = null;
+      bars(false);
+      if (this.cam && this.cam.setCine) this.cam.setCine(1);
+      if (c.end) c.end();
+      if (this.queue && this.queue.length) this.scene(this.queue.shift());
+      return;
+    }
     const k = Math.min(1, c.t / 0.35);
     p.setGlow(0.6 + 0.4 * Math.sin(c.t * 18) * k);
     if (c.t < ULT.cine.time && p.state !== 'dead') return;

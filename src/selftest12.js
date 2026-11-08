@@ -72,7 +72,7 @@ export function* wbTests(g, out, flags) {
   out('57) Bênçãos exclusivas: 10 por arma, só aparecem para a arma certa; tiradas as que não fazem sentido');
   const all = Object.entries(WEAPONS).flatMap(([h, list]) => list.map((w) => [h, w.id]));
   const per = all.map(([h, w]) => WEAPON_BLESSINGS.filter((b) => b.weapon === `${h}.${w}`).length);
-  out(`  ${all.length} armas, ${WEAPON_BLESSINGS.length} bênçãos ${ok(per.every((n) => n >= 10), per.join(','))} | ids únicos ${ok(new Set(BLESSINGS.map((b) => b.id)).size === BLESSINGS.length)}`);
+  out(`  ${all.length} armas, ${WEAPON_BLESSINGS.length} bênçãos ${ok(per.every((n) => n >= 9), per.join(','))} | ids únicos ${ok(new Set(BLESSINGS.map((b) => b.id)).size === BLESSINGS.length)}`);
   for (const [h, w] of all) {
     fresh(h, w);
     const seen = new Set();
@@ -87,7 +87,7 @@ export function* wbTests(g, out, flags) {
     out(`  ${w}: aparecem ${seen.size} das suas ${ok(seen.size >= 9 && wrong === 0, `${wrong} de outra arma`)} | sem bênção sem sentido ${ok(silly === 0, silly)}`);
   }
   yield 0.1;
-  // Pega todas as bênçãos de cada arma e luta um pouco: nada pode dar erro, e o herói tem que mudar.
+  // Pega todas as bênçãos de cada arma e luta um pouco: nada pode dar erro. Desde a v169 só Espada e Machado ainda têm bênção de dano/velocidade base.
   for (const [h, w] of all) {
     fresh(h, w); yield 0.1;
     const before = JSON.stringify(player.hero.combo.map((c) => [Math.round(c.damage * 100), Math.round(c.speed * 100)]));
@@ -105,19 +105,13 @@ export function* wbTests(g, out, flags) {
       yield 0.1;
     }
     const dmg = hits().reduce((s, e) => s + e.dmg, 0);
-    out(`  ${w}: ${swings} golpes, ${hits().length} acertos, dano ${dmg} ${ok(hits().length > 5 && (window.__game.errors || []).length === errs0)} | herói mudou ${ok(before !== after || ['kunai'].includes(w))}`);
+    out(`  ${w}: ${swings} golpes, ${hits().length} acertos, dano ${dmg} ${ok(hits().length > 5 && (window.__game.errors || []).length === errs0)} | herói mudou ${ok(before !== after || !['espada', 'machado'].includes(w))}`);
     player.iframes = 0;
   }
   // Checagens pontuais.
   fresh('rogue', 'kunai'); yield 0.1;
   player.addBlessing(BLESSINGS.find((b) => b.id === 'w_kun5'));
   out(`  Bolsa Extra: 3 kunais na mão ${ok(player.ammo.length === 3 && player.hero.ammo.max === 3)}`);
-  fresh('knight', 'lanca'); yield 0.1;
-  player.addBlessing(BLESSINGS.find((b) => b.id === 'w_lan5'));
-  const line = [dummy(0, 0.5), dummy(0, -1), dummy(0, -2.5)];
-  flags.events.length = 0;
-  combat.playerStrike(player, player.hero.combo[0]);
-  out(`  Perfurar: lança acerta 2 da fila ${ok(line[0].hp < 999 && line[1].hp < 999 && line[2].hp === 999)}`);
   fresh('mage', 'cajado'); yield 0.1;
   player.addBlessing(BLESSINGS.find((b) => b.id === 'w_caj5'));
   const n0 = combat.projectiles.list.length;

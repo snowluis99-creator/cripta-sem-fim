@@ -19,9 +19,11 @@ import { Tavern } from './tavern.js';
 import { save } from './save.js';
 import { WEAPON_PRICE, ownsWeapon, equippedWeapon, ownKey, eqKey, WEAPONS, HEROES, HERO_IDS, HERO_PRICE, HERO_SEL, heroKey, ownsHero, selectedHero, heroArticle } from './heroes.js';
 import { UnlockScene } from './unlock.js';
+import { darkRoomClear, darkCarryOut, darkCarryIn } from './darkkit.js';
+import { undeadDied } from './undead.js';
 
 const PRICES = { potion: 150 };
-const GOLD_REWARD = [300, 300]; // sala do ouro
+const GOLD_REWARD = [600, 600]; // sala do ouro
 const FADE = 0.35;
 export const PLAYER_COLORS = { 1: 0xffa040, 2: 0x4aa0ff };
 
@@ -141,8 +143,9 @@ export class Run {
       const gain = Math.max(0, Math.floor(p.gold));
       const upd = (s) => { s.soul += gain; s.soulTotal = (s.soulTotal || 0) + gain; s.runs = (s.runs || 0) + 1; s.best = Math.max(s.best || 0, this.floorNum); if (won) s.wins = (s.wins || 0) + 1; };
       if (p === this.player) save.update(upd);
+      else if (p.localGuest) save.update((s) => { s.soul += gain; s.soulTotal = (s.soulTotal || 0) + gain; }); // co-op local: vai para a mesma conta
       else if (p.saveData) { upd(p.saveData); p.saveData.rev = (p.saveData.rev || 0) + 1; }
-      const total = this.saveOf(p)?.soul ?? gain;
+      const total = p.localGuest ? save.data.soul : this.saveOf(p)?.soul ?? gain;
       const who = this.coop ? `Jogador ${p.id}: ` : '';
       lines.push(`${who}<span class="soulline">+${gain} Ouro de Alma</span> &nbsp;(total: <b>${total}</b>)`);
     }
@@ -162,7 +165,8 @@ export class Run {
     if (node.kind !== 'tavern') this.history.push(node.kind === 'combat' ? node.reward : node.kind);
     // Fôlego: cura um pouco ao entrar numa sala nova.
     for (const p of this.players) {
-      p.openerReady = p.stats.opener > 0; // Quebra-Gelo: o 1º ataque desta sala dá mais dano
+      p.openerReady = p.stats.opener > 0; p.openerLive = false; p.openerUsed = false; // Quebra-Gelo: o 1º combo desta sala que acertar
+      p.clawNineUsed = false; // Sete Vidas (Garras): vale de novo nesta sala
       const rh = p.stats.roomHeal;
       if (rh > 0 && this.history.length > 1 && p.state !== 'dead') {
         const healed = p.heal(rh);
@@ -180,9 +184,16 @@ export class Run {
     built.colliders.forEach((r) => this.world.addRect(...r));
     this.world.setBounds(built.halfW, built.halfD, built.wallHalf ?? 0.5);
     this.combat.props.setRoom(built, this.world); // objetos quebráveis
+    this.combat.demo.setRoom(built, this.world); // Demolidor: pilares que dá para derrubar
+    this.combat.ele.setRoom(built); // Blecaute (Cajado Elétrico): tochas da sala
+    this.combat.fire2.setRoom(built); // Tochas Vivas (Cajado de Fogo)
     this.combat.props.onDrop = (pos) => { // baú quebrado (10%): poção no chão para quem pegar primeiro
       this.addPickup(new Pickup('potion', pos, { amount: 1, free: true }));
       this.combat.text.add('Poção!', pos, 'heal', 3);
+    };
+    this.combat.onCoin = (pos, n) => { // Batedor de Carteira (Duas Adagas): uma moeda no chão
+      const g = this.addPickup(new Pickup('gold', pos, { amount: n, free: true }));
+      g.group.scale.setScalar(0.5);
     };
     this.combat.props.onCoins = (pos) => { // qualquer objeto quebrado (10%): umas moedas no chão
       const g = this.addPickup(new Pickup('gold', pos, { amount: 5 + Math.floor(Math.random() * 8), free: true }));
@@ -222,6 +233,8 @@ export class Run {
       dmgScale: F.dmg,
       mult: this.coop ? DIFF.coopWaveMult : DIFF.waveMult, coop: !!this.coop, bossMul: this.coop ? DIFF.coopBossMul : 1, // difficulty.js (modo brutal)
     });
+    if (node.waves && this.darkCarry && this.darkCarry.length) darkCarryIn(this.combat, this.darkCarry);
+    this.darkCarry = [];
     this.combat.hazards.bounds = built; // magias do Necromante usam o tamanho da sala
     this.combat.kit2.roomStart(node); // Espada Amaldiçoada: pedido da sala
     this.combat.axe.roomStart(); // Machado: Giro Crescente e Sede de Batalha zeram a cada sala
@@ -260,6 +273,7 @@ export class Run {
     if (this.built) this.scene.remove(this.built.group);
     this.built = null;
     this.waves.stop();
+    this.darkCarry = this.combat ? darkCarryOut(this.combat) : []; // Rei dos Mortos: vão junto para a sala seguinte
     this.combat.clear();
     this.debris.clear();
     this.vfx.clear();
@@ -291,6 +305,7 @@ export class Run {
     const n = this.node, at = this.built.reward;
     if (this.npc && this.npc.ally) this.npc.leave(); // luta acabou: o mercador contratado vai embora
     if (n.kind === 'boss' && this.floorNum >= 3) { this.victory(); return; } // o Ceifador: fim da partida
+    darkRoomClear(this.combat, (u) => { u.die(); undeadDied(this.combat, u); }); // Dízimo / Rei dos Mortos (Cajado das Trevas)
     this.combat.kit2.roomClear(); // Vassalo vai embora; Espada Amaldiçoada cobra o pedido
     this.hud.banner('Sala limpa!', 'big');
     audio.play('clear', null, null);
@@ -493,7 +508,10 @@ export class Run {
           this.hud.banner('Mercador contratado para o chefe!', 'small');
           this.combat.text.add('Combinado!', this.npc ? this.npc.position : p.pos, 'gold', 3.4);
           if (this.combat.log) this.combat.log({ type: 'hired' });
-        } else this.grantBlessing(p.opts.blessing, pl);
+        } else {
+          this.grantBlessing(p.opts.blessing, pl);
+          if (p.opts.blessing.id === 'negociador') pl.freeBuyReady = true; // comprou o Negociador aqui: a próxima compra já sai de graça
+        }
         this.vfx.burst(p.pos, p.opts.color);
         p.boughtBy.add(pl);
         // Some quando todos (vivos) já compraram.
@@ -621,6 +639,7 @@ export class Run {
 
   grantBlessing(b, pl = this.player) {
     pl.addBlessing(b);
+    if (pl.stats.opener > 0 && !pl.openerUsed && !pl.openerLive) pl.openerReady = true; // Quebra-Gelo: já vale na sala em que foi escolhida
     audio.play('blessing', pl.position.x, pl.position.z);
     if (pl === this.player) this.hud.setBlessings(pl.blessings, BLESSINGS, RARITY);
     if (pl.ux) pl.ux.banner(b.name, 'small'); else this.hud.banner(b.name, 'small');

@@ -327,6 +327,96 @@ export const ROOMS = {
     spikes: [[1, 1, 0], [8, 1, 0.85], [1, 6, 1.7], [8, 6, 2.55]],
     reward: [0, 0],
   },
+  // --- Salas novas do andar 1 (pedido do dono, 04/11): mesma masmorra, mais variedade até o Guardião ---
+  biblioteca: {
+    name: 'Biblioteca Esquecida',
+    width: 8, depth: 6,
+    floor: 'floor_wood_large_dark', floorSmall: 'floor_wood_small_dark',
+    floorDetails: [],
+    walls: { N: ['wall', 'wall_shelves', 'wall', 'wall_shelves', 'wall', 'wall_shelves', 'wall'], W: ['wall_shelves', 'wall', 'wall_shelves', 'wall', 'wall_shelves'],
+      E: ['wall_shelves', 'wall', 'wall_shelves', 'wall', 'wall_shelves'], S: ['wall', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall'] },
+    doors: [2, 4], entrance: 3,
+    torches: [['N', 0], ['N', 6], ['W', 1], ['W', 3], ['E', 1], ['E', 3]],
+    wallDeco: [['banner_patternC_brown', 'N', 3, 0]],
+    props: [['table_medium_decorated_A', -8, -3, 0, true], ['table_medium_decorated_A', 8, -3, 0, true],
+      ['chair', -8, -0.9, 0, false], ['chair', 8, -0.9, 0, false], ['stool', -10.2, -3, 0, false], ['stool', 10.2, -3, 0, false],
+      ['table_long_decorated_C', 0, 6, 90, true], ['candle_triple', -4.6, 6.2, 0, false], ['candle_triple', 4.6, 6.2, 0, false],
+      ['table_small_decorated_B', -14, -9.6, 0, true], ['table_small_decorated_A', 14, -9.6, 0, true],
+      ['bottle_A_labeled_green', -12.6, -10.2, 0, false], ['bottle_C_brown', 12.6, -10.2, 0, false],
+      ['trunk_medium_B', 14.2, 9.4, -90, true], ['box_small_decorated', -14, 9.4, 15, true], ['candle_melted', -12.4, 10, 0, false]],
+    reward: [0, -6],
+  },
+  celas: {
+    name: 'Celas da Masmorra',
+    width: 8, depth: 6,
+    floor: 'floor_tile_large',
+    floorDetails: [[0, 0, 1, 'floor_tile_small_broken_A'], [7, 0, 2, 'floor_tile_small_broken_B'], [2, 4, 0, 'floor_tile_small_weeds_A'], [5, 5, 3, 'floor_tile_small_weeds_B']],
+    walls: { N: ['wall_gated', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall_gated'], W: ['wall', 'wall_cracked', 'wall', 'wall', 'wall'],
+      E: ['wall', 'wall', 'wall_cracked', 'wall', 'wall'], S: ['wall', 'wall', 'wall_cracked', 'wall', 'wall', 'wall', 'wall'] },
+    doors: [2, 4], entrance: 3,
+    torches: [['N', 1], ['N', 5], ['W', 2], ['E', 2], ['W', 4], ['E', 4]],
+    wallDeco: [['keyring_hanging', 'N', 3, 2.6], ['sword_shield_broken', 'W', 3, 2.6]],
+    // Duas celas abertas no fundo (grades baixas com uma passagem), com cama e baú dentro.
+    props: [['barrier', -14, -4.6, 0, true], ['barrier_half', -9, -9.2, 90, true],
+      ['barrier', 14, -4.6, 0, true], ['barrier_half', 9, -9.2, -90, true],
+      ['bed_frame', -14, -9, 90, true], ['trunk_small_B', -10.8, -10.4, 0, true],
+      ['bed_frame', 14, -9, -90, true], ['trunk_medium_A', 10.8, -10.4, 0, true],
+      ['pillar', -5, 3, 0, true], ['pillar', 5, 3, 0, true],
+      ['props/crypt/bone_A', -12, -7, 40, false], ['props/crypt/skull', 12.4, -6.8, -30, false],
+      ['barrel_small', -14.4, 9.4, 0, true], ['box_small', 14.2, 9.4, 20, true]],
+    reward: [0, -2],
+  },
+  adega: {
+    name: 'Adega',
+    width: 6, depth: 6,
+    floor: 'floor_tile_large',
+    floorDetails: [[0, 1, 2, 'floor_tile_small_broken_B'], [5, 4, 1, 'floor_tile_small_weeds_A'], [3, 5, 0, 'floor_tile_small_broken_A']],
+    walls: { N: ['wall', 'wall_shelves', 'wall', 'wall_shelves', 'wall'], W: ['wall', 'wall_shelves', 'wall', 'wall_shelves', 'wall'],
+      E: ['wall', 'wall', 'wall_shelves', 'wall', 'wall'], S: ['wall', 'wall', 'wall', 'wall', 'wall'] },
+    doors: [0, 4], entrance: 2,
+    torches: [['N', 2], ['W', 0], ['W', 4], ['E', 0], ['E', 4], ['E', 2]],
+    wallDeco: [['banner_patternA_brown', 'N', 2, 0]],
+    props: [['keg', -10, -6, 90, true], ['keg', -10, -1.6, 90, true], ['keg_decorated', 8.6, -9.6, 0, true],
+      ['table_medium', 0, -4, 0, true], ['bottle_A_labeled_brown', -0.5, -4.4, 0, false, 1], ['bottle_C_green', 0.5, -3.6, 0, false, 1],
+      ['bottle_B_brown', 0.3, -4.5, 0, false, 1], ['stool', -1.8, -4, 0, false], ['stool', 1.8, -3.6, 0, false],
+      ['barrel_large', -4, 5, 0, true], ['barrel_small', 4.4, 6, 0, true], ['barrel_small', 5.4, 4.8, 0, true],
+      ['barrel_large_decorated', -10, 9.6, 0, true], ['barrel_small_stack', 10.4, 3.5, 90, true], ['trunk_large_B', 10, 9.8, -90, true]],
+    reward: [0, 1.5],
+  },
+  quartel: {
+    name: 'Alojamento dos Guardas',
+    width: 8, depth: 5,
+    floor: 'floor_tile_large',
+    floorDetails: [[1, 1, 0, 'floor_tile_small_decorated'], [6, 1, 1, 'floor_tile_small_decorated'], [3, 4, 2, 'floor_tile_small_broken_A']],
+    walls: { N: ['wall', 'wall', 'wall', 'wall_window_closed', 'wall', 'wall', 'wall'], W: ['wall', 'wall', 'wall_cracked', 'wall'],
+      E: ['wall', 'wall_cracked', 'wall', 'wall'], S: ['wall', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall'] },
+    doors: [2, 4], entrance: 3,
+    torches: [['N', 0], ['N', 6], ['W', 1], ['E', 1], ['W', 3], ['E', 3]],
+    wallDeco: [['sword_shield', 'W', 2, 2.6], ['sword_shield', 'E', 2, 2.6], ['banner_shield_red', 'N', 3, 0]],
+    props: [['bed_frame', -13.4, -7.6, 0, true], ['bed_frame', -9.6, -7.6, 0, true], ['bed_frame', 9.6, -7.6, 0, true], ['bed_frame', 13.4, -7.6, 0, true],
+      ['trunk_small_A', -13.4, -5.4, 0, true], ['trunk_medium_A', -9.6, -5.3, 0, true], ['trunk_small_C', 9.6, -5.4, 0, true], ['trunk_medium_C', 13.4, -5.3, 0, true],
+      ['table_long', 0, 2, 90, true], ['plate_food_A', -1, 2.1, 0, false, 1], ['plate_small', 0.8, 1.9, 0, false, 1], ['weapons/heroes/mug_full', 1.6, 2.4, 20, false, 1],
+      ['stool', -1.6, 0.2, 0, false], ['stool', 1.6, 0.2, 0, false], ['stool', -1.6, 3.8, 0, false], ['stool', 1.6, 3.8, 0, false],
+      ['barrel_large', 14, 7.8, 0, true], ['crates_stacked', -14, 7.6, 0, true]],
+    reward: [0, -4],
+  },
+  esgoto: {
+    name: 'Galeria do Esgoto',
+    width: 6, depth: 7,
+    floor: 'floor_tile_large',
+    floorDetails: [[0, 0, 2, 'floor_tile_small_weeds_A'], [5, 3, 1, 'floor_tile_small_weeds_B'], [0, 6, 0, 'floor_tile_small_broken_A']],
+    bigDetails: [[2, 1, 'floor_tile_big_grate'], [3, 2, 'floor_tile_big_grate_open'], [2, 3, 'floor_tile_big_grate'], [3, 4, 'floor_tile_big_grate'], [2, 5, 'floor_tile_big_grate_open']],
+    walls: { N: ['wall', 'wall_arched', 'wall', 'wall_arched', 'wall'], W: ['wall', 'wall_cracked', 'wall', 'wall', 'wall_broken', 'wall'],
+      E: ['wall_broken', 'wall', 'wall', 'wall_cracked', 'wall', 'wall'], S: ['wall', 'wall', 'wall', 'wall', 'wall'] },
+    doors: [0, 4], entrance: 2,
+    torches: [['N', 2], ['W', 1], ['W', 4], ['E', 1], ['E', 4]],
+    wallDeco: [['banner_thin_green', 'N', 1, 0], ['banner_thin_green', 'N', 3, 0]],
+    props: [['column', -5.5, -8, 0, true], ['column', 5.5, -8, 0, true], ['column', -5.5, -1, 0, true], ['column', 5.5, -1, 0, true],
+      ['column', -5.5, 6, 0, true], ['column', 5.5, 6, 0, true],
+      ['barrel_small', -10.2, -11.6, 0, true], ['box_small', -9, -12, 25, true], ['barrel_large', 10, 11.4, 0, true],
+      ['trunk_large_A', -10.4, 11.6, 90, true], ['props/crypt/bone_C', 9.4, -6, 30, false]],
+    reward: [0, -11],
+  },
   // --- Salas especiais (sem combate) ---
   tesouro: {
     name: 'Câmara do Tesouro',
@@ -337,8 +427,9 @@ export const ROOMS = {
     doors: [1, 3], entrance: 2,
     torches: [['N', 0], ['N', 2], ['N', 4], ['W', 1], ['E', 1], ['W', 3]],
     wallDeco: [['banner_yellow', 'W', 2, 0], ['banner_yellow', 'E', 2, 0]],
-    props: [['coin_stack_large', -9.6, -8, 0, true], ['coin_stack_medium', -7.8, -8.8, 0, false], ['props/loot/Gold_Bars_Stack_Small', 9.8, -8.4, 0, true],
-      ['coin_stack_small', 8.4, -8.9, 0, false], ['coin_stack_small', 10.2, 7.8, 0, false], ['trunk_large_C', -10, 7.9, 90, true],
+    // Nada de dinheiro de enfeite (pedido do dono, 06/11): altar com velas, caveira com vela e velas no lugar das barras.
+    props: [['props/crypt/shrine_candles', -9.6, -8, 0, true], ['trunk_medium_C', -7.4, -8.9, 0, true], ['props/crypt/skull_candle', 9.8, -8.4, 200, true],
+      ['props/crypt/candle_melted', 7.9, -8.9, 20, false], ['box_small_decorated', 10.2, 7.8, 0, true], ['trunk_large_C', -10, 7.9, 90, true],
       ['candle_triple', -3, -4, 0, false], ['candle_triple', 3, -4, 0, false]],
     reward: [0, -2],
     special: 'chest',
@@ -418,7 +509,27 @@ ROOMS.santuario = { ...ROOMS.trono, name: 'Santuário do Ceifador', doors: [], t
   props: [...ROOMS.trono.props, ['props/crypt/plaque_candles', 0, -13.4, 0, true]] };
 
 // Salas de combate comuns (sorteadas pelo gerador), por andar.
-export const COMBAT_ROOMS = ['guarita', 'pilares', 'deposito', 'refeitorio', 'ruinas', 'galeria', 'arsenal'];
+export const COMBAT_ROOMS = ['guarita', 'pilares', 'deposito', 'refeitorio', 'ruinas', 'galeria', 'arsenal', 'biblioteca', 'celas', 'adega', 'quartel', 'esgoto'];
+
+// Pelo menos 1 baú (que quebra: 10% de poção) em toda sala (pedido do dono, 04/11). Sala sem baú ganha um
+// num canto livre (longe dos objetos, da recompensa e das armadilhas).
+const NO_CHEST = new Set(['merchant', 'tavern']);
+function ensureChest(r) {
+  if (NO_CHEST.has(r.special) || (r.props || []).some((p) => /trunk|chest/.test(p[0]))) return;
+  const hw = r.width * TILE / 2, hd = r.depth * TILE / 2;
+  const spikes = (r.spikes || []).map(([tx, tz]) => [-hw + TILE / 2 + tx * TILE, -hd + TILE / 2 + tz * TILE]);
+  const spots = [];
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) spots.push([sx * (hw - 2.2), sz * (hd - 2.2)]);
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) spots.push([sx * (hw - 2), sz * (hd - 5)], [sx * (hw - 5.5), sz * (hd - 2)]);
+  const rw = r.reward || [0, 0];
+  for (const [x, z] of spots) {
+    if ((r.props || []).some((p) => Math.hypot(p[1] - x, p[2] - z) < 3)) continue;
+    if (Math.hypot(rw[0] - x, rw[1] - z) < 3 || spikes.some(([a, b]) => Math.abs(a - x) < 3 && Math.abs(b - z) < 3)) continue;
+    r.props = [...(r.props || []), [x < 0 ? 'trunk_large_A' : 'trunk_large_C', x, z, x < 0 ? 90 : -90, true]];
+    return;
+  }
+}
+for (const r of Object.values(ROOMS)) ensureChest(r);
 export const CRYPT_ROOMS = ['cemiterio', 'ossario', 'caixoes', 'capela', 'corredor', 'tumulos'];
 export const SHADOW_ROOMS = [...Object.keys(SHADOW_NAMES).map((id) => `s_${id}`), 's_catacumba'];
 
@@ -438,6 +549,7 @@ export function coopRoom(id) {
     doors: r.doors.map((i) => i + 1), entrance: r.entrance + 1,
     floorDetails: r.floorDetails.map(([tx, tz, q, p]) => [tx + 1, tz, q, p]),
     spikes: r.spikes && r.spikes.map(([tx, tz, ph]) => [tx + 1, tz, ph]),
+    bigDetails: r.bigDetails && r.bigDetails.map(([tx, tz, p]) => [tx + 1, tz, p]),
     torches: r.torches.map(([side, i]) => [side, sh(side, i)]),
     wallDeco: (r.wallDeco || []).map(([n, side, i, y]) => [n, side, sh(side, i), y]),
     big: true,

@@ -1,23 +1,26 @@
-// Bênçãos que mudam o jeito de jogar com a Espada e Escudo do Cavaleiro (pedido do dono, 02/11/2026).
-// Arremesso (escudo voa no 4º golpe), Espada Arremessada (golpe forte atira a espada; o golpe forte sem ela a chama
-// de volta), Bilhar de Ossos (rebatidos viram bolas), Trenó de Escudo (rolar vira deslizar), Escudo Plantado
-// (segurar o bloqueio finca o escudo como parede), Corrente no Escudo (bloquear puxa o inimigo da frente),
-// Mãos Trocadas (escudo ataca, espada defende) e Rastro Fantasma (cada golpe corta de novo 1 s depois).
+// Bênçãos que mudam o jeito de jogar com a Espada e Escudo do Cavaleiro (pedido do dono, 02/11/2026; ajustes 04/11).
+// Arremesso (escudo voa num golpe extra), Espada Arremessada (golpe extra depois do 3º atira a espada; sem ela, o
+// mesmo golpe a chama de volta), Bilhar de Ossos (rebatidos viram bolas), Trenó de Escudo (rolar vira deslizar, 20 s
+// de recarga, sem levar dano, queima quem atropela), Escudo Flamejante (quem bate no escudo pega fogo), Corrente no
+// Escudo (bloquear puxa o inimigo da frente; ele não machuca no esbarrão), Mãos Trocadas (escudo ataca e atordoa o
+// dobro, espada defende, corta flechas sozinha e contra-ataca) e Rastro Fantasma (cada golpe corta de novo 1 s depois).
+// (Escudo Plantado saiu da lista em 04/11; o código ficou, sem bênção que o ligue.)
 // Podem ser pegas juntas: o combo é montado conforme o que está na mão (espada, escudo, os dois ou nenhum).
 import * as THREE from 'three';
 import { audio } from './audio.js';
 import { instance } from './assets.js';
 import { findBone } from './characters.js';
-import { shieldVisual } from './shield.js';
+import { shieldVisual, useShield, spendShield } from './shield.js';
 
 export const KIT = {
   shieldThrow: { speed: 20, range: 13, damage: 14, pick: 1.5 },
   swordThrow: { speed: 24, range: 10, damage: 24, pick: 1.5, recallSpeed: 30, recallDamage: 16 },
   billiard: { speed: 16, time: 0.6, wallDamage: 25, hitDamage: 12, depth: 3 },
-  sled: { speed: 11.5, max: 2.2, min: 0.25, damage: 8, iframes: 0.3 },
+  sled: { speed: 11.5, max: 2.2, min: 0.25, damage: 8, iframes: 0.3, burn: 3, burnDps: 5 },
+  flame: { burn: 3, burnDps: 5 },
   plant: { hold: 1.0, pick: 2.2 },
-  hook: { range: 9, speed: 32, pull: 24, cooldown: 2 },
-  swap: { counter: 12, arc: 110 },
+  hook: { range: 9, speed: 32, pull: 24, cooldown: 2, safe: 3 },
+  swap: { counter: 12, arc: 110, stunMul: 2 },
   trail: { delay: 1, mul: 0.6 },
 };
 
@@ -52,12 +55,15 @@ export function applyKit(p) {
     : atk === 'shield' ? BASH.map((s) => ({ ...s, damage: swap ? Math.round(s.damage * 1.25) : s.damage }))
       : FISTS.map((s) => ({ ...s }));
   const hi = Math.max(0, combo.findIndex((c) => c.heavy));
+  const chain = () => { const l = combo[combo.length - 1]; combo[combo.length - 1] = { ...l, window: l.window ?? 0.45 }; };
+  // Espada Arremessada: golpe extra depois do 3º (o golpe forte em área continua). Sem a espada, o mesmo golpe a chama.
   if (w.swordThrow) {
-    if (sword) combo[hi] = { ...combo[hi], clip: 'Throw', speed: 1.7, hit: 0.42, end: 0.72, lunge: 0.2, kit: 'throwSword' };
-    else combo[hi] = { ...combo[hi], kit: 'recallSword' };
+    chain();
+    if (sword) combo.push({ clip: 'Throw', speed: 1.7, hit: 0.42, end: 0.72, lunge: 0.2, damage: KIT.swordThrow.damage, kit: 'throwSword' });
+    else combo.push({ clip: 'Melee_Block_Attack', speed: 1.5, hit: 0.4, end: 0.75, lunge: 0.3, damage: 8, pushMul: 2, bash: shield, kit: 'recallSword' });
   }
   if (w.shieldThrow && shield) {
-    combo[combo.length - 1] = { ...combo[combo.length - 1], window: combo[combo.length - 1].window ?? 0.45 };
+    chain();
     combo.push({ clip: 'Throw', speed: 1.8, hit: 0.42, end: 0.72, lunge: 0.2, damage: KIT.shieldThrow.damage, kit: 'throwShield' });
   }
   h.combo = combo;
@@ -136,18 +142,19 @@ export function kitOnSwing(combat, p, step, range, arc) {
 // Escudo segurou um golpe. Mãos Trocadas: a espada apara (não gasta o escudo) e contra-ataca sozinha.
 export function kitGuard(combat, p, e, nx, nz, opts) {
   if (!kitSwordGuard(p)) return null;
+  const res = useShield(p, combat, e); // 04/11: toda defesa da espada gasta 1 carga do escudo
   if (e && e.alive && e.targetable && !opts.contact && Math.hypot(e.position.x - p.position.x, e.position.z - p.position.z) < 4) {
     combat.vfx.sector(p.position, p.facing, 2.4, 0.9, 0xcfe4ff);
     combat.bonusDamage(e, Math.round(KIT.swap.counter * p.stats.damageMul), -nx, -nz, 'dmg big', p);
     combat.text.add('Contra-ataque!', p.position, 'crit', 3.2);
     if (combat.log) combat.log({ type: 'kitCounter', enemy: e });
   }
-  return 'parry';
+  return res;
 }
 
-// Inimigo rebatido pelo escudo: Bilhar de Ossos.
+// Inimigo bateu no escudo enquanto o herói bloqueava: Bilhar de Ossos (vira bola, mesmo se não ficou desequilibrado).
 export function kitOnRepel(combat, p, e, dx, dz) {
-  if (!isKit(p) || !W(p).billiard || e.data.boss) return;
+  if (!isKit(p) || !W(p).billiard || !e || !e.alive || e.data.boss || e.undead) return;
   combat.kit.launch(e, dx, dz, p, 0);
 }
 
@@ -173,10 +180,13 @@ export function kitBlockTick(p) {
   return true;
 }
 
-// Rolar: Trenó de Escudo (desliza sentado no escudo). Devolve true se começou o trenó.
+// Segurando o bloqueio + rolar: Trenó de Escudo (desliza sentado no escudo). Sem recarga: gasta 1 carga do escudo.
+// Rolar sem segurar o bloqueio (ou com o escudo quebrado) é um rolamento normal. Devolve true se começou o trenó.
+export const kitGuardRoll = (p) => !!(p.ctl && p.ctl.blocking && p.ctl.blocking()) && p.shield > 0;
 export function kitStartDodge(p) {
-  if (!C || !isKit(p) || !W(p).sled || kitOf(p).shield !== 'hand') return false;
+  if (!C || !isKit(p) || !W(p).sled || kitOf(p).shield !== 'hand' || !kitGuardRoll(p)) return false;
   const k = kitOf(p);
+  spendShield(p, C);
   p.setState('sled');
   p.combo = 0;
   p.iframes = Math.max(p.iframes, KIT.sled.iframes);
@@ -210,13 +220,14 @@ export function kitSledTick(p, dt, world, input, tmpMove) {
       k.sledHits.add(e);
       const sx = e.position.x - p.position.x, sz = e.position.z - p.position.z, sd = Math.hypot(sx, sz) || 1;
       C.bonusDamage(e, Math.round(S.damage * p.stats.damageMul), sx / sd, sz / sd, 'dmg', p);
+      if (e.alive && !e.immune) { e.burn = Math.max(e.burn || 0, S.burn); e.burnDps = Math.max(e.burnDps || 0, S.burnDps * p.stats.damageMul); e.burnTick = 0.5; e.burnBy = p; C.text.add('Queimando!', e.position, 'burn', 2.8); }
       if (e.alive && !e.data.boss && e.offBalance) e.offBalance(sx / sd, sz / sd, 0.7, 10);
       audio.play('hit', e.position.x, e.position.z);
       if (C.log) C.log({ type: 'sledHit', enemy: e });
     }
     if (Math.random() < dt * 20) C.vfx.sparks(v3(p.position.x - fx * 0.5, 0.2, p.position.z - fz * 0.5), 0xffd9a0, 2);
   }
-  const held = input.dodgeHeld ? input.dodgeHeld() : p.stateTime < 1.2;
+  const held = (input.dodgeHeld ? input.dodgeHeld() : p.stateTime < 1.2) || (input.blocking && input.blocking());
   const crashed = p.stateTime > 0.1 && moved < S.speed * dt * 0.3;
   if (p.stateTime >= S.max || (p.stateTime >= S.min && !held) || crashed) {
     endSled(p);
@@ -231,6 +242,46 @@ function endSled(p) {
   handVisual(p);
   if (C) C.kit.showSled(p, false);
 }
+
+// Escudo Flamejante: o escudo fica envolto em chamas (brilho laranja + faíscas de fogo).
+function flameShield(c, p, dt) {
+  const k = kitOf(p), on = isKit(p) && !!W(p).flameShield && p.state !== 'dead';
+  if (p.shieldMats && (k.flameOn !== on || k.flameMats !== p.shieldMats)) {
+    k.flameOn = on; k.flameMats = p.shieldMats; // o herói refeito ganha materiais novos
+    for (const { m } of p.shieldMats) if (m.emissive) { m.emissive.setHex(on ? 0xc0400a : 0x000000); m.emissiveIntensity = on ? 0.9 : 1; }
+  }
+  if (!on || !p.shieldMesh || !p.shieldMesh.visible) return;
+  if ((k.flameFx = (k.flameFx || 0) - dt) > 0) return;
+  k.flameFx = 0.07;
+  const wp = p.shieldMesh.getWorldPosition(new THREE.Vector3());
+  c.vfx.sparks(wp, Math.random() < 0.5 ? 0xff7a1a : 0xffc040, 1);
+}
+
+// Escudo Flamejante: quem bateu no escudo pega fogo.
+export function kitFlameBlock(combat, p, e) {
+  if (!isKit(p) || !W(p).flameShield || !e || !e.alive || e.immune || !e.data || e.undead) return;
+  const F = KIT.flame;
+  e.burn = Math.max(e.burn || 0, F.burn); e.burnDps = Math.max(e.burnDps || 0, F.burnDps * p.stats.damageMul); e.burnTick = 0.5; e.burnBy = p;
+  combat.text.add('Queimando!', e.position, 'burn', 2.8);
+  combat.vfx.sparks(new THREE.Vector3(e.position.x, 1.1, e.position.z), 0xff7a1a, 8);
+  if (combat.log) combat.log({ type: 'flameBlock', enemy: e });
+}
+
+// Mãos Trocadas: a espada corta sozinha as flechas que iam acertar o herói (devolve true: a flecha foi destruída).
+export function kitSwordCut(combat, p, a) {
+  if (!kitSwordGuard(p) || a.kind !== 'arrow' || p.state === 'dead' || p.shield <= 0) return false;
+  useShield(p, combat, null); // 04/11: cortar a flecha também gasta 1 carga do escudo
+  const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
+  combat.vfx.sector(p.position, Math.atan2(a.x - p.position.x, a.z - p.position.z), 1.6, 0.7, 0xcfe4ff);
+  combat.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xcfe4ff, 10);
+  audio.play('block', a.x, a.z, { v: 0.8 });
+  combat.text.add('Cortou!', p.position, 'block', 2.6);
+  if (combat.log) combat.log({ type: 'swordCut', fx, fz });
+  return true;
+}
+
+// Corrente no Escudo: o inimigo puxado não machuca no esbarrão.
+export const kitBumpSafe = (p, e) => !!(e && e.hookSafe === p && e.hookSafeT > 0);
 
 // ---------- Coisas soltas na sala (escudo voando/no chão, espada, gancho, bolas, rastros) ----------
 
@@ -335,12 +386,15 @@ export class KnightKit {
   }
 
   // ---- Corrente no Escudo ----
-  fireHook(p) {
+  // opts.target (Corrente do Mangual): a corrente vai atrás desse inimigo (até opts.range) e ignora os outros.
+  fireHook(p, opts = {}) {
     const mat = new THREE.MeshBasicMaterial({ color: 0xb8c4d6 });
     const line = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 6).rotateX(Math.PI / 2).translate(0, 0, 0.5), mat);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mat);
     this.scene.add(line); this.scene.add(head);
-    this.hooks.push({ p, line, head, a: p.facing, len: 0, phase: 'out', e: null });
+    const tg = opts.target || null;
+    const a = tg ? Math.atan2(tg.position.x - p.position.x, tg.position.z - p.position.z) : p.facing;
+    this.hooks.push({ p, line, head, a, len: 0, phase: 'out', e: null, target: tg, range: opts.range || KIT.hook.range });
     audio.play('swing', p.position.x, p.position.z);
   }
 
@@ -418,10 +472,12 @@ export class KnightKit {
 
   update(dt) {
     const c = this.c, world = c.world;
+    for (const e of c.enemies) if (e.hookSafeT > 0 && e.hookSafeT < 99) { e.hookSafeT -= dt; if (e.hookSafeT <= 0) e.hookSafe = null; }
     for (const p of c.players) {
       const k = p.kit;
       if (!k) continue;
       if (k.hookCd > 0) k.hookCd -= dt;
+      flameShield(this.c, p, dt);
       if (k.plantLock && !(p.ctl && p.ctl.blocking())) k.plantLock = false; // soltou o botão depois de fincar
       if (k.shield === 'sled' && p.state !== 'sled') endSled(p); // apanhou/morreu no meio do trenó
       if (k.dirty && p.state !== 'attack') { k.dirty = false; p.rebuildHero(); }
@@ -487,17 +543,23 @@ export class KnightKit {
       let hx, hz;
       if (h.phase === 'out') {
         h.len += H.speed * dt;
+        const tg = h.target;
+        if (tg) { // Corrente (Mangual): segue o alvo
+          if (!tg.targetable) { this.endHook(h); continue; }
+          h.a = Math.atan2(tg.position.x - ox, tg.position.z - oz);
+        }
         hx = ox + Math.sin(h.a) * h.len; hz = oz + Math.cos(h.a) * h.len;
-        const e = this.enemyAt(hx, hz, 0.5);
+        const e = tg ? (Math.hypot(tg.position.x - hx, tg.position.z - hz) <= tg.data.radius + 0.5 ? tg : null) : this.enemyAt(hx, hz, 0.5);
         if (e) {
           h.e = e; h.phase = 'pull';
           audio.play('hit', hx, hz);
           if (e.data.boss || e.frozenT > 0) { e.daze && e.daze(0.3); c.text.add('Preso!', e.position, 'block', 3.0); this.endHook(h); continue; }
           e.releaseToken(); e.setState('hurt'); e.stunTime = 5; e.vel.set(0, 0, 0);
+          e.hookSafe = p; e.hookSafeT = 99; // Corrente no Escudo: o puxado não machuca no esbarrão
           e.anim.play(e.data.anims.hit, { once: true, restart: true, fade: 0.05 });
           c.text.add('Puxou!', e.position, 'crit', 3.0);
           if (c.log) c.log({ type: 'kitHook', enemy: e });
-        } else if (h.len >= H.range || world.blocked(hx, hz, 0.1)) { this.endHook(h); continue; }
+        } else if (h.len >= (h.range || H.range) || (!tg && world.blocked(hx, hz, 0.1))) { this.endHook(h); continue; }
       }
       if (h.phase === 'pull') {
         const e = h.e;
@@ -506,6 +568,7 @@ export class KnightKit {
         const want = p.hero.radius + e.data.radius + 0.6;
         if (d <= want) {
           e.stunTime = e.t + 0.2;
+          e.hookSafeT = KIT.hook.safe;
           if (e.offBalance) e.offBalance(-dx / d, -dz / d, 0.9, 1);
           this.endHook(h); continue;
         }

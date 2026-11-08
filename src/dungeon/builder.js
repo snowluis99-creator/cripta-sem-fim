@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { instance, dungeonPath } from '../assets.js';
 import { TILE } from './rooms.js';
 import { applyTorchQuality } from '../graphics.js';
+import { TOPPLE } from '../demolish.js';
 
 const TORCH_HEIGHT = 2.3;
 const WALL_HALF_THICK = 0.5;
@@ -21,6 +22,7 @@ export function piecesForRoom(room) {
   const set = new Set([room.floor, room.floorSmall || 'floor_tile_small', 'wall_corner', 'torch_mounted', 'wall_doorway', 'wall']);
   if (room.spikes?.length) set.add('floor_tile_big_spikes');
   room.floorDetails.forEach((d) => set.add(d[3]));
+  (room.bigDetails || []).forEach((d) => set.add(d[2]));
   Object.values(room.walls).forEach((list) => list.forEach((p) => set.add(p)));
   (room.props || []).forEach((p) => set.add(p[0]));
   (room.wallDeco || []).forEach((p) => set.add(p[0]));
@@ -87,6 +89,7 @@ export function buildRoom(room, opts = {}) {
   // Armadilhas de espinho (andar 2+): o piso da casa vira a placa com espinhos; os espinhos sobem e descem.
   const spikes = [];
   const spikeAt = new Map((room.spikes || []).map(([tx, tz, phase]) => [`${tx},${tz}`, phase || 0]));
+  const bigAt = new Map((room.bigDetails || []).map(([tx, tz, piece]) => [`${tx},${tz}`, piece])); // casa inteira trocada (grade de esgoto)
   for (let tx = 0; tx < room.width; tx++) {
     for (let tz = 0; tz < room.depth; tz++) {
       const cx = -halfW + TILE / 2 + tx * TILE;
@@ -97,6 +100,7 @@ export function buildRoom(room, opts = {}) {
         spikes.push({ x: cx, z: cz, obj: sp, phase: spikeAt.get(`${tx},${tz}`), up: 0, hit: new Set() });
         continue;
       }
+      if (bigAt.has(`${tx},${tz}`)) { place(group, bigAt.get(`${tx},${tz}`), cx, 0, cz); continue; }
       const d = details.get(`${tx},${tz}`);
       if (!d) { place(group, room.floor, cx, 0, cz); continue; }
       for (let q = 0; q < 4; q++) {
@@ -181,9 +185,12 @@ export function buildRoom(room, opts = {}) {
   // --- Obstáculos e enfeites no chão ---
   const box = new THREE.Box3();
   const breakables = []; // objetos que quebram com golpes (props.js)
-  const canBreak = room.special !== 'shop' && room.special !== 'tavern' && room.special !== 'merchant';
+  const solids = [];     // estruturas que não quebram mas o Demolidor derruba (demolish.js)
+  const canBreak = room.special !== 'shop' && room.special !== 'tavern'; // sala do mercador também quebra (pedido do dono, 07/11)
+  const elevated = []; // coisas em cima de mesas/barris (garrafas, pratos, canecas): caem junto quando a base quebra
   for (const [name, x, z, rotDeg, solid, y = 0] of room.props || []) {
     const obj = place(group, name, x, y, z, THREE.MathUtils.degToRad(rotDeg || 0));
+    let entry = null;
     obj.updateMatrixWorld(true);
     box.setFromObject(obj);
     let colIdx = -1;
@@ -194,12 +201,25 @@ export function buildRoom(room, opts = {}) {
     }
     if (canBreak && BREAKABLE.test(name)) {
       const r = Math.max(0.35, Math.min(1.6, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2));
-      breakables.push({ name, obj, x, z, r, colIdx, chest: /trunk|chest/.test(name), h: Math.max(0.4, box.max.y - box.min.y), broken: false });
+      entry = { name, obj, x, z, r, colIdx, chest: /trunk|chest/.test(name), h: Math.max(0.4, box.max.y - box.min.y), broken: false,
+        foot: [box.min.x, box.min.z, box.max.x, box.max.z], riders: [] };
+      breakables.push(entry);
+    } else if (solid && TOPPLE.test(name)) {
+      const r = Math.max(0.35, Math.min(1.6, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2));
+      solids.push({ name, obj, x, z, r, colIdx, h: Math.max(1, box.max.y - box.min.y), down: false });
     }
+    if (y > 0) elevated.push({ obj, x, z, y, b: entry });
+  }
+  // Liga cada coisa elevada à base quebrável embaixo dela (a base quebra -> ela some junto, sem ficar flutuando).
+  for (const e of elevated) {
+    const base = breakables.find((b) => b !== e.b && b.foot && b.obj.position.y < e.y - 0.05
+      && e.x >= b.foot[0] - 0.15 && e.x <= b.foot[2] + 0.15 && e.z >= b.foot[1] - 0.15 && e.z <= b.foot[3] + 0.15);
+    if (base) base.riders.push({ obj: e.obj, b: e.b, x: e.x, z: e.z, y: e.y });
   }
 
+  const light = { dim: 1 }; // Blecaute (Cajado Elétrico): 0 = tochas apagadas
   return {
-    room, group, halfW, halfD, colliders, doors, spikes, breakables,
+    room, group, halfW, halfD, colliders, doors, spikes, breakables, solids, torches, light,
     entrance: { x: entranceX, z: halfD - 2.2 },
     reward: new THREE.Vector3(room.reward?.[0] ?? 0, 0, room.reward?.[1] ?? 0),
     setDoorsOpen(open) { for (const d of doors) d.open = open; },
@@ -231,8 +251,8 @@ export function buildRoom(room, opts = {}) {
       for (const tc of torches) {
         if (!tc.sprite) continue;
         const f = Math.sin(t * 9 + tc.seed) * 0.5 + Math.sin(t * 23 + tc.seed * 2) * 0.3;
-        tc.light.intensity = tc.base * (tc.boost || 1) * (1 + f * 0.12);
-        tc.sprite.scale.setScalar(1.15 + f * 0.12);
+        if (!tc.borrowed) tc.light.intensity = tc.base * (tc.boost || 1) * (1 + f * 0.12) * light.dim; // emprestada: luz da Maga no Blecaute
+        tc.sprite.scale.setScalar((1.15 + f * 0.12) * Math.max(0.02, light.dim));
       }
       // Grades das portas descendo/subindo.
       for (const d of doors) {

@@ -66,6 +66,7 @@ export class Breakables {
 
   smash(b, nx = 0, nz = 1, by = null) {
     if (b.broken) return;
+    if (!b.fuse && by && this.combat.fire2 && this.combat.fire2.lightProp(b, by)) return; // Pólvora (Cajado de Fogo): pega fogo e explode depois
     const i = this.list.indexOf(b);
     this.breakLocal(b, nx, nz, true);
     if (this.onBreak && i >= 0) this.onBreak(i, nx, nz);
@@ -80,6 +81,7 @@ export class Breakables {
     if (b.broken) return;
     const i = this.list.indexOf(b);
     b.broken = true;
+    this.dropRiders(b, 0, 1, true);
     if (b.rect && this.world) {
       const k = this.world.rects.indexOf(b.rect);
       if (k >= 0) { this.world.rects.splice(k, 1); this.world.version = (this.world.version || 0) + 1; }
@@ -97,6 +99,16 @@ export class Breakables {
     if (this.onCoins && this.rng() < (luck ? 0.25 : COIN_CHANCE)) this.onCoins(new THREE.Vector3(x, 0, z), by);
   }
 
+  // Garrafas, pratos e canecas em cima da mesa/barril que quebrou: quebram junto (cacos), sem ficar no ar.
+  dropRiders(b, nx, nz, fx) {
+    for (const r of b.riders || []) {
+      if (r.b) { if (!r.b.broken) this.breakLocal(r.b, nx, nz, fx); continue; }
+      if (!r.obj.visible) continue;
+      r.obj.visible = false;
+      if (fx) this.combat.vfx.sparks(new THREE.Vector3(r.x, r.y + 0.2, r.z), 0xcfe6d0, 5);
+    }
+  }
+
   // Também usado pelo Jogador 2 (replica.js) para mostrar a quebra que veio pela rede (fx = false: o efeito já veio).
   breakLocal(b, nx = 0, nz = 1, fx = true) {
     b.broken = true;
@@ -105,6 +117,7 @@ export class Breakables {
       const k = this.world.rects.indexOf(b.rect);
       if (k >= 0) { this.world.rects.splice(k, 1); this.world.version = (this.world.version || 0) + 1; }
     }
+    this.dropRiders(b, nx, nz, fx);
     if (!fx) return;
     const c = this.combat, at = new THREE.Vector3(b.x, Math.min(1.2, b.h * 0.5), b.z);
     c.vfx.dust(new THREE.Vector3(b.x, 0, b.z), new THREE.Vector3(-nx, 0, -nz), 9);

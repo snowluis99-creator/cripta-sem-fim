@@ -7,6 +7,9 @@ import { audio } from './audio.js';
 import { boltImpact } from './magic.js';
 import { hitUndead, undeadHit } from './undead.js';
 import { useShield } from './shield.js';
+import { kitSwordCut } from './knightkit.js';
+import { axe3GuardShot } from './axekit3.js';
+import { fistCatch } from './fistkit.js';
 import { instance } from './assets.js';
 
 import { getGlowTexture } from './dungeon/builder.js';
@@ -90,7 +93,7 @@ export class Projectiles {
     g.position.set(x, opts.height ?? 1.3, z);
     g.rotation.y = angle;
     this.scene.add(g);
-    this.list.push({
+    const it = {
       id: (this.nextId = (this.nextId || 0) + 1), color: opts.color ?? 0xb070ff, scale: s, speed: opts.speed,
       g, x, z, vx: Math.sin(angle) * opts.speed, vz: Math.cos(angle) * opts.speed,
       damage: opts.damage, r: (kind === 'arrow' ? 0.25 : kind === 'wave' ? 0.9 : 0.35) * s, life: opts.life || (kind === 'orb' ? 4.5 : 3),
@@ -98,12 +101,15 @@ export class Projectiles {
       kind, homing: opts.homing || 0, pierce: !!opts.pierce, hitSet: new Set(), age: 0, step: opts.step, burn: opts.burn || 0,
       pierceLeft: (opts.step && opts.step.cast && opts.step.cast.pierce) || 0, // magia que atravessa (bênçãos)
       onEnd: opts.onEnd, // Arqueiro: avisa onde a flecha parou (ela cai no chão para ele buscar)
-    });
+    };
+    this.list.push(it);
+    return it;
   }
 
   update(dt) {
     const c = this.combat;
     this.updateRain(dt);
+    if (c.arcane) c.arcane.prepass(dt); // Cajado Arcano: Fusão e Devorador
     if (this.bolts) for (const b of [...this.bolts]) if (!b.owner || !b.owner.alive) this.takeBolt(b); // dono morreu: o virote some
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i];
@@ -113,14 +119,22 @@ export class Projectiles {
         if (a.stuck > 1.2) this.remove(i);
         continue;
       }
+      if (c.ice2 && c.ice2.stopT > 0 && (a.hits === 'player' || a.hits === 'betray')) continue; // Tempo Congelado: tiros inimigos parados no ar
       a.life -= dt;
       a.age += dt;
       if (a.life <= 0) {
         if (a.hits === 'spell' && a.step.cast.blast) boltImpact(c, a, null); // orbe grande explode no fim do caminho
+        else if (a.hits === 'spell' && c.arcane) { // Cajado Arcano: Fusão (espera no ar), Órbita, Mina, Ponto de Estouro
+          const r = c.arcane.miss(a, 'end');
+          if (r === 'hover') continue;
+          if (r === 'keep') { this.detach(a); continue; }
+        }
         this.removeA(a); continue;
       }
       // Magia da Maga (Cajado, Gelo, Varinha): segue o inimigo dentro do alcance que ainda falta voar.
-      if (a.hits === 'spell') this.steerSpell(a, dt);
+      if (a.hits === 'spell' && !a.noSteer && !a.fuseTo) this.steerSpell(a, dt);
+      // Esfera Moedora: machuca sem parar quem estiver dentro dela.
+      if (a.grind && c.arcane) { c.arcane.grindTick(a, dt); if (!this.list.includes(a)) continue; }
       // Rebatido pela barreira da Maga: volta para quem atirou.
       if (a.hits === 'reflected') this.steerReflected(a, dt);
       // Orbe teleguiado: vira devagar na direção do herói (só no primeiro 1,4 s).
@@ -144,14 +158,22 @@ export class Projectiles {
         const st = Math.min(0.3, left);
         left -= st;
         a.x += dx * st; a.z += dz * st;
-        if (c.world.blocked(a.x, a.z, 0.05) && !(a.hits !== 'player' && a.hits !== 'reflected' && c.props.hitAt(a.x, a.z, a.owner))) { // objeto quebrável: quebra e o disparo segue
-          if (a.hits === 'spell') { boltImpact(c, a, null); this.removeA(a); done = true; break; }
+        if (a.hits === 'player' && c.ice2 && c.ice2.shotHit(a)) continue; // Espelho de Gelo: congelado rebate o tiro
+        if (c.world.blocked(a.x, a.z, 0.05, a.hits === 'spell' || a.hits === 'hero' || a.hits === 'reflected') && !(a.hits !== 'player' && a.hits !== 'reflected' && c.props.hitAt(a.x, a.z, a.owner))) { // objeto quebrável: quebra e o disparo segue
+          if (a.hits === 'spell') {
+            const r = !a.step.cast.blast && c.arcane ? c.arcane.miss(a, 'wall') : false; // Órbita / Mina
+            if (r === 'keep') { this.detach(a); done = true; break; }
+            if (!r) boltImpact(c, a, null);
+            this.removeA(a); done = true; break;
+          }
           if (a.hits === 'reflected') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0x9fd8ff, 6); this.remove(i); done = true; break; }
           if (a.kind !== 'arrow') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xc890ff, 6); this.remove(i); done = true; break; }
           if (a.onEnd) { this.remove(i); done = true; break; } // flecha do Arqueiro: cai no chão (vira virote para buscar)
           a.stuck = 0; done = true; break;
         }
         if (a.hits === 'spell') { // magia da Maga: para no 1º esqueleto (ou no mercador)
+          if (a.grind) continue; // Esfera Moedora: atravessa todos (o dano sai em grindTick)
+          if (c.dark2 && c.dark2.corpseCheck(a)) { this.removeA(a); done = true; break; } // Cadáver Explosivo: orbe forte no morto-vivo
           const e = c.enemies.find((en) => en.targetable && !a.hitSet.has(en) && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
           const m = c.merchant;
           if (!e && m && m.alive && !m.ally && Math.hypot(m.position.x - a.x, m.position.z - a.z) < m.radius + a.r) {
@@ -202,6 +224,11 @@ export class Projectiles {
           if (!this.list.includes(a)) { done = true; break; } // chefe morreu e a lista foi limpa
           continue;
         }
+        if (a.hits === 'betray') { // Traição: tiro do marcado traidor acerta os aliados dele
+          const e = c.enemies.find((en) => en !== a.owner && !en.undead && en.targetable && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
+          if (e) { c.dark2.betrayHit(a.owner, e, a.damage); this.removeA(a); done = true; }
+          continue;
+        }
         if (a.hits === 'enemies') { // flecha do mercador: acerta esqueletos, atravessa o herói
           const e = c.enemies.find((en) => en.targetable && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
           if (e) { c.merchantShot(e, a.damage, dx, dz); this.removeA(a); done = true; }
@@ -222,17 +249,30 @@ export class Projectiles {
             if (!(a.dodgedBy ||= new Set()).has(p)) { a.dodgedBy.add(p); c.text.add('Esquivou!', p.position, 'miss'); c.reflex(p); c.dodgeUlt(p); }
             continue;
           }
+          // Ripostar (Rapieira): a flecha/magia é negada e o dano fica guardado para devolver.
+          if (c.rap && c.rap.riposteCatch(p, a.damage, a.owner && a.owner.position ? a.owner : null)) { this.remove(i); done = true; break; }
+          // En Garde / Aparar em Cadeia (Rapieira): apara sozinho (Rebater: o tiro volta).
+          if (c.rap && c.rap.autoParryShot(p, a, dx, dz)) {
+            if (a.hits !== 'reflected') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xffe27a, 10); this.remove(i); }
+            done = true; break;
+          }
           if (p.invulnerable) continue;
-          // Rapieira: aparar no instante certo também segura flechas e magias (o projétil some).
-          if (c.rogue && c.rogue.tryParry(p, { position: new THREE.Vector3(a.x - dx * 3, 0, a.z - dz * 3), alive: false, data: {} }, { shot: true })) {
-            c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xffe27a, 10);
-            this.remove(i); done = true; break;
+          // Rapieira: aparar no instante certo também segura flechas e magias (o projétil some; Rebater: volta).
+          if (c.rogue && c.rogue.tryParry(p, { position: new THREE.Vector3(a.x - dx * 3, 0, a.z - dz * 3), alive: false, data: {} }, { shot: true, proj: a })) {
+            if (a.hits !== 'reflected') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0xffe27a, 10); this.remove(i); }
+            done = true; break;
           }
           // Barreira da Maga: rebate (flecha, orbe, onda do Ceifador...) de volta para quem atirou.
           if (p.reflects(a.x - dx * 3, a.z - dz * 3)) { this.reflect(a, p); done = true; break; }
+          // Mãos Trocadas: a espada corta a flecha sozinha.
+          if (kitSwordCut(c, p, a)) { this.remove(i); done = true; break; }
+          // Machado como Escudo: a lâmina larga segura flechas e magias pela frente.
+          if (axe3GuardShot(c, p, a, dx, dz)) { this.remove(i); done = true; break; }
+          // Pegar no Ar (Manopla): escudinho levantado no instante certo pega a flecha.
+          if (fistCatch(c, p, a, dx, dz)) { this.remove(i); done = true; break; }
           // A "origem" do golpe fica atrás da flecha: é dali que o escudo precisa estar virado.
           const src = { position: new THREE.Vector3(a.x - dx * 3, 0, a.z - dz * 3), alive: false, data: { boss: true } };
-          c.hitPlayer(src, a.damage, { push: 4, noRepel: true, target: p });
+          c.hitPlayer(src, a.damage, { push: 4, noRepel: true, target: p, shooter: a.owner });
           if (a.kind === 'orb') c.vfx.burst(p.position, 0xb070ff);
           if (c.log) c.log({ type: 'arrow', owner: a.owner, merchant: a.owner === c.merchant });
           this.remove(i);
@@ -354,6 +394,9 @@ export class Projectiles {
       this.drops.splice(i, 1);
     }
   }
+
+  // Tira da lista sem apagar o desenho (Órbita: o orbe continua, agora com o ArcaneKit).
+  detach(a) { const i = this.list.indexOf(a); if (i >= 0) this.list.splice(i, 1); }
 
   // Tira um projétil pelo objeto (seguro mesmo se a lista mudou durante o impacto).
   removeA(a) { const i = this.list.indexOf(a); if (i >= 0) this.remove(i); }

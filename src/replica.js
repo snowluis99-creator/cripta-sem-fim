@@ -150,6 +150,7 @@ export class Replica {
     this.world.clear();
     built.colliders.forEach((r) => this.world.addRect(...r));
     for (const b of built.breakables || []) b.rect = b.colIdx >= 0 ? this.world.rects[b.colIdx] : null;
+    for (const b of built.solids || []) b.rect = b.colIdx >= 0 ? this.world.rects[b.colIdx] : null;
     this.world.setBounds(built.halfW, built.halfD, built.wallHalf ?? 0.5);
     this.icons = decorateDoors(this.scene, this.ui, built, infos);
     if (room.special === 'tavern') { this.tvv = s.tvv; this.buildTavernDecor(this.world); }
@@ -353,6 +354,17 @@ export class Replica {
         if (b && !b.broken) {
           b.broken = true; b.obj.visible = false;
           if (b.rect) { const j = this.world.rects.indexOf(b.rect); if (j >= 0) this.world.rects.splice(j, 1); }
+        }
+        break;
+      }
+      case 'pt': { // Demolidor: pilar derrubado (cai deitado, some depois e libera a passagem)
+        const s = this.built && this.built.solids && this.built.solids[e[1]];
+        if (s && !s.down) {
+          s.down = true;
+          const r = s.rect ? this.world.rects.indexOf(s.rect) : -1;
+          if (r >= 0) this.world.rects.splice(r, 1);
+          s.obj.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(e[3], 0, -e[2]), Math.PI / 2 * 0.97));
+          setTimeout(() => { s.obj.visible = false; }, 2000);
         }
         break;
       }

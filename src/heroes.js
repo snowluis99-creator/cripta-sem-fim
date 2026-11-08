@@ -228,11 +228,11 @@ export const WEAPONS = {
         weapons: { right: { model: 'weapons/extra/staff_A.gltf', rot: [0, 0, 0], tip: 1.07, scale: 1.15, fx: 'storm', tint: 0x7f8aa8 } },
         combo: [
           { clip: 'Ranged_Magic_Shoot', speed: 0.78, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
-            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0x7fd8ff, spark: true, chain: 3 } },
+            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0xffcc1a, spark: true, chain: 3 } },
           { clip: 'Ranged_Magic_Shoot', speed: 0.83, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 3,
-            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0x7fd8ff, spark: true, chain: 3 } },
+            cast: { type: 'bolt', instant: true, speed: 28, size: 0.8, color: 0xffcc1a, spark: true, chain: 3 } },
           { clip: 'Ranged_Magic_Spellcasting', speed: 0.6, hit: 0.3, end: 0.52, lunge: 0, damage: 3,
-            cast: { type: 'bolt', instant: true, speed: 28, size: 1.0, color: 0xbff0ff, spark: true, chain: 3, roomZap: 1 } },
+            cast: { type: 'bolt', instant: true, speed: 28, size: 1.0, color: 0xffe04a, spark: true, chain: 3, roomZap: 1 } },
         ],
         attackRange: 3.8,
       } },
@@ -247,7 +247,7 @@ export const WEAPONS = {
             cast: { type: 'bolt', speed: 24, size: 1, color: 0x8a3aff } },
           { clip: 'Ranged_Magic_Shoot', speed: 0.83, hit: 0.24, end: 0.62, window: 0.3, lunge: 0, damage: 4,
             cast: { type: 'bolt', speed: 24, size: 1, color: 0x8a3aff } },
-          { clip: 'Ranged_Magic_Spellcasting', speed: 0.47, hit: 0.3, end: 0.52, lunge: 0, damage: 4,
+          { clip: 'Ranged_Magic_Spellcasting', speed: 0.47, hit: 0.3, end: 0.52, lunge: 0, damage: 4, heavy: true,
             cast: { type: 'bolt', speed: 20, size: 1.4, color: 0x5a1a9a, darkMark: true } },
         ],
       } },
@@ -314,11 +314,11 @@ export const WEAPONS = {
         attackArc: 120,
       } },
     { id: 'rapieira', name: 'Rapieira', short: 'Rapieira', icon: '†', color: 0xffe27a,
-      desc: 'Estocadas de alcance médio que acertam só 1 inimigo, com dano baixo; o 2º golpe é um corte em cone que acerta todos na frente e os deixa de costas. Pelas costas: sempre crítico. Botão direito: aparar — no instante exato do golpe inimigo (ou flecha/magia), defende e atordoa; se errar o tempo, leva o dano.',
+      desc: 'Estocadas de alcance médio que acertam só 1 inimigo, com dano baixo; o 2º golpe é um corte em cone que acerta todos na frente e os deixa de costas. Pelas costas: sempre crítico.',
       set: {
         single: true,
         backstab: true,
-        ability: 'parry',
+        ability: 'riposte', // botão direito: só com a bênção Ripostar (o aparar saiu em 07/11)
         weapons: { right: { model: 'weapons/extra/sword_C.gltf', rot: [0, 0, 0], tip: 1.9 } },
         combo: [
           { clip: 'Melee_1H_Attack_Stab', speed: 1.5, hit: 0.27, end: 0.52, window: 0.3, lunge: 0.6, damage: 6 },

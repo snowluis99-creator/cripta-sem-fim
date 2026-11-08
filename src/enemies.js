@@ -8,6 +8,7 @@ import { makeIceBlock } from './magic.js';
 import { tryAbility, runAbility, initAbilities, hideTelegraphs, tickCooldowns, startRage, raiseRightArm, ABILITY_STATES, releaseGrab } from './abilities.js';
 import { archerChase, startRoll, applyEnemyRoll } from './ranged.js';
 import { dropHeld } from './toss.js';
+import { axeEnemyTick, axeLeaveState, AXE_STATES } from './axekit2.js';
 import { applyDifficulty } from './difficulty.js';
 import { meleeMove, leadAngle, targetBusy } from './brain.js';
 import { checkPhase } from './necro.js';
@@ -404,7 +405,7 @@ export class Enemy {
     m.opacity += (want - m.opacity) * Math.min(1, dt * 10);
     this.bubble.visible = m.opacity > 0.01;
   }
-  get targetable() { return !this.undead && this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'hop' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
+  get targetable() { return !this.undead && this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'hop' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && this.state !== 'headless' && this.state !== 'lanceHeld' && this.state !== 'lanceFly' && this.state !== 'fistHeld' && this.state !== 'fistFly' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
 
   setState(s) {
     if (this.tele) hideTelegraphs(this);
@@ -418,6 +419,7 @@ export class Enemy {
     // Saiu da sombra/invisibilidade (inclusive acertado no meio): volta a aparecer.
     if (this.alpha !== undefined && this.alpha < 1 && !GHOST_STATES.has(s)) setGhost(this, 1);
     if (HIDDEN_STATES.has(this.state) && !HIDDEN_STATES.has(s)) this.group.position.y = 0;
+    if (AXE_STATES.has(this.state) && this.state !== s) axeLeaveState(this, this.state); // Machado: Fenda (no ar)
     const prev = this.state;
     this.state = s; this.t = 0;
     if (this.bleedStacks > 0 && BLEED_ON.has(s)) this.bleedPending = (this.bleedPending || 0) + this.bleedStacks; // sangra ao atacar (o dano sai no update)
@@ -429,6 +431,7 @@ export class Enemy {
     const sh = this.data.shield;
     if (!sh || this.shieldBroken || (this.state !== 'chase' && this.state !== 'block')) return false; // atacando ou usando habilidade: guarda aberta
     if (this.offBalanceT > 0) return false; // desequilibrado pelo escudo do Cavaleiro: sem guarda
+    if (this.rapPierced) return false; // Precisão Cirúrgica (Rapieira): armadura furada, o escudo não segura mais
     const ang = Math.atan2(fromX - this.position.x, fromZ - this.position.z);
     return Math.abs(wrap(ang - this.facing)) <= THREE.MathUtils.degToRad(sh.arc / 2);
   }
@@ -447,7 +450,7 @@ export class Enemy {
     // Arqueiro: no 1º golpe que leva, rola para longe e recarrega a besta.
     const R = this.data.ranged;
     if (R && R.roll && !this.rolledOnce && this.abilities && this.state !== 'spawn') { this.rolledOnce = true; startRoll(this, dirX, dirZ); return false; }
-    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop'; // chefe não para o golpe especial
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop' || AXE_STATES.has(this.state); // chefe não para o golpe especial; Fenda: no ar
     // Desequilibrado (rebatido pelo escudo do Cavaleiro): qualquer golpe atordoa, até os resistentes.
     if (!armor && (heavy || !this.data.staggerOnlyHeavy || this.offBalanceT > 0)) {
       this.releaseToken();
@@ -462,7 +465,7 @@ export class Enemy {
   hitReact() {
     if (!this.alive || this.immune || this.frozenT > 0) return false;
     const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop'
-      || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || this.state === 'rage';
+      || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || this.state === 'rage' || AXE_STATES.has(this.state);
     if (armor || (this.data.staggerOnlyHeavy && !(this.offBalanceT > 0))) return false;
     this.releaseToken();
     this.setState('hurt');
@@ -476,7 +479,7 @@ export class Enemy {
     if (!this.alive || this.immune || this.frozenT > 0) return false;
     if (this.undead) return false; // morto-vivo da Maga é aliado
     const busy = this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || this.state === 'rage' || this.state === 'dead'
-      || this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop';
+      || this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'roll' || this.state === 'hop' || AXE_STATES.has(this.state);
     if (busy) return false;
     this.releaseToken();
     this.setState('hurt');
@@ -505,7 +508,7 @@ export class Enemy {
   // atordoado e levando mais dano por um instante) — o mesmo que acontece com o herói no escudo do Guerreiro.
   offBalance(dirX, dirZ, time = 0.6, push = 9) {
     if (!this.alive) return false;
-    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn';
+    const armor = this.state === 'spinMove' || this.state === 'spinGather' || this.state === 'spin' || this.state === 'held' || this.state === 'thrown' || this.state === 'spawn' || AXE_STATES.has(this.state);
     if (armor) return false;
     this.releaseToken();
     this.vel.set(dirX, 0, dirZ).multiplyScalar(push * Math.max(this.data.knockback ?? 1, this.data.boss ? 0.25 : 0.6));
@@ -520,6 +523,7 @@ export class Enemy {
   die() {
     this.releaseToken();
     if (this.state === 'held' || this.state === 'thrown') this.position.y = 0;
+    this.diedFrozen = this.frozenT > 0; // Estátua / Boneco de Neve (Cajado de Gelo)
     if (this.frozenT > 0) { this.frozenT = 0; if (this.iceBlock) this.iceBlock.visible = false; setFlash(this.bodyMats, 0); }
     this.setState('dead');
     this.flash = 1;
@@ -543,6 +547,8 @@ export class Enemy {
       combat.vfx.sparks(new THREE.Vector3(this.position.x, 1.2, this.position.z), 0xbff0ff, 12);
       if (combat.log) combat.log({ type: 'frozen', enemy: this, t: this.frozenT });
     }
+    const cb = combat || this.combat;
+    if (first && cb && cb.ice2) cb.ice2.onFreeze(this); // Cajado de Gelo: Quebra Fatal, Tempo Congelado
   }
 
   // A cada quadro enquanto congelado. Devolve true se ainda está congelado.
@@ -559,6 +565,7 @@ export class Enemy {
       if (this.iceBlock) this.iceBlock.visible = false;
       setFlash(this.bodyMats, 0);
       if (ctx.combat) ctx.combat.vfx.sparks(new THREE.Vector3(this.position.x, 1.0, this.position.z), 0xbff0ff, 8);
+      if (ctx.combat && ctx.combat.ice2 && this.alive) ctx.combat.ice2.onThaw(this); // Encharcado (Cajado de Gelo)
       return false;
     }
     setFlash(this.bodyMats, 0.45, 0.45, 0.8, 1);
@@ -578,6 +585,7 @@ export class Enemy {
   update(dt, ctx) {
     const d = this.data, p = ctx.player, combat = ctx.combat;
     this.combat = combat;
+    if (combat && combat.ice2 && this.alive && combat.ice2.stopped(this)) return; // Tempo Congelado (Cajado de Gelo): tudo parado
     if (this.frozenT > 0 && this.state !== 'dead' && this.updateFrozen(dt, ctx)) return;
     this.t += dt;
     this.cooldown -= dt * (this.slow > 0 ? 0.5 : 1);
@@ -623,8 +631,8 @@ export class Enemy {
         if (this.passive) { this.anim.play(d.anims.idle); break; }
         target = toPlayer; turn = this.turnedT > 0 ? 0 : d.turnSpeed;
         if (this.turnedT > 0) { this.anim.play(d.anims.idle); break; } // acabou de ser virado de costas: demora para se virar
-        if (this.abilities && tryAbility(this, ctx, dist)) break;
-        if (d.ranged) { archerChase(this, dt, ctx, dist, dx, dz); break; }
+        if (this.abilities && !this.rogueDisarmed && !p.decoy && tryAbility(this, ctx, dist)) break; // Desarmar / Substituição (Duas Adagas): sem golpes especiais
+        if (d.ranged && !this.rogueDisarmed) { archerChase(this, dt, ctx, dist, dx, dz); break; }
         const slot = combat.attackers < combat.maxAttackers;
         // Herói ocupado (atacando, bebendo, tomando dano): a recarga anda mais rápido (punição).
         if (targetBusy(p)) this.cooldown -= dt * 1.2;
@@ -660,6 +668,9 @@ export class Enemy {
       }
       case 'hurt':
         if (this.t >= this.stunTime) { this.setState('chase'); this.anim.play(d.anims.idle, { fade: 0.15 }); }
+        break;
+      case 'headless': case 'axeAir': case 'axeDown': case 'axeFear': case 'axeFetch': case 'lanceHeld': case 'lanceFly': case 'fistHeld': case 'fistFly': case 'fistSit': case 'orbFloat': case 'orbBubble': case 'eleLost': case 'elePuppet': case 'firePanic': case 'rogueLost': case 'rogueBlind': // Manopla (fistkit2.js) / Machado: Decapitar / Fenda / Investida / Grito (axekit2.js, axekit3.js)
+        axeEnemyTick(this, dt, ctx);
         break;
       case 'block':
         target = toPlayer; turn = d.turnSpeed;

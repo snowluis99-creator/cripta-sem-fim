@@ -62,52 +62,40 @@ export const BLESSINGS = [
     desc: (n) => `Ganha 1 poção agora e as poções curam +10. (total: +${n * 10})`,
     apply: (s, p) => { s.potionBonus += 10; if (p) p.potions += 1; } },
   { id: 'folego', name: 'Fôlego', icon: '❦', rarity: 'common', max: 3,
-    desc: (n) => `Cura ${n * 10} de vida ao entrar em cada sala nova.`,
-    apply: (s) => { s.roomHeal += 10; } },
+    desc: (n) => `Cura 10 de vida agora e ${n * 10} ao entrar em cada sala nova.`,
+    apply: (s, p) => { s.roomHeal += 10; p && p.heal(10); } },
   { id: 'habil', name: 'Habilidoso', icon: '✧', rarity: 'common', max: 3,
-    desc: (n) => `+5% de chance de golpe crítico. (total: +${n * 5}%)`,
-    apply: (s) => { s.critChance += 0.05; } },
+    desc: (n) => `+10% de chance de golpe crítico. (total: +${n * 10}%)`,
+    apply: (s) => { s.critChance += 0.1; } },
   { id: 'furtivo', name: 'Furtivo', icon: '☁', rarity: 'common', max: 3,
-    desc: (n) => `${n * 5}% de chance de desviar de qualquer golpe.`,
-    apply: (s) => { s.evade += 0.05; } },
+    desc: (n) => `${n * 10}% de chance de desviar de qualquer golpe.`,
+    apply: (s) => { s.evade += 0.1; } },
   // ---- Raras ----
   { id: 'frenesi', name: 'Frenesi', icon: 'ϟ', rarity: 'rare', max: 2,
     desc: (n) => `Inimigos acertados pelo último golpe do combo ficam ${n * 25}% mais tempo atordoados.`,
     apply: (s) => { s.heavyStun += 0.25; } },
-  { id: 'esqult', name: 'Esquiva Envolvente', icon: '↺', rarity: 'rare', max: 1,
-    desc: () => 'Escapar de um projétil rolando enche 1 da ultimate (no máximo 1 vez por minuto).',
-    apply: (s) => { s.dodgeUlt = true; } },
   { id: 'carrasco', name: 'Olho do Carrasco', icon: '◎', rarity: 'rare', max: 3,
     desc: (n) => `Golpes críticos causam ${n * 15}% mais dano.`,
     apply: (s) => { s.critDmgMul += 0.15; } },
   { id: 'execucao', name: 'Execução', icon: '†', rarity: 'rare', max: 2,
     desc: (n) => `+${n * 50}% de dano em esqueletos com menos de 30% de vida.`,
     apply: (s) => { s.execute += 0.5; } },
-  { id: 'contra', name: 'Contra-Ataque', icon: '⇄', rarity: 'rare', max: 4,
-    desc: (n) => `Depois de escapar de um golpe rolando, o próximo golpe causa +${n * 25}% de dano.`,
-    apply: (s) => { s.counter += 0.25; } },
-  { id: 'reflexo', name: 'Reflexo', icon: '≫', rarity: 'rare', max: 1,
-    desc: () => 'Escapar de um ataque rolando deixa os golpes 30% mais rápidos durante o próximo combo.',
-    apply: (s) => { s.reflex = true; } },
   { id: 'pocaoesc', name: 'Poção Concentrada', icon: '◈', rarity: 'rare', max: 1,
-    desc: () => 'Beber uma poção dá uma proteção que anula o próximo dano recebido.',
-    apply: (s) => { s.potionGuard = true; } },
+    desc: () => 'Ganha 1 poção agora. Beber uma poção dá uma proteção que anula o próximo dano recebido.',
+    apply: (s, p) => { s.potionGuard = true; if (p) p.potions += 1; } },
   { id: 'furia2', name: 'Fúria', icon: '☄', rarity: 'rare', max: 2,
-    desc: (n) => `Com 10% de vida ou menos: +${n * 25}% de dano.`,
+    desc: (n) => `Com menos de 50% de vida: +${n * 25}% de dano.`,
     apply: (s) => { s.rage += 0.25; } },
-  { id: 'quebragelo', name: 'Quebra-Gelo', icon: '❄', rarity: 'rare', max: 2,
-    desc: (n) => `O primeiro ataque em cada sala nova causa +${n * 35}% de dano.`,
-    apply: (s) => { s.opener += 0.35; } },
-  { id: 'potencia', name: 'Potência', icon: '⛉', rarity: 'rare', max: 1,
+  { id: 'quebragelo', name: 'Quebra-Gelo', icon: '❄', rarity: 'rare', max: 1,
+    desc: () => 'Em cada sala, o primeiro combo que acertar causa o dobro do dano, e todos os golpes desse combo são críticos.',
+    apply: (s) => { s.opener += 1; } },
+  { id: 'potencia', name: 'Potência', icon: '⛉', rarity: 'common', max: 1, // Comum (pedido do dono, 06/11)
     desc: () => 'O último golpe do combo quebra o escudo do inimigo (ele perde o escudo de vez; chefes não).',
     apply: (s) => { s.shieldBreak = true; } },
   // ---- Épicas ----
   { id: 'fogo', name: 'Lâmina Flamejante', icon: '♨', rarity: 'epic', max: 3,
     desc: (n) => `O último golpe do combo põe fogo nos esqueletos: ${n * 4} de dano por segundo durante 3 s.`,
     apply: (s) => { s.burnDps += 4; } },
-  { id: 'saque', name: 'Saque Rápido', icon: '➹', rarity: 'epic', max: 5,
-    desc: (n) => `Rolar por dentro de um inimigo causa ${n} de dano.`,
-    apply: (s) => { s.rollDmg += 1; } },
   { id: 'terremoto', name: 'Terremoto', icon: '≋', rarity: 'epic', max: 2,
     desc: () => 'A área do último golpe do combo fica 50% maior e empurra mais.',
     apply: (s) => { s.heavyRadiusMul += 0.5; s.heavyPushMul += 0.4; } },
@@ -142,11 +130,11 @@ export const BLESSINGS = [
   { id: 'ceifador', name: 'Ceifador', icon: '☠', rarity: 'legendary', max: 1,
     desc: () => 'Cada esqueleto destruído dá +2% de dano até o fim da partida (máx. +75%).',
     apply: (s) => { s.reaper = true; } },
-  { id: 'negociador', name: 'Negociador', icon: '⚖', rarity: 'legendary', max: 1,
-    desc: () => 'A primeira compra em cada visita ao mercador é grátis.',
+  { id: 'negociador', name: 'Negociador', icon: '⚖', rarity: 'epic', max: 1,
+    desc: () => 'A primeira compra em cada visita ao mercador é grátis (comprada no mercador, a próxima compra já sai de graça).',
     apply: (s) => { s.freeBuy = true; } },
   { id: 'fenix', name: 'Coração de Fênix', icon: '✺', rarity: 'legendary', max: 1,
-    desc: () => 'Ao morrer, volta uma vez com metade da vida.',
+    desc: () => 'Ao morrer, volta uma vez com metade da vida e fica invencível por 3 s.',
     apply: (s) => { s.phoenix += 1; } },
 ];
 // ---- Arriscadas (sempre a 4ª opção): forte + contrapartida (risk = o texto da contrapartida) ----
@@ -249,6 +237,7 @@ export const BLESSING_BY_ID = Object.fromEntries(BLESSINGS.map((b) => [b.id, b])
 // As de escudo só aparecem com 'shield'; as da barreira só com 'reflect'. (true/false antigos = 'none'/'shield')
 export const blockKind = (hero) => (hero.noShield ? 'none' : hero.block && hero.block.reflect ? 'reflect' : 'shield');
 // block pode ser o próprio herói (objeto): aí também filtra as bênçãos da arma e as que não fazem sentido para ela.
+const blocked = (b, owned) => !!(b.excludes && b.excludes.some((id) => owned[id]));
 const fits = (b, block) => {
   const hero = block && typeof block === 'object' ? block : null;
   if (hero) {
@@ -262,7 +251,7 @@ const fits = (b, block) => {
 };
 export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math.random, block = 'shield') {
   const min = ORDER.indexOf(minRarity);
-  const can = (b) => b.rarity !== 'risky' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block);
+  const can = (b) => b.rarity !== 'risky' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned);
   let pool = BLESSINGS.filter((b) => can(b) && ORDER.indexOf(b.rarity) >= min);
   if (pool.length < count) pool = BLESSINGS.filter(can);
   const picks = [];
@@ -290,7 +279,7 @@ export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math
 // Sala do chefe: garante pelo menos 1 lendária entre as cartas (troca a última que não for lendária).
 export function ensureLegendary(picks, owned, rng = Math.random, block = 'shield') {
   if (picks.some((b) => b.rarity === 'legendary')) return picks;
-  const pool = BLESSINGS.filter((b) => b.rarity === 'legendary' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !picks.includes(b));
+  const pool = BLESSINGS.filter((b) => b.rarity === 'legendary' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned) && !picks.includes(b));
   if (!pool.length) return picks;
   const leg = pool[Math.floor(rng() * pool.length)];
   if (picks.length < 3) picks.push(leg); else picks[picks.length - 1] = leg;
@@ -299,7 +288,7 @@ export function ensureLegendary(picks, owned, rng = Math.random, block = 'shield
 
 // Mercador: uma bênção de cada raridade (comum, rara, épica, lendária). Pula a raridade que não tiver mais nenhuma disponível.
 export function rollShop(owned, rng = Math.random, block = 'shield') {
-  const can = (b) => (owned[b.id] || 0) < b.max && fits(b, block);
+  const can = (b) => (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned);
   const out = [];
   for (const r of ORDER) {
     const pool = BLESSINGS.filter((b) => b.rarity === r && can(b));

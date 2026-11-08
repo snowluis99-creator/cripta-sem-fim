@@ -83,6 +83,7 @@ export class CoopHost {
     this.wrap();
     this.run.onUnlock = (h) => this.event(['U', h]); // cena de desbloqueio também na tela do Jogador 2
     this.combat.props.onBreak = (i) => this.event(['pb', i]); // objeto quebrado também some na tela do Jogador 2
+    this.combat.demo.onTopple = (i, dx, dz) => this.event(['pt', i, dx, dz]); // Demolidor: pilar derrubado
   }
 
   // Tudo que é "efeito" (faíscas, números de dano, tremidas, avisos) também vai para o Jogador 2.

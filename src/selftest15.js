@@ -2,10 +2,10 @@
 // Escudo (Aparar, Mitral, Reforçado, Estilhaços, Espinhos), Pancada, Lâmina Afiada e as que mudam o jogo
 // (knightkit.js): Arremesso, Espada Arremessada, Bilhar de Ossos, Trenó, Escudo Plantado, Corrente, Mãos Trocadas
 // e Rastro Fantasma. Tecla Y = tudo; tecla 1 = só esta parte.
-import { BLESSINGS } from './blessings.js';
+import { BLESSINGS, rollBlessings } from './blessings.js';
 import { WEAPON_BLESSINGS } from './weaponbless.js';
 import { shieldMax } from './shield.js';
-import { kitTryPickup, kitBlockTick } from './knightkit.js';
+import { kitBumpSafe } from './knightkit.js';
 import { findBone } from './characters.js';
 import * as THREE from 'three';
 
@@ -30,8 +30,19 @@ export function* kitTests(g, out, flags) {
   out('73) Espada e Escudo: lista nova de bênçãos');
   const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.espada');
   const names = mine.map((b) => b.name);
-  const gone = ['Fio Afiado', 'Golpe do Juramento', 'Investida Firme', 'Escudo Pesado'].filter((n) => names.includes(n));
-  out(`  ${mine.length} bênçãos ${ok(mine.length === 26)} | removidas ${ok(gone.length === 0, gone.join(', '))} | todas com raridade e texto ${ok(mine.every((b) => b.rarity && b.desc(1).length > 10))}`);
+  const gone = ['Fio Afiado', 'Golpe do Juramento', 'Investida Firme', 'Escudo Pesado', 'Estilhaços', 'Rebate Brutal'].filter((n) => names.includes(n));
+  out(`  ${mine.length} bênçãos ${ok(mine.length === 24)} | removidas ${ok(gone.length === 0, gone.join(', '))} | todas com raridade e texto ${ok(mine.every((b) => b.rarity && b.desc(1).length > 10))}`);
+  const fl = mine.find((b) => b.name === 'Escudo Flamejante');
+  out(`  Escudo Plantado saiu ${ok(!names.includes('Escudo Plantado'))} | Escudo Flamejante lendária ${ok(fl && fl.rarity === 'legendary')}`);
+  out(`  Mesa Virada saiu ${ok(!names.includes('Mesa Virada'))} | Demolidor entrou ${ok(names.includes('Demolidor'))}`);
+  // Trenó e Cavalo não vêm juntos (04/11).
+  const hero = player.hero;
+  let both = 0;
+  for (const own of [{ w_esp21: 1 }, { w_esp29: 1 }]) for (let i = 0; i < 300; i++) {
+    const picks = rollBlessings(own, 3, 'common', Math.random, hero);
+    if (picks.some((b) => b.id === (own.w_esp21 ? 'w_esp29' : 'w_esp21'))) both++;
+  }
+  out(`  Trenó e Cavalo nunca juntos (600 sorteios) ${ok(both === 0, both)}`);
 
   // ---------------- 74) Escudo ----------------
   out('74) Bênçãos do escudo');
@@ -54,12 +65,11 @@ export function* kitTests(g, out, flags) {
   for (let i = 0; i < 3; i++) { block(); player.stateTime = 1; combat.hitPlayer(at2, 10, { target: player }); }
   out(`  Placas de Mitral (100% no teste): 3 bloqueios sem gastar ${ok(player.shield === shieldMax(player))}`);
   fresh(); yield 0.1;
-  give('w_esp14', 3); give('w_esp12');
-  const at3 = dummy(0, 0.6), near = dummy(2, 2.5);
-  player.shield = 1;
+  give('w_esp14', 3);
+  const at3 = dummy(0, 0.6);
   block(); player.stateTime = 1;
   combat.hitPlayer(at3, 10, { target: player });
-  out(`  Espinhos ×3: devolveu ${999 - at3.hp} (45 + explosão) ${ok(999 - at3.hp >= 45)} | Estilhaços: escudo quebrou e machucou quem estava perto ${ok(near.hp < 999 && player.shield === 0, 999 - near.hp)}`);
+  out(`  Espinhos ×3: devolveu ${999 - at3.hp} ${ok(999 - at3.hp >= 45)}`);
 
   // ---------------- 75) Pancada e Lâmina Afiada ----------------
   out('75) Pancada e Lâmina Afiada');
@@ -97,18 +107,18 @@ export function* kitTests(g, out, flags) {
   fresh(); yield 0.1;
   give('w_esp20');
   const l1 = dummy(0, -1.5), l2 = dummy(0.2, -4);
-  const heavy = player.hero.combo[2];
-  out(`  golpe forte vira arremesso ${ok(heavy.kit === 'throwSword' && heavy.clip === 'Throw')}`);
+  const heavy = player.hero.combo[3];
+  out(`  golpe forte continua em área ${ok(player.hero.combo[2].heavy && !player.hero.combo[2].kit)} | golpe depois do 3º arremessa ${ok(heavy && heavy.kit === 'throwSword' && heavy.clip === 'Throw' && player.hero.combo[2].window > 0)}`);
   combat.playerStrike(player, heavy);
   yield* until(() => ev('kitLand').length > 0);
-  out(`  atravessou os 2 ${ok(l1.hp < 999 && l2.hp < 999)} | cravou no chão ${ok(ev('kitLand').length === 1)} | sem espada: pancadas de escudo ${ok(player.hero.combo[0].bash && player.hero.combo[2].kit === 'recallSword')}`);
+  out(`  atravessou os 2 ${ok(l1.hp < 999 && l2.hp < 999)} | cravou no chão ${ok(ev('kitLand').length === 1)} | sem espada: pancadas de escudo ${ok(player.hero.combo[0].bash && player.hero.combo[3].kit === 'recallSword')}`);
   yield 0.3;
   out('  -> espada cravada (screenshot)');
   yield 'hold';
   const mid = dummy(0, -2.2); flags.events.length = 0;
-  combat.playerStrike(player, player.hero.combo[2]);
+  combat.playerStrike(player, player.hero.combo[3]);
   yield* until(() => ev('kitPick').length > 0);
-  out(`  golpe forte chamou a espada de volta ${ok(ev('kitRecall').length === 1 && ev('kitPick').length === 1)} | cortou no caminho ${ok(mid.hp < 999)} | espada na mão ${ok(player.hero.combo[2].kit === 'throwSword' && player.weapon.visible)}`);
+  out(`  4º golpe chamou a espada de volta ${ok(ev('kitRecall').length === 1 && ev('kitPick').length === 1)} | cortou no caminho ${ok(mid.hp < 999)} | espada na mão ${ok(player.hero.combo[3].kit === 'throwSword' && player.weapon.visible)}`);
 
   // ---------------- 78) Bilhar de Ossos ----------------
   out('78) Bilhar de Ossos');
@@ -130,6 +140,12 @@ export function* kitTests(g, out, flags) {
   combat.hitPlayer(wb, 10, { target: player });
   yield* until(() => ev('kitWall').length > 0, 1500);
   out(`  bateu na parede: 25 de dano ${ok(ev('kitWall').length === 1)}`);
+  fresh(); yield 0.1;
+  give('w_esp19');
+  const gw = dummy(0, 0.7, 'warrior'); gw.passive = false;
+  block(); player.stateTime = 1;
+  combat.hitPlayer(gw, 10, { target: player });
+  out(`  qualquer um que bate no bloqueio vira bola (Guerreiro) ${ok(ev('kitBall').length === 1)}`);
 
   // ---------------- 79) Trenó ----------------
   out('79) Trenó de Escudo');
@@ -137,31 +153,47 @@ export function* kitTests(g, out, flags) {
   give('w_esp21');
   const s1 = dummy(0, -1.5);
   player.facing = Math.PI;
-  player.input = { moveDir: (o) => o.set(0, 0, 0), aimAngle: () => null, attack: () => false, dodge: () => false, dodgeHeld: () => true, potion: () => false, interact: () => false, ultimate: () => false, blocking: () => false };
+  let sledBlk = false;
+  player.input = { moveDir: (o) => o.set(0, 0, 0), aimAngle: () => null, attack: () => false, dodge: () => false, dodgeHeld: () => true, potion: () => false, interact: () => false, ultimate: () => false, blocking: () => sledBlk };
   player.startDodge();
-  out(`  rolar virou trenó ${ok(player.state === 'sled' && !player.shieldMesh.visible)} | animação ${player.anim.currentName}`);
+  out(`  rolar sem segurar o bloqueio: rolamento normal ${ok(player.state === 'dodge')}`);
+  yield 0.6; player.dodgeCooldown = 0; sledBlk = true;
+  player.setState('idle'); player.position.set(0, 0, 2); player.facing = Math.PI;
+  const sh0 = player.shield;
+  player.startDodge();
+  out(`  bloqueio + rolar virou trenó ${ok(player.state === 'sled' && !player.shieldMesh.visible)} | gastou 1 carga ${ok(player.shield === sh0 - 1)} | animação ${player.anim.currentName}`);
+  const shp = player.hp, sAt = dummy(3, 3);
+  const sledHurt = combat.hitPlayer(sAt, 20, { target: player });
+  out(`  no trenó não leva dano ${ok(!sledHurt && player.hp === shp)}`);
+  sAt.die();
   yield 0.25;
   out('  -> deslizando (screenshot)');
   yield 'hold';
   yield* until(() => player.state !== 'sled', 3000);
-  out(`  atropelou ${ok(s1.hp < 999 && ev('sledHit').length === 1)} | acabou e o escudo voltou ${ok(player.state !== 'sled' && player.canGuard())}`);
+  out(`  atropelou ${ok(s1.hp < 999 && ev('sledHit').length === 1)} | pegou fogo ${ok(s1.burn > 0)} | acabou e o escudo voltou ${ok(player.state !== 'sled' && player.canGuard())}`);
+  yield 0.2; player.dodgeCooldown = 0; player.startDodge();
+  out(`  sem recarga: desliza de novo ${ok(player.state === 'sled' && player.shield === sh0 - 2)}`);
+  yield* until(() => player.state !== 'sled', 3000);
+  player.shield = 0; player.dodgeCooldown = 0; player.startDodge();
+  out(`  escudo quebrado: rola normal ${ok(player.state === 'dodge')}`);
 
-  // ---------------- 80) Escudo Plantado ----------------
-  out('80) Escudo Plantado');
+  // ---------------- 80) Escudo Flamejante (04/11, no lugar do Escudo Plantado) ----------------
+  out('80) Escudo Flamejante');
   fresh(); yield 0.1;
-  give('w_esp22');
-  const rects0 = combat.world.rects.length;
-  block(); player.stateTime = 1.1;
-  const planted = kitBlockTick(player);
-  out(`  segurou o bloqueio: fincou ${ok(planted && player.kit.shield === 'planted')} | virou parede ${ok(combat.world.rects.length === rects0 + 3)} | sem bloquear ${ok(!player.canGuard())}`);
+  give('w_esp31');
+  yield 0.1;
+  const fA = dummy(0, 0.6);
+  block(); player.stateTime = 1;
+  combat.hitPlayer(fA, 10, { target: player });
+  const fC = dummy(0.4, 0.5);
+  block(); player.stateTime = 1;
+  combat.hitPlayer(fC, 5, { contact: true, noRepel: true, target: player });
+  out(`  quem bateu no escudo pegou fogo ${ok(fA.burn > 0 && ev('flameBlock').length >= 1)} | esbarrão no escudo também ${ok(fC.burn > 0)} | escudo brilhando ${ok(player.shieldMats.some(({ m }) => m.emissive && m.emissive.getHex() !== 0))}`);
   yield 0.4;
-  out('  -> escudo fincado (screenshot)');
+  out('  -> escudo em chamas (screenshot)');
   yield 'hold';
-  player.kit.plantLock = false;
-  player.position.set(0, 0, 9);
-  out(`  longe não pega ${ok(!kitTryPickup(player))}`);
-  player.position.set(0, 0, 2);
-  out(`  perto, apertou o bloqueio: pegou de volta ${ok(kitTryPickup(player) && player.canGuard() && combat.world.rects.length === rects0)}`);
+  yield 1.2;
+  out(`  a queimadura tira vida ${ok(fA.hp < 999 - 1)}`);
 
   // ---------------- 81) Corrente no Escudo ----------------
   out('81) Corrente no Escudo');
@@ -173,7 +205,13 @@ export function* kitTests(g, out, flags) {
   yield* until(() => ev('kitHook').length > 0, 1500);
   yield* until(() => Math.hypot(far.position.x - player.position.x, far.position.z - player.position.z) < 2.5, 1500);
   const dd = Math.hypot(far.position.x - player.position.x, far.position.z - player.position.z);
-  out(`  puxou o inimigo de longe ${ok(ev('kitHook').length === 1 && dd < 2.5, dd.toFixed(1))}`);
+  out(`  puxou o inimigo de longe ${ok(ev('kitHook').length === 1 && dd < 2.5, dd.toFixed(1))} | o puxado não machuca no esbarrão ${ok(kitBumpSafe(player, far))}`);
+  far.passive = true; player.setState('idle'); player.hp = player.maxHp; player.iframes = 0;
+  far.position.set(player.position.x, 0, player.position.z - 0.6); far.setState('chase');
+  combat.separate();
+  out(`  encostou: sem dano ${ok(player.hp === player.maxHp)}`);
+  yield 3.4;
+  out(`  depois de 3 s volta ao normal ${ok(!kitBumpSafe(player, far))}`);
 
   // ---------------- 82) Mãos Trocadas ----------------
   out('82) Mãos Trocadas');
@@ -182,12 +220,18 @@ export function* kitTests(g, out, flags) {
   out(`  escudo ataca ${ok(player.hero.combo.every((c) => c.bash))} | escudo na mão direita ${ok(player.shieldMesh.parent === findBone(player.model, 'handslot.r'))}`);
   const m1 = dummy(0, 0.6);
   for (let i = 0; i < 3; i++) { block(); player.stateTime = 1; combat.hitPlayer(m1, 10, { target: player }); }
-  out(`  espada defende sem gastar o escudo ${ok(player.shield === shieldMax(player))} | contra-atacou ${ok(m1.hp < 999 && ev('kitCounter').length === 3)}`);
+  out(`  defesa da espada gasta o escudo (3 bloqueios) ${ok(player.shield === shieldMax(player) - 3, player.shield)} | contra-atacou ${ok(m1.hp < 999 && ev('kitCounter').length === 3)}`);
   const m2 = dummy(0, 0.9); m1.die();
   const z0 = m2.position.z;
   combat.playerStrike(player, player.hero.combo[0]);
   yield 0.3;
-  out(`  pancada empurra longe ${ok(m2.position.z - z0 < -1.3, (m2.position.z - z0).toFixed(2))}`);
+  out(`  pancada empurra longe ${ok(m2.position.z - z0 < -1.3, (m2.position.z - z0).toFixed(2))} | atordoa o dobro ${ok(m2.state === 'hurt' && m2.stunTime >= m2.data.stagger * 2 - 0.01, m2.stunTime.toFixed(2))}`);
+  // A espada corta sozinha as flechas que iam acertar (sem bloquear).
+  player.setState('idle'); player.hp = player.maxHp; flags.events.length = 0;
+  const shooter = dummy(0, -7, 'archer');
+  combat.projectiles.fire(0, -2, 0, { speed: 12, damage: 10, kind: 'arrow', owner: shooter });
+  yield* until(() => ev('swordCut').length > 0 || player.hp < player.maxHp, 1500);
+  out(`  espada cortou a flecha ${ok(ev('swordCut').length === 1 && player.hp === player.maxHp)} | gastou 1 carga ${ok(player.shield === shieldMax(player) - 4, player.shield)}`);
   yield 0.2;
   out('  -> mãos trocadas (screenshot)');
   yield 'hold';
@@ -221,29 +265,34 @@ export function* kitTests(g, out, flags) {
   out(`  ${ok((window.__game.errors || []).length === errs0, 'sem erros')} | combo agora: ${player.hero.combo.map((c) => c.kit || (c.bash ? 'pancada' : c.clip.replace('Melee_', ''))).join(', ')}`);
   player.iframes = 0;
   fresh(); yield 0.1;
-  // ---------------- 85) Mesa Virada ----------------
-  out('85) Mesa Virada (2ª leva)');
+  // ---------------- 85) Demolidor (04/11, no lugar da Mesa Virada) ----------------
+  out('85) Demolidor');
   fresh(); yield 0.1;
-  give('w_esp28');
-  const fakeProp = (x, z, name = 'barrel_teste') => {
-    const obj = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.9, 12).translate(0, 0.45, 0), new THREE.MeshStandardMaterial({ color: 0x8a5a2b }));
+  give('w_esp32');
+  const fakePillar = (x, z) => {
+    const obj = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 4, 12).translate(0, 2, 0), new THREE.MeshStandardMaterial({ color: 0x8c8c94 }));
     obj.position.set(x, 0, z); combat.scene.add(obj);
-    const b = { name, x, z, r: 0.4, h: 0.9, obj, rect: null, colIdx: -1 };
-    combat.props.list.push(b); return b;
+    const s = { name: 'pillar_teste', x, z, r: 0.75, h: 4, obj, rect: null, colIdx: -1, down: false };
+    combat.demo.list.push(s); return s;
   };
-  const prop = fakeProp(0, 0.9);
-  const tv = dummy(0, -4);
-  player.enterBlock(null);
-  out(`  levantou o escudo perto do barril: chutou ${ok(ev('tableKick').length === 1 && prop.broken)} | não ficou bloqueando ${ok(player.state !== 'block')}`);
-  yield 0.12;
-  out('  -> barril voando (screenshot)');
+  const pil = fakePillar(0, 0.4);
+  // Grupo de 3 à esquerda do pilar, 1 sozinho à direita: tem que cair para a esquerda.
+  const g1 = dummy(-2, 0.4), g2 = dummy(-3.2, 0.1), g3 = dummy(-2.6, 0.9), lone = dummy(4.5, 0.4);
+  player.facing = Math.PI;
+  combat.playerStrike(player, player.hero.combo[2]);
+  out(`  golpe forte derrubou o pilar ${ok(pil.down && ev('demolish').length === 1)} | mirou no grupo de 3 ${ok(ev('demolish')[0] && ev('demolish')[0].aim === 3)}`);
+  yield 0.45;
+  out('  -> pilar caindo (screenshot)');
   yield 'hold';
-  yield* until(() => ev('tableHit').length > 0, 2000);
-  out(`  acertou o esqueleto ${ok(tv.hp < 999 && ev('tableHit')[0] && ev('tableHit')[0].hits === 1, 999 - tv.hp)} | sem barril na sala ${ok(combat.kit2.flying.length === 0)}`);
+  yield* until(() => ev('demolishHit').length > 0, 2000);
+  out(`  esmagou 3 (50% da vida máx.) ${ok(ev('demolishHit')[0] && ev('demolishHit')[0].hits === 3 && g1.hp <= 500 && g2.hp <= 500 && g3.hp <= 500, 999 - g1.hp)} | o sozinho não ${ok(lone.hp === 999)}`);
+  yield 2.2;
+  out(`  o pilar sumiu depois ${ok(!pil.obj.visible)}`);
   fresh(); yield 0.1;
-  give('w_esp28');
-  player.enterBlock(null);
-  out(`  sem nada na frente: bloqueia normal ${ok(player.state === 'block' && ev('tableKick').length === 0)}`);
+  give('w_esp32');
+  dummy(0, -1);
+  combat.playerStrike(player, player.hero.combo[2]);
+  out(`  sem pilar perto: golpe normal ${ok(ev('demolish').length === 0)}`);
 
   // ---------------- 86) Cavalo Fantasma ----------------
   out('86) Cavalo Fantasma (2ª leva)');
@@ -252,15 +301,28 @@ export function* kitTests(g, out, flags) {
   const hz = dummy(2.6, 2);
   player.facing = Math.PI / 2;
   let atk = false;
-  player.input = { moveDir: (o) => o.set(0, 0, 0), aimAngle: () => null, attack: () => atk, dodge: () => false, dodgeHeld: () => false, potion: () => false, interact: () => false, ultimate: () => false, blocking: () => false };
+  player.input = { moveDir: (o) => o.set(0, 0, 0), aimAngle: () => null, attack: () => atk, dodge: () => false, dodgeHeld: () => false, potion: () => false, interact: () => false, ultimate: () => false, blocking: () => true };
+  const hs0 = player.shield;
   player.startDodge();
-  out(`  rolar invocou o cavalo ${ok(player.state === 'horse' && !!player.kit.horse && player.kit.horse.g.parent === player.group)} | montado ${ok(player.model.position.y > 0.5)}`);
+  out(`  gastou 1 carga do escudo ${ok(player.shield === hs0 - 1)}`);
+  out(`  bloqueio + rolar invocou o cavalo ${ok(player.state === 'horse' && !!player.kit.horse && player.kit.horse.g.parent === player.group)} | montado ${ok(player.model.position.y > 0.5)}`);
   yield 0.3;
   out('  -> galopando (screenshot)');
   yield 'hold';
   yield* until(() => player.state !== 'horse', 3000);
   out(`  atropelou ${ok(hz.hp < 999 && ev('horseHit').length === 1, 999 - hz.hp)} | durou ~2 s e desmontou ${ok(player.state !== 'horse' && player.model.position.y === 0 && !player.kit.horse.g.parent)}`);
-  player.dodgeCooldown = 0; player.startDodge(); yield 0.2;
+  out(`  atropelado enterrado ${ok(ev('buried').length === 1 && hz.state === 'hurt' && hz.model.position.y < -0.3)}`);
+  yield 1.2;
+  out(`  1 s depois de desmontar: ainda enterrado ${ok(hz.state === 'hurt' && hz.model.position.y < -0.3)}`);
+  yield 1.4;
+  out(`  passou 2 s: saiu do chão ${ok(hz.state !== 'hurt' || combat.kit2.buried.length === 0)}`);
+  player.dodgeCooldown = 0; player.startDodge(); yield 0.05;
+  out(`  sem recarga: monta de novo ${ok(player.state === 'horse' && player.shield === hs0 - 2)}`);
+  yield* until(() => player.state !== 'horse', 3000);
+  player.dodgeCooldown = 0; player.startDodge();
+  const hhp = player.hp;
+  out(`  galopando não leva dano ${ok(!combat.hitPlayer(dummy(-3, 4), 20, { target: player }) && player.hp === hhp)}`);
+  yield 0.2;
   atk = true; yield 0.1; atk = false;
   out(`  atacar desmonta e golpeia ${ok(player.state === 'attack' && !player.kit.horseOn)}`);
   player.input = realInput;
@@ -272,7 +334,7 @@ export function* kitTests(g, out, flags) {
   const champ = dummy(0, -2, 'warrior'); champ.shieldCovers = () => false;
   const mA = dummy(2.2, -1), mB = dummy(-3, 1);
   mA.maxHp = mB.maxHp = 50;
-  combat.kit2.duelDone = false;
+  combat.kit2.duelKey = null;
   Object.assign(waves, { waves: [[['warrior', 1], ['minion', 2]]], wave: 0, state: 'fighting', queue: [] });
   yield 0.2;
   const du = combat.kit2.duel;
@@ -292,10 +354,19 @@ export function* kitTests(g, out, flags) {
   yield 'hold';
   player.position.set(du.x + du.R + 3, 0, du.z); yield 0.05;
   out(`  o herói não sai do círculo ${ok(Math.hypot(player.position.x - du.x, player.position.z - du.z) <= du.R)}`);
-  champ.hp = 1;
+  champ.hp = 1; player.shield = 2; player.hp = 50;
   combat.damageEnemy(player, champ, player.hero.combo[0], 0, -1);
   yield 0.1;
-  out(`  o Guerreiro caiu: círculo some ${ok(!combat.kit2.duel && ev('duelEnd').some((x) => x.won))}`);
+  out(`  o Guerreiro caiu: círculo some ${ok(!combat.kit2.duel && ev('duelEnd').some((x) => x.won))} | escudo consertado ${ok(player.shield === shieldMax(player))} | +10 de vida ${ok(player.hp === 60)}`);
+  const champ2 = dummy(1, -2.5, 'warrior');
+  Object.assign(waves, { wave: 1, state: 'fighting', queue: [] });
+  yield 0.2;
+  out(`  onda seguinte: novo duelo ${ok(combat.kit2.duel && combat.kit2.duel.e === champ2)}`);
+  combat.kit2.endDuel(false); champ2.die(); mA.die(); mB.die();
+  combat.spawn('guardian', 0, -6, { awake: true, passive: true }); dummy(2, -2, 'warrior');
+  Object.assign(waves, { wave: 2, state: 'fighting', queue: [] });
+  yield 0.2;
+  out(`  sala do chefe: sem duelo ${ok(!combat.kit2.duel)}`);
 
   // ---------------- 88) Vassalo ----------------
   out('88) Vassalo (2ª leva)');
@@ -310,6 +381,8 @@ export function* kitTests(g, out, flags) {
   yield 0.15;
   const vas = vs[2];
   out(`  o último se rendeu ${ok(ev('vassal').length === 1 && vas.undead === player && vas.vassal)} | onda vencida ${ok(combat.aliveCount === 0)}`);
+  const gear = vas.vassalGear;
+  out(`  ganhou capa e 2 ombreiras ${ok(gear && gear.cape && gear.pads.length === 2)} | sem brilho dourado ${ok(vas.bodyMats.every((m) => !m.emissive || m.emissiveIntensity < 0.2))} | ajoelhou do lado do herói ${ok(ev('vassalScene').length === 1 && Math.abs(Math.hypot(vas.position.x - player.position.x, vas.position.z - player.position.z) - 1.35) < 0.5)}`);
   yield 0.3;
   out('  -> ajoelhado (screenshot)');
   yield 'hold';
@@ -317,36 +390,60 @@ export function* kitTests(g, out, flags) {
   yield* until(() => foe.hp < 999, 6000);
   out(`  lutou do seu lado ${ok(foe.hp < 999, 999 - foe.hp)} | não machuca o herói ${ok(player.hp === player.maxHp)}`);
   foe.die(); combat.killed(foe, 0, 1, player);
+  // Só 1 vassalo vivo: na onda seguinte o último não se rende.
+  const w2 = [dummy(-2, -6), dummy(2, -6)];
+  for (const e of w2) { e.passive = true; e.hp = e.maxHp = 40; }
+  Object.assign(waves, { waves: [[['minion', 2], ['warrior', 1]], [['minion', 2]]], wave: 1, state: 'fighting', queue: [] });
+  w2[0].die(); combat.killed(w2[0], 0, 1, player);
+  yield 0.15;
+  out(`  com 1 vassalo vivo, o próximo não se rende ${ok(!w2[1].vassal && ev('vassal').length === 1)}`);
+  w2[1].die(); combat.killed(w2[1], 0, 1, player);
+  Object.assign(waves, { waves: [[['minion', 2], ['warrior', 1]]], wave: 0, state: 'fighting', queue: [] });
   yield 4;
   out(`  sem inimigos, espera a sala acabar (não desmorona) ${ok(vas.alive)}`);
+  vas.hp = 23;
   combat.kit2.roomClear();
-  out(`  fim da sala: foi embora ${ok(!vas.alive)}`);
+  out(`  fim da sala (última onda): vai junto ${ok(vas.alive && combat.kit2.carry && combat.kit2.carry.list.length === 1)}`);
+  combat.clear();
+  combat.kit2.roomStart({ kind: 'combat', waves: [[['minion', 2]]] });
+  const vas2 = combat.enemies.find((e) => e.vassal);
+  out(`  entrou na sala nova com você ${ok(vas2 && vas2.undead === player && vas2.hp === 23 && Math.hypot(vas2.position.x - player.position.x, vas2.position.z - player.position.z) < 2.5)}`);
+  yield 0.6;
+  out('  -> vassalo na sala nova (screenshot)');
+  yield 'hold';
+  combat.kit2.roomClear();
+  out(`  fim da 2ª sala: foi embora ${ok(vas2 && !vas2.alive && !combat.kit2.carry)}`);
 
   // ---------------- 89) Espada Amaldiçoada ----------------
   out('89) Espada Amaldiçoada (2ª leva)');
   fresh(); yield 0.1;
   give('w_esp30');
   combat.kit2.roomStart({ waves: [[['archer', 4], ['minion', 2]]] });
-  Object.assign(combat.kit2.curse, { type: 'archer', need: 3 });
+  Object.assign(combat.kit2.curse, { type: 'archer' });
   yield* until(() => ev('curseAsk').length > 0, 3000);
   out(`  a espada pediu ${ok(ev('curseAsk').length === 1)}`);
   yield 0.2;
   out('  -> pedido da espada (screenshot)');
   yield 'hold';
   const g0 = player.gold, u0 = player.ult || 0, h0 = player.hp = player.maxHp - 40;
+  const a1 = dummy(-1, -3, 'archer'); a1.die(); combat.killed(a1, 0, 1, player);
   const mn = dummy(0, -3); mn.die(); combat.killed(mn, 0, 1, player);
-  for (let i = 0; i < 3; i++) { const a = dummy(i - 1, -3, 'archer'); a.die(); combat.killed(a, 0, 1, player); }
   const rw = ev('curseReward');
-  out(`  3 arqueiros: prêmio (${rw[0] && rw[0].pick}) ${ok(rw.length === 1 && (player.gold > g0 || player.hp > h0 || (player.ult || 0) > u0))} | lacaio não contou ${ok(ev('curseKill').length === 3)}`);
+  out(`  1º derrotado = arqueiro: prêmio (${rw[0] && rw[0].pick}) ${ok(rw.length === 1 && (player.gold > g0 || player.hp > h0 || (player.ult || 0) > u0))} | lacaio depois não castigou ${ok(ev('cursePunish').length === 0)}`);
   combat.kit2.roomClear();
-  out(`  obedeceu: sem castigo ${ok(ev('cursePunish').length === 0)}`);
-  combat.kit2.roomStart({ waves: [[['warrior', 2]]] });
+  combat.kit2.roomStart({ waves: [[['warrior', 2], ['minion', 2]]] });
+  Object.assign(combat.kit2.curse, { type: 'warrior' });
   yield* until(() => combat.kit2.curse && combat.kit2.curse.said, 3000);
   player.hp = player.maxHp;
+  const cm2 = dummy(0, -3); cm2.die(); combat.killed(cm2, 0, 1, player);
+  out(`  1º derrotado errado: a espada machucou 15 na hora ${ok(player.hp === player.maxHp - 15)}`);
+  const cw2 = dummy(1, -3, "warrior"); cw2.die(); combat.killed(cw2, 0, 1, player);
+  out(`  depois do 1º não conta mais ${ok(ev('curseReward').length === 1 && ev('cursePunish').length === 1)}`);
   combat.kit2.roomClear();
-  out(`  ignorou: a espada machucou 15 ${ok(player.hp === player.maxHp - 15)}`);
-  player.hp = 10; combat.kit2.roomStart({ waves: [[['warrior', 2]]] });
+  player.hp = 10; combat.kit2.roomStart({ waves: [[['warrior', 2], ['minion', 1]]] });
+  Object.assign(combat.kit2.curse, { type: 'warrior' });
   yield* until(() => combat.kit2.curse && combat.kit2.curse.said, 3000);
+  const m3 = dummy(0, -3); m3.die(); combat.killed(m3, 0, 1, player);
   combat.kit2.roomClear();
   out(`  o castigo nunca mata ${ok(player.hp === 1 && player.state !== 'dead')}`);
   fresh();

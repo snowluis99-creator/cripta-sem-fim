@@ -39,8 +39,10 @@ function clean(s) {
 function readLocal() {
   try { const t = localStorage.getItem(KEY); return t ? clean(JSON.parse(t)) : null; } catch (e) { return null; }
 }
+export const TEST_KEY = 'cripta.save.teste'; // teste automático grava aqui (nunca no save do jogador)
+let testMode = false;
 function writeLocal(s) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* navegador sem armazenamento: só nesta visita */ }
+  try { localStorage.setItem(testMode ? TEST_KEY : KEY, JSON.stringify(s)); } catch (e) { /* navegador sem armazenamento: só nesta visita */ }
 }
 
 class SaveStore {
@@ -70,12 +72,18 @@ class SaveStore {
   }
 
   async push() {
-    if (!this.doc) return;
+    if (!this.doc || this.saved) return;
     try { await this.doc.set({ ...this.data }); } catch (e) { if (e && (e.code === 'invalid_argument' || e.code === 'permission_denied')) { this.doc = null; this.where = 'navegador'; } }
   }
 
   onChange(fn) { this.listeners.push(fn); }
   emit() { for (const fn of this.listeners) fn(this.data); }
+
+  // Teste automático: guarda uma cópia do save e não grava nada até o teste acabar; depois volta a cópia.
+  // Depois que um teste começa, a página não grava mais no save do jogador (nem navegador nem conta) até recarregar.
+  sandbox(on) {
+    if (on && !this.saved) { clearTimeout(this.pushTimer); this.saved = true; testMode = true; }
+  }
 
   // Muda e grava (navegador na hora, conta logo depois).
   update(fn) {

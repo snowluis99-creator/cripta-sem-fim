@@ -22,8 +22,10 @@ export class CollisionWorld {
   }
 
   // Um círculo nesse ponto encostaria em alguma parede ou obstáculo?
-  blocked(x, z, r) {
+  // skipIce: as magias da Maga passam pelo gelo dela (Parede de Gelo, Estátua).
+  blocked(x, z, r, skipIce = false) {
     for (const b of this.rects) {
+      if (skipIce && b.ice) continue;
       const cx = Math.max(b.minX, Math.min(x, b.maxX));
       const cz = Math.max(b.minZ, Math.min(z, b.maxZ));
       if ((x - cx) ** 2 + (z - cz) ** 2 < r * r) return true;

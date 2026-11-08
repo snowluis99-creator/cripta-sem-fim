@@ -1,22 +1,27 @@
 // Espada e Escudo, 2ª leva (pedido do dono, 02/11/2026):
-// - Duelo Sagrado: ao começar a luta da sala, você desafia o inimigo mais forte. Um círculo dourado prende os dois
-//   e ninguém entra (nem golpes, nem flechas) até um cair.
-// - Vassalo: o último esqueleto de cada onda se rende, ajoelha e luta do seu lado até o fim da sala.
+// - Duelo Sagrado: a cada onda (menos na sala do chefe), você desafia o inimigo mais forte. Um círculo dourado prende
+//   os dois e ninguém entra (nem golpes, nem flechas) até um cair. Vencer conserta o escudo e cura 10 (04/11).
+// - Vassalo: o último esqueleto de cada onda se rende, ajoelha e luta do seu lado até o fim da sala. O da última onda
+//   vai junto e luta na próxima sala também (04/11).
 // - Mesa Virada: barris, mesas e caixotes na frente do escudo são chutados (bloqueio ou pancada de escudo) e viram projéteis.
-// - Cavalo Fantasma: rolar invoca um cavalo espectral; você galopa por 2 s atropelando tudo.
-// - Espada Amaldiçoada: a espada pede um tipo de inimigo por sala. Obedeceu: prêmio. Ignorou: ela te machuca.
+// - Cavalo Fantasma: rolar invoca um cavalo espectral; você galopa por 2 s sem levar dano, atropelando tudo. Quem é
+//   atropelado fica enterrado até 2 s depois de desmontar. Recarga de 20 s (04/11).
+// - Espada Amaldiçoada: a espada escolhe o tipo do 1º inimigo a cair na sala. Acertou: prêmio. Errou: ela te machuca.
 import * as THREE from 'three';
 import { audio } from './audio.js';
 import { ENEMIES } from './enemies.js';
 import { undeadDied } from './undead.js';
-import { isKit } from './knightkit.js';
+import { isKit, kitGuardRoll } from './knightkit.js';
+import { repairShield, spendShield } from './shield.js';
+import { addVassalGear } from './vassalgear.js';
+import { makeHorse } from './horse.js';
 
 export const KIT2 = {
-  duel: { minR: 4, maxR: 6.5, pad: 1.6 },
-  vassal: { kneel: 1.3 },
+  duel: { minR: 4, maxR: 6.5, pad: 1.6, heal: 10 },
+  vassal: { kneel: 1.3, scene: 2.6, walk: 0.5, gap: 1.35, kneelClip: 'Skeletons_Awaken_Floor', kneelFrom: 0.42, kneelAt: 0.5, swordClip: 'Melee_1H_Attack_Chop', swordAt: 0.45, touch: 1.25, dub: 1.55 },
   table: { speed: 15, range: 12, damage: 22, splash: 1.5, reach: 2.4, arc: 70 },
-  horse: { time: 2, speed: 10.5, damage: 10, iframes: 0.4, seat: 1.02, scale: 1.2 },
-  curse: { want: 3, gold: 60, heal: 30, ult: 3, punish: 15 },
+  horse: { time: 2, speed: 10.5, damage: 10, iframes: 0.4, seat: 1.02, scale: 1.2, buryAfter: 2, sink: 0.75 },
+  curse: { gold: 60, heal: 30, ult: 3, punish: 15 },
 };
 
 const KICKABLE = /barrel|keg|table|crate|box|chair|bench|trunk|stool/;
@@ -33,9 +38,10 @@ const kitOf = (p) => p.kit || (p.kit = { sword: 'hand', shield: 'hand' });
 
 // ---------- Ganchos chamados pelo herói (player.js) ----------
 
-// Rolar: Cavalo Fantasma (devolve true se montou).
+// Segurando o bloqueio + rolar: Cavalo Fantasma (devolve true se montou). Sem recarga: gasta 1 carga do escudo.
 export function kit2StartDodge(p) {
-  if (!C || !has(p, 'horse')) return false;
+  if (!C || !has(p, 'horse') || !kitGuardRoll(p)) return false; // sem segurar o bloqueio: rolamento normal
+  spendShield(p, C);
   C.kit2.mount(p);
   return true;
 }
@@ -63,7 +69,9 @@ export class KnightKit2 {
     this.curse = null;   // Espada Amaldiçoada: pedido da sala
     this.roomSeq = 0;
     this.vassalKey = null;
-    this.duelDone = false;
+    this.duelKey = null;
+    this.carry = null;   // Vassalo da última onda: vai para a próxima sala
+    this.buried = [];    // Cavalo Fantasma: enterrados
   }
 
   get scene() { return this.c.scene; }
@@ -74,52 +82,55 @@ export class KnightKit2 {
   roomStart(node) {
     this.roomSeq++;
     this.vassalKey = null;
-    this.duelDone = false;
+    this.duelKey = null;
     this.curse = null;
+    this.bringVassals(node);
     const p = this.owner('curse');
     if (!p || !node || !node.waves) return;
-    const total = {};
-    for (const wave of node.waves) for (const [t, n] of wave) {
-      if (!ENEMIES[t] || ENEMIES[t].boss || ENEMIES[t].phantom) continue;
-      total[t] = (total[t] || 0) + (this.waves && this.waves.opts ? this.waves.count(t, n) : n);
+    // Pedido (05/11): o PRIMEIRO inimigo derrotado na sala tem que ser de um tipo sorteado da 1ª onda.
+    const types = [];
+    for (const [t] of node.waves[0] || []) {
+      if (!ENEMIES[t] || ENEMIES[t].boss || ENEMIES[t].phantom || types.includes(t)) continue;
+      types.push(t);
     }
-    const types = Object.keys(total);
     if (!types.length) return;
     const type = types[Math.floor(Math.random() * types.length)];
-    this.curse = { p, type, need: Math.min(KIT2.curse.want, total[type]), got: 0, done: false, said: false, t: 1.4, fx: 0 };
+    this.curse = { p, type, done: false, said: false, t: 0.6, fx: 0 };
   }
 
   // ---- Sala limpa (run.roomCleared) ----
   roomClear() {
+    const carry = [];
     for (const e of this.c.enemies) {
       if (!e.vassal || !e.alive) continue;
+      // O que se rendeu nesta sala vai junto para a próxima; o que veio da sala anterior se despede.
+      if (!carry.length && !e.carried && e.undead && e.undead.state !== 'dead' && has(e.undead, 'vassal')) {
+        carry.push({ type: e.type, hp: e.hp, p: e.undead, hpScale: e.hpScale, dmgScale: e.dmgScale });
+        this.c.text.add('Vou com você!', e.position, 'gold', 3.0);
+        continue;
+      }
       this.c.text.add('Às ordens!', e.position, 'heal', 2.8);
       this.c.vfx.ring(v3(e.position.x, 0, e.position.z), GOLD, 1.4);
       e.die(); undeadDied(this.c, e);
     }
-    const k = this.curse;
-    if (k && k.said && !k.done && k.p.state !== 'dead') {
-      const p = k.p, dmg = Math.min(KIT2.curse.punish, Math.max(0, Math.ceil(p.hp) - 1));
-      if (dmg > 0) { p.hp -= dmg; p.hurtFlash = 1; this.c.text.add(`-${dmg}`, p.position, 'hurt'); if (this.c.hurtFor) this.c.hurtFor(p, dmg); }
-      this.c.text.add('A espada te castiga!', p.position, 'bleed', 3.4);
-      this.c.vfx.sparks(v3(p.position.x, 1.3, p.position.z), CURSE, 16);
-      audio.play('hurt', p.position.x, p.position.z);
-      if (this.c.hud) this.c.hud.banner('A espada: “Você me ignorou…”', 'small');
-      this.log({ type: 'cursePunish', dmg });
-    }
+    this.carry = carry.length ? { list: carry, seq: this.roomSeq } : null;
     this.curse = null;
     this.endDuel(false);
   }
 
   // ---- Inimigo morreu (combat.killed) ----
+  // Só vale o primeiro derrotado depois do pedido: era do tipo pedido = prêmio; não era = castigo na hora.
   onKill(e) {
     const k = this.curse;
-    if (!k || k.done || e.type !== k.type) return;
-    k.got++;
-    const p = k.p;
-    this.log({ type: 'curseKill', got: k.got });
-    if (k.got < k.need) { this.c.text.add(`${SINGULAR[k.type] || e.data.name} ${k.got}/${k.need}`, p.position, 'bleed', 2.8); return; }
+    if (!k || k.done || !k.said || e.vassal) return;
     k.done = true;
+    if (e.type === k.type) this.curseReward(k);
+    else this.cursePunish(k, e);
+  }
+
+  curseReward(k) {
+    const p = k.p;
+    this.log({ type: 'curseKill', got: 1 });
     const kinds = ['gold', 'heal', 'ult'];
     const pick = kinds[Math.floor(Math.random() * kinds.length)];
     let txt;
@@ -133,9 +144,40 @@ export class KnightKit2 {
     this.log({ type: 'curseReward', pick });
   }
 
+  cursePunish(k, e) {
+    const p = k.p;
+    if (p.state === 'dead') return;
+    const dmg = Math.min(KIT2.curse.punish, Math.max(0, Math.ceil(p.hp) - 1)); // nunca mata
+    if (dmg > 0) { p.hp -= dmg; p.hurtFlash = 1; this.c.text.add(`-${dmg}`, p.position, 'hurt'); if (this.c.hurtFor) this.c.hurtFor(p, dmg); }
+    this.c.text.add('A espada te castiga!', p.position, 'bleed', 3.4);
+    this.c.vfx.sparks(v3(p.position.x, 1.3, p.position.z), CURSE, 16);
+    audio.play('hurt', p.position.x, p.position.z);
+    const was = (SINGULAR[e.type] || e.data.name || '').toLowerCase();
+    if (this.c.hud) this.c.hud.banner(`A espada: “Eu pedi outro, não um ${was}!”`, 'small');
+    this.log({ type: 'cursePunish', dmg });
+  }
+
+  // Sala nova: o vassalo da última onda entra junto com o herói (logo atrás dele).
+  bringVassals(node) {
+    const k = this.carry;
+    this.carry = null;
+    if (!k || k.seq !== this.roomSeq - 1 || !node || node.kind === 'tavern') return;
+    k.list.forEach((v, i) => {
+      const p = v.p;
+      if (!p || p.state === 'dead' || !has(p, 'vassal') || !ENEMIES[v.type]) return;
+      const a = p.facing + Math.PI + (i - (k.list.length - 1) / 2) * 0.7;
+      const x = p.position.x + Math.sin(a) * 1.6, z = p.position.z + Math.cos(a) * 1.6;
+      const e = this.c.spawn(v.type, x, z, { facing: p.facing, hpScale: v.hpScale, dmgScale: v.dmgScale });
+      this.c.world.resolveCircle(e.position, e.data.radius);
+      this.surrender(e, p, true);
+      e.hp = Math.max(1, Math.min(e.maxHp, v.hp));
+    });
+  }
+
   // ---------- Duelo Sagrado ----------
   startDuel(p) {
-    this.duelDone = true;
+    const w = this.waves;
+    this.duelKey = `${this.roomSeq}:${w ? w.wave : 0}`;
     const foes = this.c.enemies.filter((e) => e.alive && !e.undead && !e.finale && !e.data.boss && !e.data.phantom);
     if (!foes.length) return;
     const dist = (e) => Math.hypot(e.position.x - p.position.x, e.position.z - p.position.z);
@@ -172,7 +214,14 @@ export class KnightKit2 {
     this.scene.remove(d.g);
     this.duel = null;
     if (won) {
-      this.c.text.add('Duelo vencido!', d.p.position, 'gold', 3.4);
+      const p = d.p;
+      this.c.text.add('Duelo vencido!', p.position, 'gold', 3.4);
+      // Prêmio: escudo novo e +10 de vida.
+      const fixed = p.hero && p.hero.block ? repairShield(p) : 0;
+      const h = p.heal ? p.heal(KIT2.duel.heal) : 0;
+      if (h) this.c.text.add(`+${h}`, p.position, 'heal');
+      if (fixed) this.c.text.add('Escudo consertado!', p.position, 'block', 2.6);
+      this.log({ type: 'duelReward', heal: h, fixed });
       this.c.vfx.burst(v3(d.x, 0, d.z), GOLD);
       audio.play('clear', d.p.position.x, d.p.position.z, { v: 0.5 });
     }
@@ -247,6 +296,8 @@ export class KnightKit2 {
     if (!p || !w || w.state !== 'fighting' || w.queue.length) return;
     const key = `${this.roomSeq}:${w.wave}`;
     if (this.vassalKey === key) return;
+    // Só 1 vassalo vivo por vez (04/11).
+    if (this.c.enemies.some((e) => e.vassal && e.alive)) { this.vassalKey = key; return; }
     const hostile = this.c.enemies.filter((e) => (e.alive || e.finale) && !e.undead);
     if (hostile.length !== 1) return;
     const e = hostile[0];
@@ -256,7 +307,7 @@ export class KnightKit2 {
     this.surrender(e, p);
   }
 
-  surrender(e, p) {
+  surrender(e, p, carried = false) {
     const d = e.data;
     e.data = { ...d, attackRange: d.ranged ? d.attackRange : Math.max(d.attackRange || 0, 2.0), voice: undefined };
     e.undead = p; e.vassal = true;
@@ -265,14 +316,98 @@ export class KnightKit2 {
     if (e.releaseToken) e.releaseToken();
     e.vel.set(0, 0, 0);
     e.hp = Math.max(e.hp, Math.round(e.maxHp * 0.5)); // levanta com pelo menos metade da vida
+    e.carried = carried;
     e.setState('hurt');
-    e.stunTime = KIT2.vassal.kneel;
-    e.anim.play('Crouching', { fade: 0.2, restart: true });
-    this.c.text.add('Rendeu-se!', e.position, 'gold', 3.4);
-    this.c.vfx.ring(v3(e.position.x, 0, e.position.z), GOLD, 1.6);
-    this.c.vfx.sparks(v3(e.position.x, 1.2, e.position.z), GOLD, 14);
-    audio.play('rise', e.position.x, e.position.z);
+    e.stunTime = carried ? 0.3 : KIT2.vassal.kneel;
     this.log({ type: 'vassal', enemy: e });
+    if (carried) {
+      addVassalGear(e);
+      this.c.text.add('Vassalo!', e.position, 'gold', 3.4);
+      this.c.vfx.ring(v3(e.position.x, 0, e.position.z), GOLD, 1.6);
+      return;
+    }
+    // Cena: o jogo congela, o esqueleto ajoelha na frente do herói e é nomeado cavaleiro com a espada na cabeça.
+    if (this.c.ult && this.c.ult.scene) { this.c.ult.scene(this.knightScene(e, p)); return; }
+    addVassalGear(e);
+    this.c.text.add('Rendeu-se!', e.position, 'gold', 3.4);
+  }
+
+  // Cena do Vassalo (ultimate.js: scene). O herói fica parado; o esqueleto vem até ele, ajoelha,
+  // o herói encosta a espada na cabeça dele e ele levanta de capa e ombreiras.
+  knightScene(e, p) {
+    const V = KIT2.vassal, c = this.c;
+    const st = { touched: false, dubbed: false, kneel: false, sword: false };
+    const hold = (anim, clip, at) => { const a = anim.current; if (a && anim.currentName === clip && a.time >= a.getClip().duration * at) a.timeScale = 0; };
+    return {
+      p, time: V.scene, zoom: 0.5, actors: [e],
+      start() {
+        // Lado: o esqueleto fica ao lado do herói (de perfil para a câmera), do lado em que já estava.
+        let s = Math.sign(e.position.x - p.position.x) || 1;
+        const free = (x) => !c.world.blocked(x, p.position.z, e.data.radius);
+        if (!free(p.position.x + s * V.gap) && free(p.position.x - s * V.gap)) s = -s;
+        st.from = e.position.clone();
+        st.to = v3(p.position.x + s * V.gap, 0, p.position.z);
+        c.world.resolveCircle(st.to, e.data.radius);
+        this.focus = v3((p.position.x + st.to.x) / 2, 0, p.position.z);
+        p.combo = 0; p.queued = false; p.vel.set(0, 0, 0);
+        if (p.clearRoll) p.clearRoll();
+        p.setState('ultCine');
+        p.facing = s > 0 ? Math.PI / 2 : -Math.PI / 2; p.group.rotation.y = p.facing;
+        p.anim.play(p.hero.anims.idle, { fade: 0.1 });
+        e.facing = Math.atan2(p.position.x - st.to.x, p.position.z - st.to.z);
+        e.group.rotation.y = Math.atan2(st.to.x - st.from.x, st.to.z - st.from.z) || e.facing;
+        e.anim.play('Skeletons_Walking', { fade: 0.1, restart: true, speed: 1.6 });
+        if (c.hud) c.hud.banner('O último esqueleto se rende!', 'small');
+        audio.play('rise', e.position.x, e.position.z, { v: 0.7 });
+      },
+      tick(t) {
+        if (t < V.walk) {
+          const k = t / V.walk;
+          e.position.lerpVectors(st.from, st.to, k * k * (3 - 2 * k));
+        } else if (!st.kneel) {
+          st.kneel = true;
+          e.position.copy(st.to);
+          e.group.rotation.y = e.facing;
+          const ka = e.anim.play(V.kneelClip, { once: true, restart: true, fade: 0.2, speed: 0.8 });
+          ka.time = ka.getClip().duration * V.kneelFrom; // começa já de joelhos (o começo do clipe é deitado)
+          c.vfx.dust(v3(e.position.x, 0, e.position.z), v3(0, 1, 0), 6);
+        }
+        if (st.kneel) hold(e.anim, V.kneelClip, V.kneelAt);
+        if (!st.sword && t >= V.walk + 0.15) {
+          st.sword = true;
+          p.anim.play(V.swordClip, { once: true, restart: true, fade: 0.12, speed: 0.75 });
+        }
+        if (st.sword) hold(p.anim, V.swordClip, V.swordAt);
+        if (!st.touched && t >= V.touch) {
+          st.touched = true;
+          c.vfx.sparks(v3(e.position.x, 1.0, e.position.z), GOLD, 16);
+          audio.play('block', e.position.x, e.position.z, { v: 0.45 });
+          c.text.add('Eu te nomeio cavaleiro!', p.position, 'gold', 3.6);
+        }
+        if (!st.dubbed && t >= V.dub) {
+          st.dubbed = true;
+          addVassalGear(e);
+          c.vfx.ring(v3(e.position.x, 0, e.position.z), GOLD, 1.6);
+          c.vfx.burst(e.position.clone(), GOLD);
+          audio.play('select', e.position.x, e.position.z, { v: 0.6 });
+          c.text.add('Vassalo!', e.position, 'gold', 3.4);
+        }
+      },
+      end() {
+        if (!st.dubbed) addVassalGear(e);
+        e.position.copy(st.to);
+        if (e.alive) {
+          e.setState('hurt');
+          e.stunTime = e.t + 0.35;
+          e.anim.play(e.data.anims.idle || 'Skeletons_Idle', { fade: 0.25 });
+        }
+        if (p.state !== 'dead') {
+          p.setState('idle');
+          p.anim.play(p.hero.anims.idle, { fade: 0.2 });
+        }
+        c.log && c.log({ type: 'vassalScene', enemy: e });
+      },
+    };
   }
 
   // ---------- Mesa Virada ----------
@@ -375,6 +510,8 @@ export class KnightKit2 {
     if (k.horse) p.group.remove(k.horse.g);
     p.model.position.set(0, 0, 0);
     p.dodgeCooldown = p.hero.dodge.cooldown;
+    // Enterrados: continuam presos até 2 s depois de desmontar.
+    for (const b of this.buried) if (b.p === p) b.t = Math.min(b.t, KIT2.horse.buryAfter);
     this.c.vfx.smoke(p.position, GHOST, 8);
     this.log({ type: 'horseEnd' });
   }
@@ -385,18 +522,9 @@ export class KnightKit2 {
     if (moving) p.facing += wrap(Math.atan2(move.x, move.z) - p.facing) * Math.min(1, dt * 5);
     const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
     p.move(fx, fz, H.speed * dt, world);
-    // Galope: pernas e um balanço leve.
-    const ph = p.stateTime * 15;
-    if (k.horse) {
-      const L = k.horse.legs;
-      L[0].rotation.x = Math.sin(ph) * 0.8; L[1].rotation.x = Math.sin(ph + 0.6) * 0.8;
-      L[2].rotation.x = Math.sin(ph + Math.PI) * 0.8; L[3].rotation.x = Math.sin(ph + Math.PI + 0.6) * 0.8;
-      k.horse.g.position.y = Math.abs(Math.sin(ph * 0.5)) * 0.12;
-      k.horse.g.rotation.x = Math.sin(ph) * 0.04;
-      const fade = Math.min(1, (H.time - p.stateTime) / 0.3);
-      for (const m of k.horse.mats) m.opacity = 0.55 * Math.max(0.2, fade);
-    }
-    p.model.position.y = H.seat + (k.horse ? k.horse.g.position.y : 0);
+    // Galope (horse.js): pernas em 4 tempos, corpo, pescoço, crina e cauda.
+    const bob = k.horse ? k.horse.animate(p.stateTime, Math.min(1, (H.time - p.stateTime) / 0.3)) : 0;
+    p.model.position.y = H.seat + bob * H.scale;
     // Atropela.
     for (const e of [...this.c.enemies]) {
       if (!e.targetable || k.horseHits.has(e)) continue;
@@ -408,7 +536,7 @@ export class KnightKit2 {
       const side = (dx * fz - dz * fx) >= 0 ? 1 : -1;
       const ux = fx * 0.6 + fz * side * 0.8, uz = fz * 0.6 - fx * side * 0.8, ul = Math.hypot(ux, uz) || 1;
       this.c.bonusDamage(e, Math.round(H.damage * p.stats.damageMul), ux / ul, uz / ul, 'dmg', p);
-      if (e.alive && !e.data.boss && e.offBalance) e.offBalance(ux / ul, uz / ul, 0.8, 12);
+      if (e.alive && !e.data.boss) this.bury(e, p, H.time - p.stateTime + H.buryAfter);
       this.c.vfx.sparks(v3(e.position.x, 1.1, e.position.z), GHOST, 8);
       audio.play('hit', e.position.x, e.position.z);
       this.log({ type: 'horseHit', enemy: e });
@@ -420,9 +548,45 @@ export class KnightKit2 {
     return null;
   }
 
+  // Cavalo Fantasma: o atropelado afunda no chão e fica preso (t = tempo que falta).
+  bury(e, p, t) {
+    const old = this.buried.find((b) => b.e === e);
+    if (old) { old.t = Math.max(old.t, t); return; }
+    e.vel.set(0, 0, 0);
+    if (e.daze) e.daze(t);
+    this.buried.push({ e, p, t, sink: 0 });
+    this.c.text.add('Enterrado!', e.position, 'block', 3.0);
+    this.c.vfx.dust(v3(e.position.x, 0, e.position.z), v3(0, 1, 0), 8);
+    this.log({ type: 'buried', enemy: e });
+  }
+
+  updateBuried(dt) {
+    const H = KIT2.horse;
+    for (let i = this.buried.length - 1; i >= 0; i--) {
+      const b = this.buried[i], e = b.e;
+      const riding = b.p && b.p.state === 'horse' && kitOf(b.p).horseOn;
+      if (!riding) b.t -= dt;
+      const done = b.t <= 0 || !e.alive || !this.c.enemies.includes(e) || e.state === 'held' || e.state === 'thrown';
+      b.sink = done ? Math.max(0, b.sink - dt * 3) : Math.min(1, b.sink + dt * 6);
+      if (e.model) e.model.position.y = -H.sink * b.sink;
+      if (done) {
+        if (b.sink <= 0) { if (e.model) e.model.position.y = 0; this.buried.splice(i, 1); }
+        continue;
+      }
+      e.vel.set(0, 0, 0);
+      // Levou outro golpe (o atordoamento curto troca o nosso): continua preso.
+      if (e.state !== 'hurt') { if (!e.daze || !e.daze(b.t)) continue; }
+      else if (e.stunTime - e.t < b.t) e.stunTime = e.t + b.t;
+    }
+  }
+
   // ---------- Quadro a quadro ----------
   update(dt) {
     const c = this.c;
+    for (const p of c.players) {
+      const k = p.kit;
+    }
+    if (this.buried.length) this.updateBuried(dt);
     for (const p of c.players) if (p.kit && p.kit.horseOn && p.state !== 'horse') this.dismount(p); // apanhou/morreu montado
     if (this.duel) {
       const d = this.duel;
@@ -430,10 +594,11 @@ export class KnightKit2 {
       d.ring.material.opacity = 0.65 + 0.25 * Math.sin(d.t * 5);
       d.wall.material.opacity = 0.12 + 0.06 * Math.sin(d.t * 3);
     }
-    // Duelo: começa quando a 1ª onda terminou de nascer.
+    // Duelo: começa quando cada onda termina de nascer (menos com chefe na sala).
     const w = this.waves, dp = this.owner('duel');
-    if (dp && !this.duel && !this.duelDone && w && w.state === 'fighting' && !w.queue.length && w.wave === 0) {
-      if (c.enemies.some((e) => e.alive && !e.undead && e.targetable)) this.startDuel(dp);
+    if (dp && !this.duel && w && w.state === 'fighting' && !w.queue.length && w.wave >= 0 && this.duelKey !== `${this.roomSeq}:${w.wave}`) {
+      if (c.enemies.some((e) => e.alive && e.data.boss)) this.duelKey = `${this.roomSeq}:${w.wave}`;
+      else if (c.enemies.some((e) => e.alive && !e.undead && e.targetable)) this.startDuel(dp);
     }
     this.checkVassal();
     if (this.flying.length) this.updateFlying(dt);
@@ -442,12 +607,12 @@ export class KnightKit2 {
     if (k && k.p.state !== 'dead') {
       if (!k.said && (k.t -= dt) <= 0) {
         k.said = true;
-        const name = PLURAL[k.type] || `${ENEMIES[k.type].name.toLowerCase()}s`;
-        c.text.add(`“Quero ${name}!”`, k.p.position, 'bleed', 3.6);
-        if (c.hud) c.hud.banner(`A espada fala: “Quero ${name}!” (${k.need})`, 'small');
+        const name = (SINGULAR[k.type] || ENEMIES[k.type].name).toLowerCase();
+        c.text.add(`“O primeiro: um ${name}!”`, k.p.position, 'bleed', 3.6);
+        if (c.hud) c.hud.banner(`A espada fala: “O primeiro a cair tem que ser um ${name}!”`, 'small');
         c.vfx.sparks(v3(k.p.position.x, 1.4, k.p.position.z), CURSE, 14);
         audio.play('rise', k.p.position.x, k.p.position.z, { v: 0.5 });
-        this.log({ type: 'curseAsk', kind: k.type, need: k.need });
+        this.log({ type: 'curseAsk', kind: k.type });
       }
       if (k.said && !k.done && (k.fx -= dt) <= 0 && k.p.weapon && k.p.weapon.visible) {
         k.fx = 0.25;
@@ -458,35 +623,11 @@ export class KnightKit2 {
   }
 
   clear() {
+    for (const b of this.buried) if (b.e.model) b.e.model.position.y = 0;
+    this.buried.length = 0;
     for (const it of this.flying) this.scene.remove(it.obj);
     this.flying.length = 0;
     if (this.duel) { this.scene.remove(this.duel.g); this.duel = null; }
     for (const p of this.c.players) if (p.kit && p.kit.horseOn) { if (p.state === 'horse') { p.setState('idle'); p.anim.play(p.hero.anims.idle, { fade: 0.1 }); } this.dismount(p); }
   }
-}
-
-// Cavalo espectral feito de blocos (não há modelo de cavalo nos assets): azul, meio transparente e brilhando.
-function makeHorse() {
-  const mats = [];
-  const mat = () => { const m = new THREE.MeshStandardMaterial({ color: 0xa8ecff, emissive: 0x3aa8ff, emissiveIntensity: 1.1, transparent: true, opacity: 0.55, depthWrite: false, roughness: 0.6 }); mats.push(m); return m; };
-  const m = mat(), dark = mat();
-  dark.color.setHex(0x5fc8ff); dark.emissive.setHex(0x1f6fd0);
-  const g = new THREE.Group();
-  const box = (w, h, d, mm = m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mm);
-  const body = box(0.6, 0.55, 1.45); body.position.set(0, 1.05, 0); g.add(body);
-  const chest = box(0.56, 0.5, 0.4); chest.position.set(0, 1.08, 0.62); g.add(chest);
-  const neck = box(0.32, 0.7, 0.34); neck.position.set(0, 1.42, 0.82); neck.rotation.x = 0.55; g.add(neck);
-  const head = box(0.3, 0.3, 0.62); head.position.set(0, 1.74, 1.08); head.rotation.x = 0.35; g.add(head);
-  for (const s of [-1, 1]) { const ear = box(0.07, 0.16, 0.07); ear.position.set(0.1 * s, 1.95, 0.9); g.add(ear); }
-  const mane = box(0.1, 0.62, 0.22, dark); mane.position.set(0, 1.6, 0.7); mane.rotation.x = 0.55; g.add(mane);
-  const tail = box(0.12, 0.7, 0.14, dark); tail.position.set(0, 0.98, -0.8); tail.rotation.x = -0.5; g.add(tail);
-  const legs = [];
-  for (const [x, z] of [[-0.2, 0.55], [0.2, 0.55], [-0.2, -0.55], [0.2, -0.55]]) {
-    const pivot = new THREE.Group(); pivot.position.set(x, 0.85, z);
-    const leg = box(0.15, 0.85, 0.15); leg.position.y = -0.42; pivot.add(leg);
-    const hoof = box(0.17, 0.1, 0.19, dark); hoof.position.y = -0.84; pivot.add(hoof);
-    g.add(pivot); legs.push(pivot);
-  }
-  g.traverse((o) => { if (o.isMesh) o.renderOrder = 2; });
-  return { g, legs, mats };
 }

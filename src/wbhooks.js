@@ -2,6 +2,11 @@
 import * as THREE from 'three';
 import { audio } from './audio.js';
 import { axeDamageMul, axeOnHit, axeOnKill } from './axekit.js';
+import { axe3OnKill } from './axekit3.js';
+import { flailOnHit, flailTick, flailCounterTarget, isFlail, LASH_STEP } from './flailkit.js';
+import { lanceDamage, lanceOnHit, lanceOnSwing, lanceOnKill } from './lancekit.js';
+import { fistOnHit, fistOnSwing } from './fistkit.js';
+import { rapDamage } from './rapkit.js';
 
 const W = (p) => (p && p.stats && p.stats.w) || {};
 const healP = (combat, p, n) => {
@@ -23,6 +28,7 @@ export function wbDamage(p, e, step, ctx) {
   if (w.vsStun && (e.state === 'hurt' || e.offBalanceT > 0 || e.frozenT > 0)) mul *= 1 + w.vsStun;
   if (w.vsFull && e.hp >= e.maxHp) mul *= 1 + w.vsFull;
   if (w.vsBig && (e.data.boss || e.data.shield)) mul *= 1 + w.vsBig;
+  if (w.eShort && ctx.spell && e.data.shield && !e.shieldBroken) mul *= 2; // Curto-Circuito (Cajado Elétrico): choque em dobro
   if (w.vsBurn && e.burn > 0) mul *= 1 + w.vsBurn;
   if (w.vsBleed && e.bleedStacks > 0) mul *= 1 + w.vsBleed;
   if (w.vsSlow && (e.slow > 0 || e.frozenT > 0)) mul *= 1 + w.vsSlow;
@@ -32,12 +38,22 @@ export function wbDamage(p, e, step, ctx) {
   if (w.parryDmg && p.parryCrit) mul *= 1 + w.parryDmg;
   mul *= axeDamageMul(p); // Machado: Fio Pesado, Sede de Batalha
   if (w.backDmg && ctx.backstab) mul *= 1 + w.backDmg;
-  return { mul, critMul: w.critDmg || 0, forceCrit: !!(w.dodgeCrit && p.wbDodgeT > 0) };
+  if (e.rogueMarkBy === p) mul *= 1.3; // Marca da Morte (Duas Adagas)
+  if (e.bDivT > 0) mul *= 1.15; // Divindade (Besta): marcado pela flecha espectral
+  const ld = lanceDamage(p, e, step, ctx); // Lança: Ponta Doce, Contra-Carga, Salto com Vara
+  if (ld) mul *= ld.mul;
+  const rd = rapDamage(p, e, step); // Rapieira: Ponto Fraco
+  if (rd) mul *= rd.mul;
+  return { mul, critMul: w.critDmg || 0, forceCrit: !!(w.dodgeCrit && p.wbDodgeT > 0) || !!(ld && ld.forceCrit) || !!(rd && rd.forceCrit), pushOnly: !!(ld && ld.pushOnly) };
 }
 
 // Depois do dano: curas, sangramento, marca, lentidão, raio, 2º impacto...
 export function wbOnHit(combat, p, e, step, r) {
   const w = W(p);
+  if (combat.rogue2) combat.rogue2.onHit(p, e, step, r); // Duas Adagas (roguekit.js)
+  if (combat.claw2) combat.claw2.onHit(p, e, step, r); // Garras (clawkit.js)
+  if (combat.rap) combat.rap.onHit(p, e, step, r); // Rapieira (rapkit.js)
+  if (combat.rap2) combat.rap2.onHit(p, e, step, r); // Rapieira, 3ª leva (rapkit2.js)
   if (!Object.keys(w).length) return;
   const { dmg, died, crit, spell, nx, nz } = r;
   if (p.wbDodgeT > 0 && (w.dodgeDmg || w.dodgeCrit)) p.wbDodgeT = Math.min(p.wbDodgeT, w.dodgeCrit ? p.wbDodgeT : 0.05); // Pés Ligeiros: vale para este golpe
@@ -51,6 +67,8 @@ export function wbOnHit(combat, p, e, step, r) {
   if (step.heavy) healP(combat, p, w.healH);
   if (step.arc === 360) healP(combat, p, w.spinHeal);
   axeOnHit(combat, p, e, step, died); // Braços de Ferro
+  lanceOnHit(combat, p, e, step, r); // Lança: Contra-Carga, Pregar, Para-raios, Mil Lanças, Espetinho, Domador, Estandarte
+  fistOnHit(combat, p, e, step, r); // Manopla: Combo, Gingado, Desmontar, Saco, Strike, Corrente, Pavio, Duelo, Pinball
   if (died || !e.alive) return;
   if (w.burnHit) { e.burn = 3 + (w.burnTime || 0); e.burnDps = Math.max(e.burnDps || 0, w.burnHit * p.stats.damageMul); e.burnTick = 0.5; e.burnBy = p; }
   if (w.slowHit) e.slow = Math.max(e.slow || 0, w.slowHit);
@@ -58,6 +76,7 @@ export function wbOnHit(combat, p, e, step, r) {
   if (w.markHit) { e.markT = 3; e.markMul = Math.max(e.markMul || 0, w.markHit); }
   if (w.bleedHit && Math.random() < w.bleedHit) addBleed(combat, p, e, 1);
   if (w.freezeChance && spell && !step.heavy && !e.data.boss && e.freeze && Math.random() < w.freezeChance) e.freeze(1.2, combat);
+  flailOnHit(combat, p, e, step); // Mangual: Estrela da Manhã, Impacto Sísmico, Corrente Enroscada
   if (w.stun && e.state === 'hurt' && e.t === 0) e.stunTime *= 1 + w.stun;
   if (step.heavy && w.heavyOff && e.offBalance && e.offBalance(nx, nz, 0.6, 4)) combat.text.add('Desequilibrado!', e.position, 'hurt', 3.2);
   if (step.heavy && w.heavyChain && p.chainSwing !== p.swingSeq) { p.chainSwing = p.swingSeq; combat.chainLightning(e, w.heavyChain, p); }
@@ -84,6 +103,10 @@ export function addBleed(combat, p, e, n) {
 export function wbOnSwing(combat, p, step) {
   p.swingSeq = (p.swingSeq || 0) + 1;
   const w = W(p);
+  if (combat.rogue2) combat.rogue2.onSwing(p, step); // Duas Adagas: Leque de Facas, Golpe de Misericórdia
+  if (combat.claw2) combat.claw2.onSwing(p, step); // Garras: Rugido, Cortes de Vento, Marcas, Tigre, Afiar
+  lanceOnSwing(combat, p, step); // Lança: Estocada Fantasma, Arpão, Espinhos de Pedra, Troféus
+  fistOnSwing(combat, p, step); // Manopla: Pavio, Soco de Vento, disco, Pegar no Ar
   if (step.heavy && w.fireLine) { // Lança do Dragão
     const a = p.facing;
     combat.projectiles.fire(p.position.x + Math.sin(a) * 1.2, p.position.z + Math.cos(a) * 1.2, a, {
@@ -96,7 +119,11 @@ export function wbOnSwing(combat, p, step) {
 // Inimigo destruído pelo herói.
 export function wbOnKill(combat, e, by) {
   const w = W(by);
+  if (combat.rogue2) combat.rogue2.onKill(e, by); // Duas Adagas: adaga cravada, marca, cobra, sumir, frasco
+  if (combat.claw2) combat.claw2.onKill(e, by); // Garras: Matilha
   axeOnKill(combat, e, by); // Sede de Batalha, Racha-Crânios
+  axe3OnKill(combat, e, by); // Grito de Guerra, Futebol de Crânio
+  lanceOnKill(combat, e, by); // Lança: Cemitério de Lanças, Lança de Troféus
   if (w.killRamp) { by.rampStacks = Math.min(10, (by.rampStacks || 0) + 1); by.rampT = 6; }
   if (w.spreadBurn && e.burn > 0 && !e.burstFire) { // Contágio
     e.burstFire = true;
@@ -117,6 +144,7 @@ export function wbOnKill(combat, e, by) {
 // Estilhaçou um congelado (Cajado de Gelo).
 export function wbOnShatter(combat, p, e) {
   const w = W(p);
+  if (combat.ice2) combat.ice2.onShatter(p, e); // Floco Gigante, Estalagmites, Cristais
   if (!w.frostNova) return;
   const at = new THREE.Vector3(e.position.x, 0, e.position.z);
   combat.vfx.ring(at, 0x8fe3ff, 2.6);
@@ -136,6 +164,11 @@ export function wbOnBlock(combat, p, e, nx, nz) {
   const w = W(p);
   healP(combat, p, w.blockHeal);
   if (w.bashDmg && e.alive && e.targetable) combat.bonusDamage(e, Math.round(w.bashDmg * p.stats.damageMul), -nx, -nz, 'dmg', p);
+  // Reflexo (Mangual): contra-ataque automático no inimigo mais perto (player.js faz o golpe).
+  if (w.autoCounter && isFlail(p) && p.state !== 'dead') { // Reflexo (Mangual): lança a bola no inimigo mais distante
+    const t = flailCounterTarget(combat, p);
+    if (t) { p.flailLashTarget = t; p.counterAtk = { a: Math.atan2(t.position.x - p.position.x, t.position.z - p.position.z), step: LASH_STEP }; }
+  }
 }
 
 // Rapieira aparou um golpe.
@@ -161,6 +194,7 @@ export function wbTick(combat, dt) {
     if (p.wbDodgeT > 0) p.wbDodgeT -= dt;
     if (p.rampT > 0) { p.rampT -= dt; if (p.rampT <= 0) p.rampStacks = 0; }
   }
+  flailTick(combat, dt); // Mangual: marcas e correntes
   const f = combat.fireFields || (combat.fireFields = []);
   for (let i = f.length - 1; i >= 0; i--) {
     const z = f[i];

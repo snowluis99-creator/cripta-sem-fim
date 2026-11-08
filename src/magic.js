@@ -6,6 +6,10 @@ import { audio } from './audio.js';
 import { getGlowTexture } from './dungeon/builder.js';
 import { addFireField } from './wbhooks.js';
 import { markDark } from './undead.js';
+import { darkHeavy } from './darkkit.js';
+import { arcBeforeCast, arcCastToken, arcDecorate, arcAfterCast } from './arcanekit.js';
+import { isEle } from './elekit.js';
+import { fireConeMul, fireLineLen } from './firekit.js';
 
 const FREEZE_BOSS = 0.25; // chefes: 1/4 do tempo (comuns ficam o dobro do que ficavam; chefes, o mesmo de antes)
 
@@ -19,26 +23,34 @@ export function castSpell(combat, p, step) {
   const c = step.cast;
   const st = p.stats;
   const o = origin(p);
+  if (c.type === 'bolt' && !c.instant && arcBeforeCast(combat, p, step)) return; // Pancada de Cajado (Cajado Arcano)
   combat.spellCount = (combat.spellCount || 0) + 1;
   if (combat.log) combat.log({ type: 'swing', hits: 0, heavy: !!step.heavy, cast: c.type });
   if (step.heavy && st.echo > 0) combat.echoWave(p, Math.round(st.echo * st.damageMul));
+  darkHeavy(combat, p, step); // Tambores de Guerra (Cajado das Trevas)
+  if (combat.dark2) combat.dark2.heavyCast(p, step); // Coletora de Almas: o golpe forte dispara as almas
+  if (combat.ice2) combat.ice2.onCast(p, step); // Parede de Gelo / Granizo (Cajado de Gelo)
+  if (combat.fire2) combat.fire2.onCast(p, step); // Superaquecimento (Cajado de Fogo)
   const rangeMul = st.rangeMul || 1;
   if (c.type === 'bolt' && c.instant) { lightningCast(combat, p, step, o, rangeMul); return; }
   if (c.type === 'bolt') {
     if (c.roomZap) roomZap(combat, p, c.roomZap); // Cajado Elétrico: todo 3º golpe dá dano em todos da sala
     const n = c.count || 1;
+    const tok = arcCastToken(combat, p, step); // Cajado Arcano: bênçãos novas (arcanekit.js)
     for (let i = 0; i < n; i++) {
       const a = o.a + (n > 1 ? THREE.MathUtils.degToRad(c.spread) * (i - (n - 1) / 2) : 0);
-      combat.projectiles.fire(o.x, o.z, a, {
+      const pr = combat.projectiles.fire(o.x, o.z, a, {
         speed: c.speed, damage: step.damage, kind: c.star ? 'star' : c.shard ? 'shard' : 'orb', color: c.color, scale: c.size,
         hits: 'spell', owner: p, step, life: (p.hero.attackRange * rangeMul) / c.speed, height: 1.25, silent: true,
       });
+      if (tok) arcDecorate(combat, p, step, pr, tok);
     }
+    if (tok) arcAfterCast(combat, p, step, tok);
     audio.play(step.heavy ? 'swingHeavy' : 'orb', o.x, o.z);
     return;
   }
   if (c.type === 'beam' || c.type === 'fireline') {
-    const len = c.length * rangeMul;
+    let len = c.length * rangeMul;
     // Grimório: o raio mira sozinho na direção que pega mais esqueletos dentro do alcance.
     if (c.aimGroup) {
       const a = groupAngle(combat, p, len, c.width);
@@ -47,7 +59,9 @@ export function castSpell(combat, p, step) {
     const fx = Math.sin(o.a), fz = Math.cos(o.a);
     if (c.type === 'fireline') {
       // Cajado de Fogo: conjuração de fogo em linha reta (chama estreita + rastro no chão).
-      combat.vfx.flameCone(new THREE.Vector3(p.position.x, 1.1, p.position.z), o.a, len + 0.9, THREE.MathUtils.degToRad(11), c.color, false);
+      const far = fireLineLen(p, o.x, o.z, fx, fz); // Liberação Ardente: até a primeira parede
+      if (far) { len = far; combat.vfx.beamLine(new THREE.Vector3(o.x, 1.1, o.z), new THREE.Vector3(o.x + fx * len, 1.1, o.z + fz * len), 0xff5a1a, c.width * 1.1); }
+      combat.vfx.flameCone(new THREE.Vector3(p.position.x, 1.1, p.position.z), o.a, (far ? Math.min(len, 6) : len) + 0.9, THREE.MathUtils.degToRad(11), c.color, false);
       combat.vfx.beamLine(new THREE.Vector3(o.x, 0.5, o.z), new THREE.Vector3(o.x + fx * len, 0.5, o.z + fz * len), 0xffb04a, c.width * 0.8);
       combat.props.hitLine(o.x, o.z, o.x + fx * len, o.z + fz * len, c.width, p);
       audio.play('swingHeavy', o.x, o.z);
@@ -77,7 +91,7 @@ export function castSpell(combat, p, step) {
     return;
   }
   if (c.type === 'cone') {
-    const range = c.range * rangeMul, half = THREE.MathUtils.degToRad(c.arc / 2);
+    const range = c.range * rangeMul * fireConeMul(p), half = THREE.MathUtils.degToRad(c.arc / 2);
     // Grimório: o cone mira sozinho na direção que pega mais esqueletos dentro do alcance.
     if (c.aimGroup) {
       const a = groupAngle(combat, p, range, 0, half);
@@ -101,7 +115,10 @@ export function castSpell(combat, p, step) {
     return;
   }
   if (c.type === 'nova') { // explosão de fogo em volta da Maga: acerta todos perto, em 360°
-    const radius = c.radius * rangeMul;
+    // Cajado de Fogo: Chama Interior / Cinzas (maior e mais forte) e Reação em Cadeia (quem já queimava).
+    const boost = combat.fire2 ? combat.fire2.novaBoost(p, c.radius * rangeMul) : { r: 1, dmg: 1, pre: [] };
+    const radius = c.radius * rangeMul * boost.r;
+    if (boost.dmg !== 1) step = { ...step, damage: step.damage * boost.dmg };
     const at = new THREE.Vector3(p.position.x, 0, p.position.z);
     combat.vfx.flameCone(new THREE.Vector3(p.position.x, 1.0, p.position.z), o.a, radius * 0.75, Math.PI, c.color, true);
     combat.vfx.flameCone(new THREE.Vector3(p.position.x, 0.6, p.position.z), o.a + Math.PI, radius * 0.6, Math.PI, 0xff7a2a, true);
@@ -118,6 +135,7 @@ export function castSpell(combat, p, step) {
       if (spellHit(combat, p, e, step, dx / d, dz / d)) hits++;
     }
     hitFeel(combat, p, step, hits, o);
+    if (combat.fire2) combat.fire2.onNova(p, step, radius, boost); // Reação em Cadeia, Fogos, Vulcão, Propulsão, Anel, Fumaça
   }
 }
 
@@ -137,7 +155,11 @@ function pickLightning(combat, x, z, a, range, skip) {
   }
   return best;
 }
-function lightningCast(combat, p, step, o, rangeMul) {
+function lightningCast(combat, p, step0, o, rangeMul) {
+  const K = isEle(p) ? combat.ele : null; // Cajado Elétrico: bênçãos novas (elekit.js)
+  const tok = K ? K.beginCast(p, step0) : null;
+  const step = tok ? tok.step : step0;
+  const width = tok ? tok.width : 0.22;
   const c = step.cast;
   if (c.roomZap) roomZap(combat, p, c.roomZap); // todo 3º golpe dá dano em todos da sala
   const range = p.hero.attackRange * rangeMul, n = c.count || 1, used = new Set();
@@ -148,27 +170,31 @@ function lightningCast(combat, p, step, o, rangeMul) {
     const targets = [];
     let t = pickLightning(combat, p.position.x, p.position.z, a, range, used);
     while (t) {
+      if (K && targets.length) K.onJump(p, targets[targets.length - 1], t); // Rede Elétrica
       targets.push(t); used.add(t);
       if (targets.length > (c.pierce || 0)) break;
       t = pickLightning(combat, t.position.x, t.position.z, Math.atan2(t.position.x - p.position.x, t.position.z - p.position.z), range * 0.6, used);
     }
     if (!targets.length) {
       const end = new THREE.Vector3(p.position.x + fx * range, 1.1, p.position.z + fz * range);
-      combat.vfx.lightning(from, end, c.color);
+      combat.vfx.lightning(from, end, c.color, width);
       combat.props.hitLine(p.position.x, p.position.z, end.x, end.z, 0.8, p);
+      if (K) K.onStrikePoint(p, end.x, end.z); // Poça Elétrica
       if (c.blast) boltImpact(combat, { x: end.x, z: end.z, vx: fx, vz: fz, step, owner: p }, null);
       continue;
     }
     for (const e of targets) {
       const to = new THREE.Vector3(e.position.x, 1.2, e.position.z);
-      combat.vfx.lightning(from, to, c.color);
+      combat.vfx.lightning(from, to, c.color, width);
       const dx = to.x - p.position.x, dz = to.z - p.position.z, d = Math.hypot(dx, dz) || 1;
+      if (K) K.onStrikePoint(p, to.x, to.z); // Poça Elétrica
       if (e.targetable) boltImpact(combat, { x: to.x, z: to.z, vx: dx / d, vz: dz / d, step, owner: p }, e);
       from = to;
     }
     if (combat.log) combat.log({ type: 'lightning', targets: targets.length });
   }
-  audio.play('zap', o.x, o.z);
+  audio.play('thunder', o.x, o.z); // estalo de raio a cada golpe
+  if (K) K.endCast(tok); // Ímã, Ping-Pong, Ionizar, Pulso, Torre, Nuvem, Blecaute, Choque Amigo
 }
 
 // Direção (ângulo) do raio/cone que acerta mais esqueletos ao alcance; empate = a mais perto de onde ela olha. null = ninguém.
@@ -213,15 +239,20 @@ export function spellHit(combat, p, e, step, nx, nz) {
   if (c.darkMark && e.targetable) markDark(combat, p, e); // Cajado das Trevas: 3º golpe marca (antes do dano: o golpe que mata também vale)
   const r = combat.damageEnemy(p, e, step, nx, nz, { spell: true, staggers: true }); // toda magia interrompe (igual à espada)
   if (!r) return false;
+  if (c.darkMark && combat.dark2) combat.dark2.onHeavyHit(p, e, step); // Pavor / Possessão (Cajado das Trevas)
+  if ((r === 'hit' || r === 'kill') && combat.ele && isEle(p)) combat.ele.onRay(p, e, step, r); // Cajado Elétrico: cada raio que acerta
   if (!e.alive) return true;
+  if (r === 'hit' && combat.arcane) combat.arcane.onSpellHit(p, e, step); // Constelação, veneno do Caos Arcano
   // 3º golpe do Grimório: empurra mais para trás.
   if (c.knock && r === 'hit' && e.vel) e.vel.set(nx, 0, nz).multiplyScalar(c.knock * Math.max(e.data.knockback ?? 1, 0.35));
   if (c.slow) e.slow = Math.max(e.slow || 0, c.slow);
+  if (combat.ice2) combat.ice2.onSpellHit(p, e, step); // Encharcado / Avalanche Lenta (Cajado de Gelo)
   const w = p.stats.w || {};
-  if (c.burn) { e.burn = 3 + (w.burnTime || 0); e.burnDps = c.burn * p.stats.damageMul; e.burnTick = 0.5; e.burnBy = p; }
+  if (c.burn) { e.burn = 3 + (w.burnTime || 0); e.burnDps = c.burn * p.stats.damageMul; e.burnTick = 0.5; e.burnBy = p; if (combat.fire2) combat.fire2.onFireHit(p, e, step); } // Fogo Azul (Cajado de Fogo)
   // Congelar (3º golpe do Cajado de Gelo) pega sempre, até no meio de um golpe ou habilidade.
-  if (c.freeze && e.freeze) {
+  if (c.freeze && e.freeze && e.alive) {
     e.freeze(c.freeze * (e.data.boss ? FREEZE_BOSS : 1), combat);
+    if (combat.ice2) combat.ice2.onHeavyFreeze(p, e); // Pista de Gelo
     if (w.freezeAoe) { // Zero Absoluto: congela também quem estiver perto
       for (const o of combat.enemies) {
         if (o === e || !o.targetable || !o.freeze || o.data.boss) continue;
@@ -262,6 +293,7 @@ export function boltImpact(combat, a, target) {
       const dx = o.position.x - target.position.x, dz = o.position.z - target.position.z, d = Math.hypot(dx, dz) || 0.01;
       if (d > c.chain + o.data.radius) continue;
       combat.vfx.bolt(from, new THREE.Vector3(o.position.x, 1.3, o.position.z), c.color);
+      if (combat.ele && isEle(p)) combat.ele.onJump(p, target, o); // Rede Elétrica
       if (spellHit(combat, p, o, step, dx / d, dz / d)) hits++;
     }
   }
@@ -287,6 +319,7 @@ export function boltImpact(combat, a, target) {
       if (spellHit(combat, p, e, step, dx / d, dz / d)) hits++;
     }
   } else combat.vfx.sparks(new THREE.Vector3(a.x, 1.2, a.z), c.color, 8);
+  if (combat.arcane) combat.arcane.onBolt(a, target, hits); // Cajado Arcano: Armadura, Bolha, Repulsor, Ressonância...
   hitFeel(combat, p, step, hits, a);
 }
 

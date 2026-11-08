@@ -27,7 +27,7 @@ export function initShield(p, mesh) {
 export function shieldVisual(p) {
   if (!p.shieldMesh) return;
   const max = shieldMax(p), k = Math.max(0, p.shield) / max;
-  p.shieldMesh.visible = p.shield > 0 && !p.shieldAway; // shieldAway: arremessado/fincado/trenó (knightkit.js)
+  p.shieldMesh.visible = (p.shield > 0 || !!(p.kit && p.kit.swapMesh)) && !p.shieldAway; // Mãos Trocadas: o escudo é a arma // shieldAway: arremessado/fincado/trenó (knightkit.js)
   for (const { m, c } of p.shieldMats) m.color.copy(c).lerp(new THREE.Color(0x5a2a1a), (1 - k) * 0.55);
   p.shieldShown = p.shield;
 }
@@ -50,6 +50,16 @@ export function useShield(p, combat, attacker) {
   if (p.shield > 0) return 'block';
   breakShield(p, combat, attacker);
   return 'break';
+}
+
+// Gasta 1 carga do escudo sem bloquear nada (Trenó de Escudo, Cavalo Fantasma). Devolve true se quebrou.
+export function spendShield(p, combat) {
+  p.forgeT = 0;
+  p.shield = Math.max(0, p.shield - 1);
+  shieldVisual(p);
+  if (p.shield > 0) return false;
+  breakShield(p, combat, null);
+  return true;
 }
 
 function breakShield(p, combat, attacker) {

@@ -119,7 +119,7 @@ export function leapSpot(e, ctx, dist) {
 
 function startLeap(e, ctx) {
   const L = e.data.leap;
-  const spot = leapSpot(e, ctx, L.behind);
+  const spot = (ctx.combat && ctx.combat.rap && ctx.combat.rap.capeLeap(e, ctx)) || leapSpot(e, ctx, L.behind); // Capa do Toureiro (Rapieira): passa por cima até a parede
   if (!spot) { e.cd.leap = 1; return false; }
   start(e, 'leap');
   e.cd.leap = rand(L.cooldown); // recarga começa no pulo (o golpe depois do pulo também renova)
@@ -140,7 +140,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
     case 'leap': {
       const L = d.leap, k = Math.min(1, e.t / L.time);
       // Recalcula o destino no começo do salto se o herói se mexeu muito (continua caindo nas costas dele).
-      if (k < 0.35) {
+      if (k < 0.35 && !e.rapCapeLeap) {
         const s = leapSpot(e, ctx, L.behind);
         if (s) e.leapTo = s;
       }
@@ -150,10 +150,11 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       // Encostou no herói durante o salto (baixo, não por cima da cabeça): agarra e imobiliza.
       // (só se o herói se mexeu para dentro do salto: parado, o esqueleto passa por cima e cai nas costas).
       const moved = e.leapHero ? Math.hypot(p.position.x - e.leapHero.x, p.position.z - e.leapHero.z) : 0;
-      if (L.grab && k > 0.12 && e.group.position.y < 1.1 && moved > 0.6 && canGrab(e, p)) { startGrab(e, ctx, p); return { target: toPlayer, turn: 20 }; }
+      if (L.grab && !e.rapCapeLeap && k > 0.12 && e.group.position.y < 1.1 && moved > 0.6 && canGrab(e, p)) { startGrab(e, ctx, p); return { target: toPlayer, turn: 20 }; }
       if (k >= 1) {
         e.group.position.y = 0;
         combat.vfx.dust(e.position, new THREE.Vector3(0, 0, 0), 5);
+        if (combat.rap && combat.rap.capeLand(e)) return null; // Capa do Toureiro: bateu na parede
         e.setState('leapWind');
         e.anim.play(d.anims.idle, { fade: 0.08 });
       }
@@ -202,6 +203,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
       const C = d.charge;
       const fx = Math.sin(e.facing), fz = Math.cos(e.facing);
       let left = C.speed * dt, stop = false;
+      e.chargeWall = false;
       while (left > 0 && !stop) {
         const st = Math.min(0.3, left);
         left -= st; e.chargeLeft -= st;
@@ -209,7 +211,7 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
         e.position.x += fx * st; e.position.z += fz * st;
         ctx.world.resolveCircle(e.position, d.radius);
         const moved = Math.hypot(e.position.x - bx, e.position.z - bz);
-        if (moved < st * 0.5) stop = true; // bateu na parede
+        if (moved < st * 0.5) { stop = true; e.chargeWall = true; } // bateu na parede
         // Morto-vivo da Maga: atropela os inimigos no caminho (cada um uma vez).
         if (e.undead) {
           for (const o of combat.enemies) {
@@ -226,13 +228,16 @@ export function runAbility(e, dt, ctx, { dist, toPlayer }) {
           if (Math.hypot(h.position.x - e.position.x, h.position.z - e.position.z) >= d.radius + h.hero.radius + 0.5) continue;
           (e.chargeHit ||= new Set()).add(h);
           e.hitDone = true;
-          combat.hitPlayer(e, C.damage, { push: C.push, target: h });
+          const landed = combat.hitPlayer(e, C.damage, { push: C.push, target: h });
           if (e.state !== 'charge') return null; // o escudo do herói empurrou de volta
+          if (!landed && combat.rap && combat.rap.capeCharge(e, true)) continue; // Capa do Toureiro (Rapieira): errou, passa direto
           stop = true;
         }
-        if (e.chargeLeft <= 0) stop = true;
+        if (e.chargeLeft <= 0 && !(combat.rap && !e.rapCape && combat.rap.capeCharge(e, !e.hitDone))) stop = true; // Capa do Toureiro: passou direto, segue até a parede
       }
       if (Math.random() < dt * 30) combat.vfx.dust(e.position, new THREE.Vector3(-fx, 0, -fz), 1);
+      if (stop && combat.log) combat.log({ type: 'chargeStop', enemy: e, wall: !!e.chargeWall, left: e.chargeLeft, cape: !!e.rapCape });
+      if (stop && combat.rap && combat.rap.capeCrash(e, e.chargeWall)) { e.cd.charge = rand(C.cooldown); return null; } // Capa do Toureiro: bateu na parede
       if (stop) {
         combat.cam.shake(0.15);
         e.setState('recover');

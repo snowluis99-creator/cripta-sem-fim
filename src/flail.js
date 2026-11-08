@@ -67,7 +67,10 @@ export function updateFlail(g, dt) {
   g.updateWorldMatrix(true, false);
   const anchor = tmp.copy(f.anchor).applyMatrix4(g.matrixWorld);
   const len = CHAIN * g.getWorldScale(tmp2).y;
-  if (!f.pos || dt <= 0 || dt > 0.2) {
+  if (f.lash) { // Reflexo (flailkit): bola lançada em linha reta até o alvo, corrente esticada
+    f.pos = anchor.clone().lerp(tmp2.set(f.lash.x, f.lash.y, f.lash.z), f.lash.k);
+    f.prev = f.pos.clone();
+  } else if (!f.pos || dt <= 0 || dt > 0.2) {
     f.pos = anchor.clone().add(new THREE.Vector3(0, -len, 0));
     f.prev = f.pos.clone();
   } else {
@@ -87,6 +90,13 @@ export function updateFlail(g, dt) {
   f.ball.position.copy(b);
   const dir = tmp2.subVectors(b, a);
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  if (!f.rope) { // corrente esticada (só aparece com a bola lançada)
+    f.rope = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1, 6, 1, true), materials().metal);
+    g.add(f.rope);
+  }
+  const far = dir.length() > CHAIN * 1.6;
+  f.rope.visible = far;
+  if (far) { f.rope.position.copy(a).addScaledVector(dir, 0.5); f.rope.quaternion.copy(q); f.rope.scale.set(1, dir.length(), 1); }
   f.links.forEach((l, i) => {
     l.position.copy(a).addScaledVector(dir, (i + 0.5) / LINKS);
     l.quaternion.copy(q);

@@ -1,6 +1,6 @@
 // Teste automático, parte 7 (M5): Taverna, suporte de armas, Ouro de Alma e salvamento.
 // Tecla Y = tudo; tecla 7 = só esta parte.
-import { resetSave, cleanUps } from './save.js';
+import { resetSave, cleanUps, TEST_KEY } from './save.js';
 import { shieldMax } from './shield.js';
 import { WEAPONS, WEAPON_PRICE } from './heroes.js';
 import { rollBlessings } from './blessings.js';
@@ -45,7 +45,7 @@ export function* tavernTests(g, out, flags) {
   buy('machado');
   out(`  voltar ao Machado não cobra ${ok(player.weaponId === 'machado' && save.data.soul === 0)}`);
   let stored = null;
-  try { stored = JSON.parse(localStorage.getItem('cripta.save')); } catch (e) { /* sem armazenamento */ }
+  try { stored = JSON.parse(localStorage.getItem(TEST_KEY)); } catch (e) { /* sem armazenamento */ }
   out(`  salvo no navegador: ${ok(stored && stored.ups.w_knight_machado === 1 && stored.ups.w_knight_lanca === 1 && stored.ups.eq_knight === 1)}`);
   const old = cleanUps({ vida: 2, fenix: 1, w_knight_lanca: 1 });
   out(`  melhorias antigas devolvem o Ouro de Alma: ${old.refund} ${ok(old.refund === 40 + 70 + 350 && !old.ups.vida && old.ups.w_knight_lanca === 1)}`);

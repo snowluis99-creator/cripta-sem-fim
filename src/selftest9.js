@@ -154,6 +154,15 @@ export function* newTests(g, out, flags) {
   run.take(pot, player);
   run.take(bl, player);
   out(`  Negociador: poção de graça ${ok(player.potions === pots + 1 && player.gold === 0)} | 2ª compra cobra ${ok(!bl.boughtBy.has(player))}`);
+  // Negociador comprado no mercador: a próxima compra já sai de graça (07/11 noite) e ele é épico.
+  run.openShop();
+  const bl2 = run.pickups.find((p) => p.opts.item === 'blessing' && !p.taken), pot2 = run.pickups.find((p) => p.opts.item === 'potion' && !p.taken);
+  player.freeBuyReady = false; bl2.opts.blessing = BLESSING_BY_ID.negociador; player.gold = bl2.opts.price;
+  run.take(bl2, player);
+  const pots2 = player.potions;
+  out(`  comprou o Negociador: pagou ${ok(player.gold === 0)} | próxima grátis ${ok(player.freeBuyReady === true)}`);
+  run.take(pot2, player);
+  out(`  poção de graça logo depois ${ok(player.potions === pots2 + 1 && player.gold === 0)} | raridade épica ${ok(BLESSING_BY_ID.negociador.rarity === 'epic')}`);
   // Sala do chefe (Grande Salão).
   run.enter({ kind: 'elite', reward: 'elite', room: 'salao', waves: [[['minion', 3]]], level: 5 }, true);
   const ally = run.npc;

@@ -26,7 +26,7 @@ export function* m4Tests(g, out, flags) {
   out('20) Bênçãos (30 no total)');
   fresh();
   const sede = BLESSING_BY_ID.sede;
-  out(`  total ${BLESSINGS.length} (35 + 5 arriscadas + 12 da ultimate + 170 das armas + 8 do co-op): ${ok(BLESSINGS.length === 230)} | Sede de Sangue lendária, máx. 1: ${ok(sede.rarity === 'legendary' && sede.max === 1)}`);
+  out(`  total ${BLESSINGS.length} (31 + 5 arriscadas + 12 da ultimate + 336 das armas + 8 do co-op): ${ok(BLESSINGS.length === 392)} | Sede de Sangue lendária, máx. 1: ${ok(sede.rarity === 'legendary' && sede.max === 1)}`);
 
   // Sem Limites (+30%): alcança um esqueleto a 120% do alcance.
   let e = dummy(0, -6);
@@ -55,26 +55,8 @@ export function* m4Tests(g, out, flags) {
   combat.playerStrike(player, { ...hero.combo[0], damage: 10 });
   out(`  Execução: golpe de 10 num esqueleto quase morto tirou ${lastDmg()} ${ok(lastDmg() >= 13)}`);
 
-  fresh(); give('contra', 4);
-  e = dummy(0, -1);
-  press('Space'); yield 0.05;
-  combat.hitPlayer(e, 10);
-  yield 0.6;
-  const ready = player.counterReady;
-  player.position.set(0, 0, 2); e.hp = 999; e.position.set(0, 0, 0.4); face(e);
-  combat.playerStrike(player, { ...hero.combo[0], damage: 10 });
-  out(`  Contra-Ataque ×4: escapou rolando -> pronto ${ok(ready)} | próximo golpe tirou ${lastDmg()} ${ok(lastDmg() >= 18)} | gastou ${ok(!player.counterReady)}`);
-
-  fresh(); give('reflexo');
-  e = dummy(0, -1);
-  const sp0 = player.atkSpeed;
-  press('Space'); yield 0.05;
-  combat.hitPlayer(e, 10);
-  const armed = player.reflexCombo === 'armed';
-  yield 0.6;
-  player.newCombo(); const rx1 = player.atkSpeed;
-  player.newCombo(); const rx2 = player.atkSpeed;
-  out(`  Reflexo: escapou rolando -> próximo combo ${sp0.toFixed(2)} -> ${rx1.toFixed(2)} ${ok(armed && rx1 > sp0 + 0.25)} | combo seguinte volta ${ok(Math.abs(rx2 - sp0) < 0.01)}`);
+  // Contra-Ataque e Reflexo saíram (v169).
+  out(`  Contra-Ataque/Reflexo/Esquiva Envolvente saíram ${ok(!BLESSING_BY_ID.contra && !BLESSING_BY_ID.reflexo && !BLESSING_BY_ID.esqult)}`);
 
   fresh(); give('eco');
   const far = dummy(0, 2 - 7); far.hp = 999;
@@ -120,7 +102,8 @@ export function* m4Tests(g, out, flags) {
   for (let i = 0; i < 5; i++) { const d = dummy(i * 2 - 4, -4); d.die(); combat.killed(d, 0, 1); }
   out(`  Ceifador: 5 mortes -> +${player.stats.reaperStacks * 2}% de dano ${ok(player.stats.reaperStacks === 5)}`);
 
-  fresh(); give('folego');
+  fresh(); player.hp = 50; give('folego');
+  out(`  Fôlego: curou 10 na hora ${ok(player.hp === 60)}`);
   player.hp = 50;
   run.enter({ kind: 'combat', reward: 'gold', room: 'guarita', waves: [[['minion', 1]]], level: 1 }, true);
   waves.stop();
@@ -367,9 +350,11 @@ function* newGeneral(g, out, flags, t) {
   // Mãos Leves ×5: +75% de velocidade.
   fresh(); const s0 = player.atkSpeed; give('maos', 5);
   out(`  Mãos Leves ×5: golpes ${s0.toFixed(2)} -> ${player.atkSpeed.toFixed(2)} ${ok(Math.abs(player.atkSpeed - s0 - 0.75) < 0.01)}`);
-  // Habilidoso ×3: +15% de crítico.
+  // Habilidoso ×3: +30% de crítico (10% por nível desde 06/11).
   fresh(); const c0 = player.stats.critChance; give('habil', 3);
-  out(`  Habilidoso ×3: crítico +${Math.round((player.stats.critChance - c0) * 100)}% ${ok(Math.abs(player.stats.critChance - c0 - 0.15) < 0.001)}`);
+  out(`  Habilidoso ×3: crítico +${Math.round((player.stats.critChance - c0) * 100)}% ${ok(Math.abs(player.stats.critChance - c0 - 0.3) < 0.001)}`);
+  fresh(); const ev0 = player.stats.evade; give('furtivo', 2);
+  out(`  Furtivo ×2: desvio +${Math.round((player.stats.evade - ev0) * 100)}% ${ok(Math.abs(player.stats.evade - ev0 - 0.2) < 0.001)}`);
   // Furtivo: com 100% de desvio nada machuca.
   fresh(); give('furtivo'); player.stats.evade = 1;
   e = dummy(0, 0.5); const hf = player.hp;
@@ -388,32 +373,39 @@ function* newGeneral(g, out, flags, t) {
   e = dummy(0, 0.4); e.hp = 999; face(e);
   combat.playerStrike(player, hero.combo[hero.heavyIdx]);
   out(`  Frenesi ×2: atordoado ${st0.toFixed(2)} s -> ${e.stunTime.toFixed(2)} s ${ok(e.stunTime > st0 * 1.45)}`);
-  // Esquiva Envolvente: rolar por um projétil enche 1 da ultimate (só 1 vez por minuto).
-  fresh(); give('esqult'); player.ult = 0;
-  player.dodgeUltCd = 0; combat.dodgeUlt(player); const u1 = player.ult; combat.dodgeUlt(player);
-  out(`  Esquiva Envolvente: +1 ultimate ${ok(u1 === 1)} | 2ª no mesmo minuto não conta ${ok(player.ult === 1)}`);
   // Poção Concentrada: depois de beber, o próximo dano é anulado.
-  fresh(); give('pocaoesc'); player.potions = 2; player.hp = 30;
+  fresh(); player.potions = 1; give('pocaoesc'); const pz = player.potions; player.potions = 2; player.hp = 30;
   press('KeyQ'); yield () => player.state !== 'drink'; yield 0.2;
   e = dummy(0, 0.5); const hp1 = player.hp; combat.hitPlayer(e, 20); const hp2 = player.hp;
   player.iframes = 0; combat.hitPlayer(e, 20);
-  out(`  Poção Concentrada: 1º dano anulado ${ok(hp2 === hp1)} | 2º machuca ${ok(player.hp < hp2)}`);
+  out(`  Poção Concentrada: deu 1 poção ${ok(pz === 2)} | 1º dano anulado ${ok(hp2 === hp1)} | 2º machuca ${ok(player.hp < hp2)}`);
+  // Coração de Fênix: volta com metade da vida e 3 s invencível.
+  fresh(); give('fenix'); player.hp = 0; player.die();
+  out(`  Coração de Fênix: voltou com metade ${ok(player.hp === Math.round(player.maxHp / 2))} | invencível 3 s ${ok(player.iframes === 3 && player.invulnerable)}`);
   // Fúria: com 10% de vida, +50% (×2).
   fresh(); give('furia2', 2);
   e = dummy(0, 0.4); e.hp = 999; face(e);
-  player.hp = Math.floor(player.maxHp * 0.1);
+  player.hp = Math.floor(player.maxHp * 0.45);
   combat.playerStrike(player, { ...hero.combo[0], damage: 20 });
   const fr = lastDmg();
   player.hp = player.maxHp; combat.playerStrike(player, { ...hero.combo[0], damage: 20 });
-  out(`  Fúria ×2: com 10% de vida tirou ${fr} ${ok(fr >= 27)} | vida cheia ${lastDmg()} ${ok(lastDmg() <= 22)}`);
-  // Quebra-Gelo: só o 1º ataque da sala.
-  fresh(); give('quebragelo', 2);
+  out(`  Fúria ×2: com 45% de vida tirou ${fr} ${ok(fr >= 27)} | vida cheia ${lastDmg()} ${ok(lastDmg() <= 22)}`);
+  // Quebra-Gelo: o 1º combo da sala que acertar = dano dobrado e crítico; vale já na sala em que é escolhida.
+  fresh();
   run.enter({ kind: 'combat', reward: 'gold', room: 'guarita', waves: [[['minion', 1]]], level: 1 }, true);
   g.waves.stop(); combat.clear(); player.position.set(0, 0, 2); flags.events.length = 0;
+  run.grantBlessing(BLESSINGS.find((x) => x.id === 'quebragelo'), player);
+  const qReady = player.openerReady === true;
   e = dummy(0, 0.4); e.hp = 999; face(e);
+  player.newCombo();
   combat.playerStrike(player, { ...hero.combo[0], damage: 20 }); const qa = lastDmg();
-  combat.playerStrike(player, { ...hero.combo[0], damage: 20 }); const qb = lastDmg();
-  out(`  Quebra-Gelo ×2: 1º ataque ${qa} ${ok(qa >= 30)} | 2º normal ${qb} ${ok(qb <= 22)}`);
+  combat.playerStrike(player, { ...hero.combo[1], damage: 20 }); const qb = lastDmg();
+  player.newCombo();
+  combat.playerStrike(player, { ...hero.combo[0], damage: 20 }); const qc = lastDmg();
+  run.enter({ kind: 'combat', reward: 'gold', room: 'guarita', waves: [[['minion', 1]]], level: 1 }, true);
+  const qNext = player.openerReady === true;
+  g.waves.stop(); combat.clear();
+  out(`  Quebra-Gelo: vale na sala da escolha ${ok(qReady)} | 1º combo dobrado e crítico ${qa}/${qb} ${ok(qa >= 70 && qb >= 70)} | combo seguinte normal ${qc} ${ok(qc <= 22)} | sala nova de novo ${ok(qNext)}`);
   // Potência: o último golpe do combo arranca o escudo do Guerreiro.
   fresh(); give('potencia');
   e = dummy(0, 0.4, 'warrior'); e.hp = e.maxHp = 999; face(e);
@@ -422,12 +414,8 @@ function* newGeneral(g, out, flags, t) {
   yield 1.2; e.setState('chase'); face(e);
   combat.playerStrike(player, { ...hero.combo[0], damage: 10 });
   out(`  Potência: escudo arrancado ${ok(broke)} | golpe leve depois entra ${ok(flags.last('hit') && !flags.events.slice(-3).some((x) => x.type === 'blocked'))}`);
-  // Saque Rápido ×5: rolar por dentro tira 5.
-  fresh(); give('saque', 5);
-  e = dummy(0, 0.6); e.hp = 999; player.facing = Math.PI; player.position.set(0, 0, 2);
-  press('Space'); yield 0.5;
-  const rh = flags.events.filter((x) => x.type === 'rollHit');
-  out(`  Saque Rápido ×5: rolou por dentro -> ${rh.length} acerto de ${rh[0] ? rh[0].dmg : 0} ${ok(rh.length === 1 && rh[0].dmg === 5)}`);
+  // Saque Rápido: tirado do jogo (08/11, pedido do dono).
+  out(`  Saque Rápido saiu ${ok(!BLESSINGS.some((b) => b.id === 'saque'))}`);
   // Perfect ×2: +4 por golpe; tomou dano zera.
   fresh(); give('perfect', 2);
   e = dummy(0, 0.4); e.hp = 9999; face(e);

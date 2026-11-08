@@ -10,6 +10,7 @@ import { instance } from './assets.js';
 import { setFlash } from './characters.js';
 import { getGlowTexture } from './dungeon/builder.js';
 import { addBleed, wbOnParry } from './wbhooks.js';
+import { KunaiKit, KUN } from './kunaikit.js';
 
 const W = (p) => (p && p.stats && p.stats.w) || {};
 const kMax = (p) => KUNAI.maxStack + (W(p).kMax || 0);
@@ -22,7 +23,7 @@ export const KUNAI = {
   pickR: 1.15,                         // pegar do chão andando por cima
   color: 0x6fe3ff,
 };
-export const BOLT = { speed: 40, life: 4, pickR: 1.15, color: 0xffc46a };
+export const BOLT = { speed: 40, life: 4, pickR: 2.2, color: 0xffc46a }; // pickR: 07/11 noite, maior (virote caído atrás de objetos)
 export const SMOKE = { time: 2, cooldown: 9 };
 export const PARRY = { window: 0.2, total: 0.42, cooldown: 0.45, stun: 1.2, iframes: 0.35 };
 export const ROGUE_ULT = { name: 'Precisão Invejável', time: 5 };
@@ -69,7 +70,11 @@ export class RogueKit {
     this.items = [];    // { kind, owner, state: 'fly'|'pop'|'ground', x, z, ... }
     this.seq = 100000;  // ids para o co-op (não bater com os projéteis comuns)
     this.room = -1;
+    this.k2 = new KunaiKit(this); // bênçãos novas das Kunais (kunaikit.js / kunaiprops.js)
   }
+  maxStack(p) { return kMax(p); }
+  // Dano da kunai com a corrente dada (Kunai Afiada, Corrente Forte, limite da corrente).
+  kunaiDamage(p, stack) { const w = W(p); return KUNAI.base + (w.kBase || 0) + (KUNAI.perStack + (w.kPer || 0)) * Math.min(stack, kMax(p)); }
 
   // ---------- Munição do herói ----------
   // Enche a mão (nova sala, troca de arma, começo da descida) e tira do chão o que era dele.
@@ -87,7 +92,7 @@ export class RogueKit {
     if (it.mark) this.scene.remove(it.mark);
     this.items.splice(i, 1);
   }
-  clear() { for (let i = this.items.length - 1; i >= 0; i--) this.drop(i); }
+  clear() { for (let i = this.items.length - 1; i >= 0; i--) this.drop(i); this.k2.clear(); }
 
   // Ladino levou dano: todas as kunais dele (na mão, no ar, no chão) voltam ao dano do começo.
   breakStreak(p) {
@@ -107,10 +112,10 @@ export class RogueKit {
   }
 
   // Golpe de arremesso (chamado no momento do golpe em vez do corte): kunai ou virote.
-  fire(p, step) {
+  fire(p, step, aim = null, src = 'shot') { // aim: ângulo próprio (Leque); src: 'shot' | 'roll' | 'auto' (Besta, boltkit.js)
     const c = this.takeCharge(p);
     if (!c) return;
-    const kind = step.throw, a = p.facing;
+    const kind = step.throw, a = aim === null ? p.facing : aim;
     const x = p.position.x + Math.sin(a) * 0.8, z = p.position.z + Math.cos(a) * 0.8;
     const cfg = kind === 'kunai' ? KUNAI : BOLT;
     const g = makeRogueShot(kind);
@@ -120,6 +125,8 @@ export class RogueKit {
     this.items.push({ id: ++this.seq, kind, owner: p, state: 'fly', x, z, y: 1.3, a, vx: Math.sin(a) * cfg.speed, vz: Math.cos(a) * cfg.speed,
       life: cfg.life, stack: kind === 'kunai' ? c.stack : 0, g, step, sneak: !!p.sneakCrit,
       pierce: kind === 'kunai' ? (W(p).kPierce || 0) : (W(p).bPierce || 0), hitSet: new Set() });
+    if (kind === 'kunai') this.k2.onFire(p, this.items[this.items.length - 1]); // Malabarista, Bumerangue
+    else if (this.combat.bolt) this.combat.bolt.onFire(p, this.items[this.items.length - 1], src); // Besta: Recarga Perfeita, Mira, Roleta, Recuo
     p.sneakCrit = false;
     audio.play(kind === 'kunai' ? 'swing' : 'arrow', x, z);
     if (this.combat.log) this.combat.log({ type: 'rogueFire', kind, stack: c.stack });
@@ -129,10 +136,14 @@ export class RogueKit {
   hitEnemy(it, e) {
     const sp = Math.hypot(it.vx, it.vz) || 1, nx = it.vx / sp, nz = it.vz / sp;
     const w = W(it.owner);
-    const dmg = it.kind === 'kunai' ? KUNAI.base + (w.kBase || 0) + (KUNAI.perStack + (w.kPer || 0)) * Math.min(it.stack, kMax(it.owner)) : it.step.damage;
+    const dmg = it.kind === 'kunai' ? this.kunaiDamage(it.owner, it.stack) : it.step.damage;
     const step = { damage: dmg, heavy: false };
     const crit = it.sneak || (it.kind === 'kunai' && w.kCrit && it.stack >= w.kCrit); // Tempestade de Aço
+    const pierceShield = (it.sniper || it.divine) && !e.rapPierced; // Mira de Atirador / Divindade: atravessa o escudo
+    if (pierceShield) e.rapPierced = true;
     const r = this.combat.damageEnemy(it.owner, e, step, nx, nz, { ranged: true, forceCrit: crit });
+    if (pierceShield) e.rapPierced = false;
+    if (it.kind === 'bolt' && this.combat.bolt) this.combat.bolt.onHit(it, e, r); // Besta: Eco, Prego, Âncora, Roleta, Mira
     if ((r === 'hit') && e.alive && it.kind === 'kunai' && w.kBleed && it.stack >= w.kBleed) addBleed(this.combat, it.owner, e, 1); // Ponta Envenenada
     if ((r === 'hit' || r === 'kill') && it.kind === 'bolt' && w.bBlast) this.boltBlast(it, e, w.bBlast); // Virote Explosivo
     return r;
@@ -153,7 +164,8 @@ export class RogueKit {
   }
 
   // Item vira "no chão" num ponto (fica parado até o dono passar por cima).
-  toGround(it, x, z, reset = false) {
+  toGround(it, x, z, reset = false, why = '') {
+    if (it.fake && this.combat.bolt) { this.combat.bolt.fakeEnd(it, x, z); return; } // Besta: virote extra (Divisor, Eco, torre) some
     const v = new THREE.Vector3(x, 0, z);
     const w = this.combat.world;
     if (w) { w.resolveCircle(v, 0.45); if (w.clampInside) w.clampInside(v, 0.45); }
@@ -168,6 +180,8 @@ export class RogueKit {
     it.mark.position.set(v.x, 0.09, v.z);
     this.scene.add(it.mark);
     it.t = 0;
+    if (it.kind === 'kunai') this.k2.onGround(it, why); // Selo, Estrepes, Pregar a Sombra, Kunai Fantasma, Malabarista
+    else if (this.combat.bolt) this.combat.bolt.onGround(it, why); // Besta: Rede, Sino, Armadilha, Fumaça
   }
 
   // Kunai acertou: sobe girando e cai num ponto um pouco além do inimigo (círculo mostra onde).
@@ -201,6 +215,7 @@ export class RogueKit {
     this.vfx.sparks(new THREE.Vector3(p.position.x, 1.3, p.position.z), KUNAI.color, 10);
     audio.play('gold', p.position.x, p.position.z);
     if (this.combat.log) this.combat.log({ type: 'kunaiCatch', stack });
+    this.k2.onCatch(p, stack); // Malabarista, Faísca, Pegada Heroica, Passar a Corrente
   }
 
   pickUp(it, idx, p) {
@@ -209,13 +224,19 @@ export class RogueKit {
     this.combat.text.add(it.kind === 'kunai' ? (it.stack ? `+1 kunai ×${it.stack + 1}` : '+1 kunai') : '+1 virote', p.position, 'miss', 2.8);
     audio.play('potion', p.position.x, p.position.z, { v: 0.5 });
     if (this.combat.log) this.combat.log({ type: 'ammoPick', kind: it.kind });
+    if (it.kind === 'bolt' && this.combat.bolt) this.combat.bolt.onPick(p, it); // Armadilha desmontada; Recarga no Pulo
   }
 
   updateItem(it, i, dt) {
     const c = this.combat, p = it.owner;
+    if (this.k2.updateSpecial(it, i, dt)) return; // Bumerangue voltando, Fio de Aço puxando, Sanguessuga cravada
     if (it.state === 'fly') {
+      if (it.kind === 'bolt' && c.bolt) c.bolt.flyTick(it, dt); // Besta: Divisor, Rastro Incendiário, fantasma do Eco
       it.life -= dt;
-      if (it.life <= 0) { this.toGround(it, it.x, it.z, !it.hitSet.size); return; } // já acertou alguém nesta jogada: não perde
+      if (it.life <= 0 && it.flyD !== undefined) { this.k2.startBack(it); return; } // Bumerangue
+      if (it.life <= 0) { this.toGround(it, it.x, it.z, !it.hitSet.size); return; }
+      // Bumerangue: no fim do voo (sem ter acertado ninguém) faz a curva e volta.
+      if (it.flyD !== undefined && !it.hitSet.size) { it.flyD += Math.hypot(it.vx, it.vz) * dt; if (it.flyD >= KUN.boom.range) { this.k2.startBack(it); return; } } // já acertou alguém nesta jogada: não perde
       let left = Math.hypot(it.vx, it.vz) * dt;
       const sp = Math.hypot(it.vx, it.vz), dx = it.vx / sp, dz = it.vz / sp;
       while (left > 0) {
@@ -223,6 +244,21 @@ export class RogueKit {
         left -= st;
         it.x += dx * st; it.z += dz * st;
         if (c.world.blocked(it.x, it.z, 0.05) && !c.props.hitAt(it.x, it.z, p)) { // objeto quebrável: quebra e a kunai segue
+          if (it.kind === 'bolt' && c.bolt && c.bolt.wallBounce(it, dx, dz)) return; // Quique na Parede (Besta)
+          if (it.kind === 'kunai' && W(p).kBounce && !it.bounced) { // Quique na Parede: vai direto para o inimigo mais perto
+            const t = this.k2.near(it.x - dx * 0.6, it.z - dz * 0.6, KUN.bounce, it.hitSet);
+            if (t) {
+              it.bounced = true; it.x -= dx * 0.6; it.z -= dz * 0.6;
+              const a2 = Math.atan2(t.position.x - it.x, t.position.z - it.z), sp2 = Math.hypot(it.vx, it.vz);
+              it.vx = Math.sin(a2) * sp2; it.vz = Math.cos(a2) * sp2; it.a = a2; it.g.rotation.y = a2; it.life = Math.max(it.life, 1.5);
+              c.vfx.sparks(new THREE.Vector3(it.x, 1.2, it.z), KUNAI.color, 8);
+              audio.play('block', it.x, it.z, { v: 0.5 });
+              if (c.log) c.log({ type: 'kBounce' });
+              it.g.position.set(it.x, it.y, it.z);
+              return;
+            }
+          }
+          if (it.kind === 'kunai' && it.flyD !== undefined) { it.x -= dx * 0.6; it.z -= dz * 0.6; this.k2.startBack(it); return; } // Bumerangue: volta da parede sem perder a corrente
           // Só perde a corrente se foi direto na parede. Atravessou um inimigo antes (Ricochete de Aço/Atravessar): mantém.
           const hitSomeone = it.hitSet.size > 0;
           it.lostStack = it.stack > 0 && !hitSomeone;
@@ -238,13 +274,19 @@ export class RogueKit {
         const e = c.enemies.find((en) => en.targetable && !(it.hitSet && it.hitSet.has(en)) && Math.hypot(en.position.x - it.x, en.position.z - it.z) < en.data.radius + 0.3);
         if (e) {
           const r = this.hitEnemy(it, e);
+          if (it.state === 'gone') return;
+          if (it.kind === 'bolt' && r === 'blocked' && c.bolt && c.bolt.shieldRico(it, e)) return; // Ricochete no Escudo (Besta)
           // Ricochete de Aço / Atravessar: acerta e continua voando
           if (it.pierce > 0 && (r === 'hit' || r === 'kill')) {
             it.pierce--; it.hitSet.add(e);
-            if (it.kind === 'kunai') it.stack = Math.min(kMax(p), it.stack + 1);
+            if (it.kind === 'kunai') { it.stack = Math.min(kMax(p), it.stack + 1); this.k2.onHit(it, e, r); }
             continue;
           }
-          if (it.kind === 'kunai' && (r === 'hit' || r === 'kill')) { it.stack = Math.min(kMax(p), it.stack + 1); this.toPop(it, e); }
+          if (it.kind === 'kunai' && (r === 'hit' || r === 'kill')) {
+            it.stack = Math.min(kMax(p), it.stack + 1);
+            this.k2.onHit(it, e, r); // Troca de Lugar, Grand Finale
+            if (this.k2.wantStick(it, e, r)) this.k2.stick(it, e); else this.toPop(it, e); // Sanguessuga
+          }
           else this.toGround(it, e.position.x - dx * 0.3, e.position.z - dz * 0.3); // virote / bloqueado: cai embaixo dele
           return;
         }
@@ -277,6 +319,8 @@ export class RogueKit {
     it.t = (it.t || 0) + dt;
     if (it.mark) it.mark.material.opacity = 0.35 + 0.25 * Math.sin(it.t * 5);
     const cfg = it.kind === 'kunai' ? KUNAI : BOLT;
+    if (this.k2.groundTick(it, i, dt)) return; // Selo Explosivo, Estrepes, Kunai Ímã
+    if (it.kind === 'bolt' && c.bolt && c.bolt.groundTick(it, i, dt)) return; // Armadilha de Urso
     // Recarga Mágica: o virote caído volta sozinho para a mão.
     if (it.kind === 'bolt' && W(p).bReturn && it.t >= W(p).bReturn && p && isRogue(p) && ammoKind(p) === 'bolt' && p.state !== 'dead') {
       this.vfx.sparks(new THREE.Vector3(it.x, 0.6, it.z), BOLT.color, 8);
@@ -309,8 +353,10 @@ export class RogueKit {
 
   // ---------- Aparar (Rapieira) ----------
   // Chamado pelo combate quando um golpe chega no herói. Devolve true se aparou (sem dano).
+  // opts.auto: aparada automática (En Garde / Aparar em Cadeia, rapkit.js). opts.proj: o projétil aparado.
   tryParry(p, e, opts) {
-    if (p.state !== 'parry' || p.stateTime > PARRY.window * (1 + (W(p).parryWin || 0)) || opts.contact) return false;
+    if (opts.contact) return false;
+    if (!opts.auto && (p.state !== 'parry' || p.stateTime > PARRY.window * (1 + (W(p).parryWin || 0)))) return false;
     const c = this.combat;
     p.iframes = Math.max(p.iframes, PARRY.iframes);
     p.parryCrit = true;
@@ -320,6 +366,8 @@ export class RogueKit {
     if (e.alive && e.repelled && !opts.noRepel) { e.repelled(dx / d, dz / d); e.stunTime = e.data.boss ? 0.5 : PARRY.stun; }
     c.text.add('Aparou!', p.position, 'crit', 3.4);
     wbOnParry(c, p); // Aparar Restaurador, Mestre Espadachim
+    if (opts.proj && W(p).rDeflect && c.rap) c.rap.deflect(opts.proj, p); // Rebater: a flecha/magia volta
+    if (c.rap) c.rap.onParry(p, e, opts); // bênçãos novas da Rapieira (rapkit.js)
     c.vfx.sparks(new THREE.Vector3(p.position.x + dx / d * 0.7, 1.4, p.position.z + dz / d * 0.7), 0xffe27a, 18);
     audio.play('shieldBlock', p.position.x, p.position.z, { v: 1.3 });
     c.addHitstop(0.1);
@@ -336,11 +384,13 @@ export class RogueKit {
       this.clear();
       for (const p of this.combat.players) if (isRogue(p)) this.refill(p);
     }
+    this.k2.tick(dt); // Kunais: segurar o ataque, fio, corrente, fantasmas
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       if (!it.owner || !this.combat.players.includes(it.owner)) { this.drop(i); continue; }
       this.updateItem(it, i, dt);
     }
+    this.k2.afterItems();
     for (const p of this.combat.players) this.updateHero(p, dt);
   }
 
@@ -350,7 +400,7 @@ export class RogueKit {
     p.smokeWarnCd = Math.max(0, (p.smokeWarnCd || 0) - dt);
     if (p.stealth > 0) { p.stealth = Math.max(0, p.stealth - dt); if (p.stealth <= 0) p.sneakCrit = false; }
     if (p.state === 'dead') p.stealth = 0;
-    this.setGhost(p, p.stealth > 0 ? 0.3 + 0.08 * Math.sin(performance.now() / 70) : 1);
+    this.setGhost(p, (p.stealth > 0 || p.vanishT > 0) ? 0.3 + 0.08 * Math.sin(performance.now() / 70) : 1);
     // Precisão Invejável: arma brilhando em vermelho-dourado.
     if (p.ultTime > 0 && p.glowMats) for (const m of p.glowMats) { m.emissive.setRGB(1, 0.25, 0.1); m.emissiveIntensity = 0.9 + 0.5 * Math.sin(performance.now() / 90); }
     else if (p.ultGlowOn && p.glowMats) for (const m of p.glowMats) m.emissiveIntensity = 0;

@@ -147,15 +147,16 @@ export class Hud {
     el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
   }
   // Bomba de fumaça: cd < 0 = arma sem fumaça; 0 = pronta; > 0 = segundos para recarregar.
-  setSmoke(cd, hidden) {
-    const key = cd < 0 ? '' : `${Math.ceil(cd)}|${hidden ? 1 : 0}`;
+  setSmoke(cd, hidden, name = 'fumaça', icon = '☁') {
+    const key = cd < 0 ? '' : `${Math.ceil(cd)}|${hidden ? 1 : 0}|${name}`;
     if (key === this.smokeShown) return;
     this.smokeShown = key;
     const el = this.$('.smoke');
     el.style.display = cd < 0 ? 'none' : 'flex';
     if (cd < 0) return;
     el.classList.toggle('ready', cd <= 0);
-    this.$('.stx').textContent = hidden ? 'invisível!' : cd <= 0 ? 'fumaça pronta' : `fumaça em ${Math.ceil(cd)} s`;
+    this.$('.sic').textContent = icon;
+    this.$('.stx').textContent = hidden ? 'invisível!' : cd <= 0 ? (name === 'fumaça' ? 'fumaça pronta' : `${name} pronto`) : `${name} em ${Math.ceil(cd)} s`;
   }
 
   setUlt(n, need, key = 'R') {

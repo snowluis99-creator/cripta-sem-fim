@@ -21,6 +21,7 @@ export class Menu {
         <div class="sword" aria-hidden="true">${SWORD}</div>
         <section data-s="main">
           <button type="button" data-a="solo">Jogar sozinho</button>
+          <button type="button" data-a="local">2 jogadores no mesmo PC</button>
           <button type="button" data-a="host">Criar sala (2 jogadores)</button>
           <button type="button" data-a="join">Entrar ou assistir a sala de um amigo</button>
           <button type="button" class="ghost" data-a="config">Configurações</button>

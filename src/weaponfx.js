@@ -137,35 +137,44 @@ export function makeWeaponFx(kind, tip = 1) {
       });
       break;
     }
-    case 'storm': { // Cajado Elétrico: esfera azul com faíscas pulando em volta
-      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), bright(0xe8fbff));
-      core.position.y = 0.2;
-      const halo = glowSprite(0x7fd8ff, 1.1);
-      halo.position.y = 0.2;
-      g.add(core, halo);
+    case 'storm': { // Cajado Elétrico: nuvem preta carregada com raios amarelos saindo dela
+      const cloudMat = new THREE.MeshLambertMaterial({ color: 0x1b1b22, emissive: 0x0a0a10 });
+      const cloud = new THREE.Group();
+      cloud.position.y = 0.22;
+      [[0, 0.02, 0, 0.13], [0.11, 0, 0.02, 0.1], [-0.11, -0.01, -0.01, 0.1], [0.04, 0.08, -0.05, 0.1], [-0.05, 0.06, 0.06, 0.09], [0.02, -0.05, 0.08, 0.085], [-0.02, -0.05, -0.08, 0.085]]
+        .forEach(([x, y, z, r]) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), cloudMat); m.position.set(x, y, z); cloud.add(m); });
+      const glowIn = glowSprite(0xffd23a, 0.7, 0);
+      glowIn.position.y = 0.2;
+      g.add(cloud, glowIn);
       const arcs = [];
-      const mat = new THREE.LineBasicMaterial({ color: 0xbff0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-      for (let i = 0; i < 3; i++) {
+      const mat = new THREE.LineBasicMaterial({ color: 0xffe14a, transparent: true, depthWrite: false });
+      for (let i = 0; i < 4; i++) {
         const geo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 5 }, () => new THREE.Vector3()));
         const l = new THREE.Line(geo, mat);
         g.add(l); arcs.push(l);
       }
       let flick = 0;
       ticks.push((dt) => {
-        core.rotation.y += dt * 4; core.rotation.x += dt * 3;
-        halo.material.opacity = 0.6 + 0.4 * Math.random();
+        cloud.rotation.y += dt * 0.8;
+        cloud.scale.setScalar(1 + Math.sin(t * 3) * 0.04);
+        glowIn.material.opacity *= Math.pow(0.02, dt);
         flick -= dt;
         if (flick > 0) return;
-        flick = 0.06;
-        for (const l of arcs) { // zigue-zague do centro para fora, sorteado de novo a cada instante
-          const a = Math.random() * Math.PI * 2, b = (Math.random() - 0.3) * 1.2, pos = l.geometry.attributes.position;
+        flick = 0.05 + Math.random() * 0.06;
+        let any = false;
+        for (const l of arcs) { // raiozinho saindo de baixo/dos lados da nuvem, sorteado de novo a cada instante
+          l.visible = Math.random() < 0.45;
+          if (!l.visible) continue;
+          any = true;
+          const a = Math.random() * Math.PI * 2, len = 0.22 + Math.random() * 0.25, pos = l.geometry.attributes.position;
+          const sx = Math.cos(a) * 0.08, sz = Math.sin(a) * 0.08, ex = Math.cos(a) * (0.1 + len * 0.5), ez = Math.sin(a) * (0.1 + len * 0.5);
           for (let k = 0; k < 5; k++) {
-            const r = (k / 4) * 0.42, j = k && k < 4 ? 0.06 : 0;
-            pos.setXYZ(k, Math.cos(a) * r + (Math.random() - 0.5) * j, 0.2 + Math.sin(b) * r + (Math.random() - 0.5) * j, Math.sin(a) * r + (Math.random() - 0.5) * j);
+            const f = k / 4, j = k && k < 4 ? 0.07 : 0;
+            pos.setXYZ(k, sx + (ex - sx) * f + (Math.random() - 0.5) * j, 0.16 - len * f + (Math.random() - 0.5) * j * 0.5, sz + (ez - sz) * f + (Math.random() - 0.5) * j);
           }
           pos.needsUpdate = true;
-          l.visible = Math.random() < 0.75;
         }
+        if (any && Math.random() < 0.5) glowIn.material.opacity = 0.9; // clarão amarelo dentro da nuvem
       });
       break;
     }
