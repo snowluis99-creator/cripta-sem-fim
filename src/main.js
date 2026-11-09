@@ -702,6 +702,7 @@ async function start() {
   let bgAt = 0;
   const bgTick = () => {
     const now = performance.now();
+    if (selfTest.running) return; // teste automático: passo fixo, nada de quadros extras
     if (!document.hidden && now - rafAt < 150) return; // desenhando normal
     if (now - bgAt < 15) return; // recados acumulados (quadro lento): não empilha
     bgFrame = true; frame(); bgFrame = false; // só simula e manda pela rede (sem desenhar)
