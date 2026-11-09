@@ -85,7 +85,8 @@ export class Predictor {
     const [ack, ackAge, hostFree, speed, rollDist, rollTime, rollReady, rollCd, atkSpeed = 1, rangeMul = 1, hostAtk = 0] = info;
     // O anfitrião já processou a ação feita aqui?
     if (this.wait && (ack >= this.wait.seq || this.time - this.wait.t > WAIT_MAX)) {
-      if (this.wait.kind !== 'dodge' || hostFree || this.time - this.wait.t > WAIT_MAX) this.wait = null;
+      // Rolamento: solta quando o anfitrião ficou livre OU já está golpeando (o golpe dele começou depois do rolamento).
+      if (this.wait.kind !== 'dodge' || hostFree || hostAtk || this.time - this.wait.t > WAIT_MAX) this.wait = null;
     }
     const waitingAttack = this.wait && this.wait.kind !== 'dodge';
     // Combo daqui acabou e o anfitrião ainda termina o dele (atrasado pela internet): já anda aqui.
@@ -99,11 +100,16 @@ export class Predictor {
       local = this.tickAttack(p, dt, press, moving, atkSpeed, rangeMul);
     } else if (this.roll) {
       const r = this.roll;
+      this.facing = Math.atan2(r.dx, r.dz);
       r.t += dt / r.time;
+      if (press.attack && r.t > 0.4) r.atk = true; // apertou no fim do rolamento: golpe guardado (o anfitrião faz igual)
       this.step(p, r.dx, r.dz, (r.dist / r.time) * dt);
       if (r.t < 1) p.applyRoll(r.t);
-      else { p.clearRoll(); this.roll = null; this.dodgeCd = rollCd; }
-      this.facing = Math.atan2(r.dx, r.dz);
+      else {
+        p.clearRoll(); this.roll = null; this.dodgeCd = rollCd;
+        if (r.atk && p.hero.combo && p.hero.combo[0]) this.startStep(p, 0, atkSpeed);
+      }
+      if (!this.atk) this.facing = Math.atan2(r.dx, r.dz);
       local = true;
     } else if (free || (this.wait && this.wait.kind === 'dodge')) {
       if (press.dodge && rollReady && this.dodgeCd <= 0) {
@@ -118,7 +124,8 @@ export class Predictor {
         p.anim.play(p.hero.dodge.pose, { fade: 0.06, restart: true });
         p.anim.syncId = null;
         local = true;
-      } else if (press.attack && !this.wait && p.hero.combo && p.hero.combo[0]) {
+      } else if (press.attack && (!this.wait || this.wait.kind === 'dodge') && p.hero.combo && p.hero.combo[0]) {
+        // (logo depois de rolar também: não espera o anfitrião confirmar o fim do rolamento)
         // Golpe: o combo inteiro toca aqui; o anfitrião decide o dano.
         this.startStep(p, 0, atkSpeed);
         local = true;

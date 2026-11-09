@@ -4,7 +4,7 @@ import { input } from './input.js';
 import { save } from './save.js';
 import { Predictor } from './predict.js';
 
-export const GAME_VERSION = 172; // aparece na linha de diagnóstico do Jogador 2
+export const GAME_VERSION = 173; // aparece na linha de diagnóstico do Jogador 2
 
 const tmp = new THREE.Vector3();
 

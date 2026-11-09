@@ -808,7 +808,7 @@ export class Player {
           break;
         }
         boltRollShot(this, dt, camera); // Tiro Acrobático (Besta): a besta continua armando e atira no meio da rolagem
-        if (input.attack() && (this.stats.w.maestry || this.stats.w.dragonLeap) && this.stateTime > h.dodge.time * 0.4) this.axeDodgeAtk = true; // Maestria: apertou no fim do rolamento
+        if (input.attack() && (this.stats.w.maestry || this.stats.w.dragonLeap || this.input.apply) && this.stateTime > h.dodge.time * 0.4) this.axeDodgeAtk = true; // Maestria / Jogador 2 pela rede: apertou no fim do rolamento = golpe guardado
         const speed = h.dodge.distance * this.stats.dodgeMul * (this.kRollMul || 1) / h.dodge.time; // Mãos Vazias (Kunais): o dobro
         this.move(this.dodgeDir.x, this.dodgeDir.z, speed * dt, world);
         if (this.axeRoll) axeApplyRoll(this, this.stateTime / h.dodge.time); else this.applyRoll(this.stateTime / h.dodge.time);
