@@ -698,17 +698,17 @@ async function start() {
   // Aba escondida ou janela atrás de outra (o navegador para de desenhar): o jogo continua sozinho.
   // 08/11: o setInterval da página cai para 1 vez por segundo em segundo plano (pior com o som no mudo),
   // e o anfitrião mandava só 1 atualização por segundo ao Jogador 2 ("tudo trava"). O relógio agora
-  // vem de um Worker (não é freado) a cada 33 ms; sem Worker, volta ao setInterval.
+  // vem de um Worker (não é freado) a cada 20 ms; sem Worker, volta ao setInterval.
   let bgAt = 0;
   const bgTick = () => {
     const now = performance.now();
     if (!document.hidden && now - rafAt < 150) return; // desenhando normal
-    if (now - bgAt < 25) return; // recados acumulados (quadro lento): não empilha
+    if (now - bgAt < 15) return; // recados acumulados (quadro lento): não empilha
     bgFrame = true; frame(); bgFrame = false; // só simula e manda pela rede (sem desenhar)
     bgAt = performance.now();
   };
   try {
-    const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' }));
+    const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 20);'], { type: 'text/javascript' }));
     const w = new Worker(url);
     w.onmessage = bgTick;
     w.onerror = () => { w.terminate(); setInterval(bgTick, 100); };
