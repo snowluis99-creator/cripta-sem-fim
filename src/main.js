@@ -631,7 +631,6 @@ async function start() {
   const frame = () => {
     const elapsed = clock.getDelta();
     const realDt = Math.min(elapsed, 0.1);
-    if (!selfTest.running) dynRes.tick(elapsed); // resolução dinâmica: baixa se a placa de vídeo não dá conta
     input.poll();
     save.sandbox(selfTest.running); // teste automático não grava no save do jogador
     // Start do controle: abre ou volta no menu de pausa (Esc é tratado na hora, no keydown).
@@ -663,7 +662,7 @@ async function start() {
       if (mode === 'host') hostNet(realDt);
       if (bot) bot(realDt);
       // Aba escondida (quadros raros): o anfitrião alcança o tempo real em passos de até 0,1 s.
-      const n = document.hidden && mode === 'host' ? Math.min(10, Math.ceil(elapsed / 0.1)) : 1;
+      const n = bgFrame && mode === 'host' ? Math.min(10, Math.ceil(elapsed / 0.1)) : 1;
       for (let i = 0; i < n; i++) step((n > 1 ? elapsed / n : realDt) * state.timeScale);
       if (coop && p2) coop.update(realDt, simTime);
       if (mode === 'host') hud.setWatchers(net.spectators());
@@ -676,10 +675,10 @@ async function start() {
       const live = [...client.replica.enemies.values()].filter((e) => e.code !== 1 && e.code !== 2);
       pickMusic(live.filter((e) => e.data.boss), hud.deathVisible, live.length > 0, performance.now() / 1000, client.replica.inTavern ? 'tavern' : 'dungeon');
     } else if (mode === 'menu') pickMusic([], false, false, simTime + 99, 'menu'); // anfitrião/sozinho: a música é escolhida no step() (funciona também no teste automático)
-    if (!document.body.classList.contains('mscene') && !title.visible) renderer.render(scene, cam.camera); // menu aberto: a cena da cripta cobre tudo
+    if (!bgFrame && !document.hidden && !document.body.classList.contains('mscene') && !title.visible) renderer.render(scene, cam.camera); // menu aberto: a cena da cripta cobre tudo
     state.frames++;
     if (DEBUG) {
-      fpsAcc += realDt; fpsFrames++;
+      fpsAcc += realDt; if (!bgFrame) fpsFrames++;
       if (fpsAcc >= 0.5) {
         dbg.textContent = `FPS ${Math.round(fpsFrames / fpsAcc)} | res ${Math.round(dynRes.scale * 100)}% | ${mode} | draw ${renderer.info.render.calls} | ${player.state}`
           + ` | vida ${player.hp} | inimigos ${combat.aliveCount} (atacando ${combat.attackers})`
@@ -690,9 +689,30 @@ async function start() {
       }
     }
   };
-  renderer.setAnimationLoop(frame);
-  // Aba escondida: o navegador para de desenhar; o jogo continua devagar (o co-op não cai).
-  setInterval(() => { if (document.hidden) frame(); }, 100);
+  let rafAt = performance.now(), bgFrame = false;
+  renderer.setAnimationLoop(() => {
+    const now = performance.now();
+    if (!selfTest.running) dynRes.tick((now - rafAt) / 1000); // resolução dinâmica: mede só os quadros desenhados
+    rafAt = now; bgFrame = false; frame();
+  });
+  // Aba escondida ou janela atrás de outra (o navegador para de desenhar): o jogo continua sozinho.
+  // 08/11: o setInterval da página cai para 1 vez por segundo em segundo plano (pior com o som no mudo),
+  // e o anfitrião mandava só 1 atualização por segundo ao Jogador 2 ("tudo trava"). O relógio agora
+  // vem de um Worker (não é freado) a cada 33 ms; sem Worker, volta ao setInterval.
+  let bgAt = 0;
+  const bgTick = () => {
+    const now = performance.now();
+    if (!document.hidden && now - rafAt < 150) return; // desenhando normal
+    if (now - bgAt < 25) return; // recados acumulados (quadro lento): não empilha
+    bgFrame = true; frame(); bgFrame = false; // só simula e manda pela rede (sem desenhar)
+    bgAt = performance.now();
+  };
+  try {
+    const url = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' }));
+    const w = new Worker(url);
+    w.onmessage = bgTick;
+    w.onerror = () => { w.terminate(); setInterval(bgTick, 100); };
+  } catch (e) { setInterval(bgTick, 100); }
 
   save.connect(); // progresso na conta do Claude (se der); o navegador já vale desde o começo
   await title.show();
