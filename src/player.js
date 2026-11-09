@@ -30,6 +30,8 @@ import { applyRap2, rap2Reset, rap2Mul } from './rapkit2.js';
 import { boltPlayerTick, boltPress, boltHoldCheck, boltRollShot, boltRollSave, boltRollResume, boltOverride, boltKicks, boltAbility, boltHasAbility, boltStateTick, boltReset } from './boltkit.js';
 import { applyFist, fistReset, fistHoldCheck, fistHoldTick, fistMeatPress, fistPress, fistAirTick } from './fistkit.js';
 
+const NO_DODGE = new Set(['dodge', 'sled', 'horse', 'rooted', 'stagger', 'lanceVault', 'lanceLeap', 'fistDash', 'fistLeap', 'clawLion', 'clawRev', 'rapLunge', 'rapBow', 'rapRiposte', 'boltHook']);
+
 // Quando o herói está "congelado" (troca de sala, menus) ele ignora os controles.
 const NO_INPUT = {
   moveDir: (out) => out.set(0, 0, 0), attack: () => false, dodge: () => false, potion: () => false, blocking: () => false,
@@ -592,6 +594,11 @@ export class Player {
     if (this.powerLeft > 0) { this.powerLeft--; this.powerActive = true; } else this.powerActive = false;
   }
 
+  // Estados em que rolar é possível (sem contar a recarga). Também vai para a tela do Jogador 2 (coop.predInfo).
+  canDodgeNow() {
+    return !this.axeAway && !NO_DODGE.has(this.state) && this.state !== 'dead' && this.state !== 'cine' && !this.frozen && !this.choosing;
+  }
+
   startDodge() {
     const h = this.hero;
     boltRollSave(this); // Tiro Acrobático (Besta): guarda quanto do disparo já armou
@@ -710,7 +717,11 @@ export class Player {
     // Esquiva tem prioridade sobre tudo (menos outra esquiva).
     if (this.state === 'cine') { this.anim.update(dt); this.aimForward(); return; } // a cena controla o herói
     if (this.state !== 'cine') clawLionCheck(this, input, dt); // Investida do Leão (Garras): ataque + rolamento juntos
-    if (input.dodge() && !this.axeAway && this.state !== 'dodge' && this.state !== 'sled' && this.state !== 'horse' && this.state !== 'rooted' && this.state !== 'stagger' && this.state !== 'lanceVault' && this.state !== 'lanceLeap' && this.state !== 'fistDash' && this.state !== 'fistLeap' && this.state !== 'clawLion' && this.state !== 'clawRev' && this.state !== 'rapLunge' && this.state !== 'rapBow' && this.state !== 'rapRiposte' && this.state !== 'boltHook' && this.dodgeCooldown <= 0) this.startDodge();
+    // Jogador 2 pela rede: rolar apertado um pouco antes da hora (ainda rolando/recarregando aqui, que está
+    // atrasado em relação à tela dele) fica guardado 0,25 s em vez de se perder.
+    if (this.input.apply) this.dodgeBuf = input.dodge() ? 0.25 : Math.max(0, (this.dodgeBuf || 0) - dt);
+    // Jogador 2 pela rede: a tela dele já conferiu a recarga (o rolamento só chega aqui se ele rolou lá).
+    if ((input.dodge() || this.dodgeBuf > 0) && this.canDodgeNow() && (this.dodgeCooldown <= 0 || this.input.apply)) { this.dodgeBuf = 0; this.startDodge(); }
 
     if (this.counterAtk && this.state !== 'block' && this.state !== 'attack') this.counterAtk = null;
     switch (this.state) {

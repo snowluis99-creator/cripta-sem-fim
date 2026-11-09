@@ -9,7 +9,8 @@ const SNAP = 4;          // diferença maior que isso = pula direto para a posi�
 const HIST_MAX = 2.5;    // segundos de histórico guardados
 const WAIT_MAX = 1.5;    // tempo máximo esperando o anfitrião "alcançar" uma ação feita aqui
 const CLIP_MEMO = 1.6;   // golpes tocados aqui nos últimos s (quando chegam do anfitrião, não recomeçam)
-const ECHO = 1.0;        // som de golpe/acerto tocado aqui: o mesmo som do anfitrião até ECHO s depois é ignorado
+const ECHO = 1.0;
+const AUTH_MAX = 3;      // anfitrião usa a nossa posição: só corrige se a diferença passar disso (troca de sala etc.)        // som de golpe/acerto tocado aqui: o mesmo som do anfitrião até ECHO s depois é ignorado
 
 export class Predictor {
   constructor(world) {
@@ -35,6 +36,7 @@ export class Predictor {
     this.echo = { swing: [], hit: [] }; // sons tocados aqui (para não tocar de novo quando o anfitrião mandar)
     this.onHit = null;     // (herói, golpe, alcance) => acerto mostrado aqui na hora (replica.js)
     this.facing = 0;
+    this.rolls = 0;        // rolamentos feitos aqui (vai para o anfitrião no lugar do botão: ele rola quando nós rolamos)
   }
 
   // Um envio de comandos saiu agora com este número.
@@ -82,7 +84,7 @@ export class Predictor {
       this.facing = hostFacing;
     }
     const info = this.info || [0, 0, 1, p.hero.moveSpeed, p.hero.dodge.distance, p.hero.dodge.time, 1, p.hero.dodge.cooldown];
-    const [ack, ackAge, hostFree, speed, rollDist, rollTime, rollReady, rollCd, atkSpeed = 1, rangeMul = 1, hostAtk = 0] = info;
+    const [ack, ackAge, hostFree, speed, rollDist, rollTime, rollReady, rollCd, atkSpeed = 1, rangeMul = 1, hostAtk = 0, auth = 0, canRoll = 0] = info;
     // O anfitrião já processou a ação feita aqui?
     if (this.wait && (ack >= this.wait.seq || this.time - this.wait.t > WAIT_MAX)) {
       // Rolamento: solta quando o anfitrião ficou livre OU já está golpeando (o golpe dele começou depois do rolamento).
@@ -96,7 +98,16 @@ export class Predictor {
     const moving = this.move.lengthSq() > 0;
 
     if (this.atk && (this.blocking || this.atk.abort)) { this.atk = null; this.atkEndAt = -9; } // bloqueio corta o golpe (o anfitrião decide o resto)
-    if (this.atk) {
+    // Rolar corta o golpe (igual ao Player: rolar funciona no meio do combo). Antes o golpe continuava aqui
+    // enquanto o anfitrião já rolava, e a correção de posição arrastava o herói (deslizando).
+    // Recarga: depois de um rolamento daqui, vale a contagem daqui (a do anfitrião chega atrasada).
+    const rollOk = (rollReady || this.time - this.rollAt < 1.5) && this.dodgeCd <= 0;
+    const rollNow = press.dodge && !this.roll && rollOk && (this.atk || free || this.wait || canRoll);
+    if (rollNow) {
+      this.atk = null; this.atkEndAt = -9;
+      this.startRoll(p, rollDist, rollTime);
+      local = true;
+    } else if (this.atk) {
       local = this.tickAttack(p, dt, press, moving, atkSpeed, rangeMul);
     } else if (this.roll) {
       const r = this.roll;
@@ -112,19 +123,7 @@ export class Predictor {
       if (!this.atk) this.facing = Math.atan2(r.dx, r.dz);
       local = true;
     } else if (free || (this.wait && this.wait.kind === 'dodge')) {
-      if (press.dodge && rollReady && this.dodgeCd <= 0) {
-        // Rolamento: começa aqui na hora.
-        let dx = this.move.x, dz = this.move.z;
-        const l = Math.hypot(dx, dz);
-        if (l > 0) { dx /= l; dz /= l; } else { dx = Math.sin(this.facing); dz = Math.cos(this.facing); }
-        this.roll = { t: 0, dx, dz, dist: rollDist, time: rollTime };
-        this.rollAt = this.time;
-        this.wait = { seq: this.seq, t: this.time, kind: 'dodge' };
-        this.facing = Math.atan2(dx, dz);
-        p.anim.play(p.hero.dodge.pose, { fade: 0.06, restart: true });
-        p.anim.syncId = null;
-        local = true;
-      } else if (press.attack && (!this.wait || this.wait.kind === 'dodge') && p.hero.combo && p.hero.combo[0]) {
+      if (press.attack && (!this.wait || this.wait.kind === 'dodge') && p.hero.combo && p.hero.combo[0]) {
         // (logo depois de rolar também: não espera o anfitrião confirmar o fim do rolamento)
         // Golpe: o combo inteiro toca aqui; o anfitrião decide o dano.
         this.startStep(p, 0, atkSpeed);
@@ -148,13 +147,28 @@ export class Predictor {
     for (const h of this.hist) if (h.seq > ack || (h.seq === ack && h.age > ackAge)) { rx += h.dx; rz += h.dz; }
     this.hist = this.hist.filter((h) => h.seq >= ack);
     const ex = rx - this.pred.x, ez = rz - this.pred.z, err = Math.hypot(ex, ez);
-    if (err > SNAP) { this.pred.x = rx; this.pred.z = rz; } else {
+    if (auth && err <= AUTH_MAX) { /* o anfitrião usa a nossa posição: nada a corrigir (sem deslizar) */ }
+    else if (err > SNAP) { this.pred.x = rx; this.pred.z = rz; } else {
       const k = smooth(dt, local ? 5 : 12);
       this.pred.x += ex * k; this.pred.z += ez * k;
     }
     p.position.x = this.pred.x; p.position.z = this.pred.z;
     if (!local) this.facing = hostFacing;
     return { local, roll: !!this.roll || this.time - this.rollAt < 1.6, facing: this.facing };
+  }
+
+  // Rolamento: começa aqui na hora.
+  startRoll(p, rollDist, rollTime) {
+    let dx = this.move.x, dz = this.move.z;
+    const l = Math.hypot(dx, dz);
+    if (l > 0) { dx /= l; dz /= l; } else { dx = Math.sin(this.facing); dz = Math.cos(this.facing); }
+    this.roll = { t: 0, dx, dz, dist: rollDist, time: rollTime };
+    this.rollAt = this.time;
+    this.rolls++;
+    this.wait = { seq: this.seq + 1, t: this.time, kind: 'dodge' }; // vai no próximo envio
+    this.facing = Math.atan2(dx, dz);
+    p.anim.play(p.hero.dodge.pose, { fade: 0.06, restart: true });
+    p.anim.syncId = null;
   }
 
   // Golpe idx do combo começa aqui (igual ao Player.startAttack).

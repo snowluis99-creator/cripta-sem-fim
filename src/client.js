@@ -4,7 +4,7 @@ import { input } from './input.js';
 import { save } from './save.js';
 import { Predictor } from './predict.js';
 
-export const GAME_VERSION = 173; // aparece na linha de diagnóstico do Jogador 2
+export const GAME_VERSION = 174; // aparece na linha de diagnóstico do Jogador 2
 
 const tmp = new THREE.Vector3();
 
@@ -87,12 +87,15 @@ export class CoopClient {
     const me = this.replica.me;
     const aim = this.ui.modal ? null : input.aimAngle(this.cam.camera, me.position);
     const c = this.cnt;
+    const pred = this.replica.pred;
+    if (pred) this.sentRolls = pred.rolls;
     this.net.send(this.net.a, {
       role: 'guest',
       in: [Math.round(m.x * 100) / 100, Math.round(m.z * 100) / 100, aim === null ? null : Math.round(aim * 100) / 100,
-        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, c.dge, c.pot, c.use, c.rt, c.ult, !this.ui.modal && input.attackHeld() ? 1 : 0],
+        !this.ui.modal && input.blocking() ? 1 : 0, c.atk, pred ? pred.rolls : c.dge, c.pot, c.use, c.rt, c.ult, !this.ui.modal && input.attackHeld() ? 1 : 0],
       pk: this.pick || 0,
       sq: this.sq,
+      ps: pred && pred.ready ? [Math.round(pred.pred.x * 100) / 100, Math.round(pred.pred.z * 100) / 100] : 0, // posição daqui (coop.authPos)
       sv: [save.data.soul, save.data.ups, save.data.runs, save.data.best],
     });
   }
@@ -134,6 +137,8 @@ export class CoopClient {
     if (this.ui.modal) this.ui.updateModal(dt);
     this.send();
     this.replica.update(dt, this.time);
+    // Rolou aqui neste quadro: avisa o anfitrião já (ele rola quando nós rolamos).
+    if (this.replica.pred && this.replica.pred.rolls !== this.sentRolls) { this.sendNow = true; this.send(); }
     const host2 = this.replica.sp;
     this.hud.setWatchers(this.spectator ? Math.max(1, host2 || 1) : host2 || 0);
     if (this.spectator) { this.spectate(dt); return; }

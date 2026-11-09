@@ -535,6 +535,7 @@ async function start() {
       simTime += sim;
       if (god) for (const p of players) if (p.state !== 'dead') p.hp = Math.max(p.hp, 60);
       for (const p of players) { p.update(sim, cam.camera, world); iceTrail(p, sim); }
+      if (coop && p2 && !coop.local && coop.authPos) coop.authPos(p2, sim); // posição do Jogador 2 vem da tela dele
       team.update(sim);
       coopUpdate(combat, run, sim); // bênçãos do co-op (coopbless.js)
       ult.update(sim);

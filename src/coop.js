@@ -10,6 +10,9 @@ import { ENEMIES } from './enemies.js';
 import { sizeOf } from './net.js';
 import { audio } from './audio.js';
 
+const AUTH_STATES = new Set(['idle', 'run', 'attack', 'dodge', 'block']);
+const AUTH_MAX = 3; // igual ao AUTH_MAX do predict.js
+
 export const ENEMY_TYPES = Object.keys(ENEMIES);
 export const PICKUP_KINDS = ['blessing', 'gold', 'potion', 'chest', 'shop', 'bed'];
 const SEND_EVERY = 1 / 25;
@@ -31,8 +34,10 @@ export class RemoteInput {
     this.seq = 0; this.seqAt = 0;           // último envio recebido do Jogador 2 (e quando chegou)
   }
   // pkt.in = [mx, mz, aim, bloqueando, ataques, rolamentos, poções, usar, recomeçar] (contadores somam sempre)
-  apply(arr, sq, now = 0) {
+  // pos = [x, z] do herói na tela do Jogador 2 (ela manda na posição dele; coop.authPos)
+  apply(arr, sq, now = 0, pos = null) {
     if (Number.isFinite(sq) && sq !== this.seq) { this.seq = sq; this.seqAt = now; }
+    this.pos = Array.isArray(pos) && Number.isFinite(pos[0]) && Number.isFinite(pos[1]) ? pos : null;
     if (!Array.isArray(arr) || arr.length < 9) return;
     const num = (v) => (Number.isFinite(v) ? v : 0);
     this.mx = Math.max(-1, Math.min(1, num(arr[0])));
@@ -143,7 +148,7 @@ export class CoopHost {
   receive(peer) {
     const pr = peer && peer.presence;
     if (!pr) return;
-    this.input.apply(pr.in, pr.sq, this.time);
+    this.input.apply(pr.in, pr.sq, this.time, pr.ps);
     // Progresso permanente do Jogador 2 (Ouro de Alma e melhorias): vale o que chegou primeiro; depois o anfitrião manda.
     const p2 = this.combat.players[1];
     if (p2 && !p2.saveData && Array.isArray(pr.sv)) {
@@ -226,7 +231,21 @@ export class CoopHost {
     const d = p.hero.dodge;
     return [this.input.seq, r2(Math.max(0, this.time - this.input.seqAt)), free, r2(p.hero.moveSpeed * p.moveMul),
       r2(d.distance * p.stats.dodgeMul), r2(d.time), p.dodgeCooldown <= 0 ? 1 : 0, r2(d.cooldown),
-      r2(p.atkSpeed || 1), r2(p.stats.rangeMul || 1), p.state === 'attack' ? 1 : 0]; // combo previsto no Jogador 2
+      r2(p.atkSpeed || 1), r2(p.stats.rangeMul || 1), p.state === 'attack' ? 1 : 0, // combo previsto no Jogador 2
+      p.netAuth ? 1 : 0, p.canDodgeNow() ? 1 : 0]; // [11] a posição dele vale, [12] pode rolar agora
+  }
+
+  // A tela do Jogador 2 manda na posição do herói dele (sem deslizar lá) enquanto ele está no controle:
+  // parado, correndo, golpeando, rolando ou bloqueando. Empurrões, agarrões, quedas, cenas = o anfitrião manda.
+  authPos(p, dt) {
+    const a = this.input.pos;
+    const ok = a && AUTH_STATES.has(p.state) && !p.frozen && !p.choosing && !p.backToBack;
+    const d = ok ? Math.hypot(a[0] - p.position.x, a[1] - p.position.z) : 99;
+    p.netAuth = d < AUTH_MAX; // longe demais = troca de sala/teleporte: vale a posição daqui até a tela dele alcançar
+    if (!p.netAuth) return;
+    const k = 1 - Math.exp(-20 * dt);
+    p.position.x += (a[0] - p.position.x) * k;
+    p.position.z += (a[1] - p.position.z) * k;
   }
 
   fx() {
