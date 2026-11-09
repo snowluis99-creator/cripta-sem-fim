@@ -4,6 +4,8 @@ import { input } from './input.js';
 import { save } from './save.js';
 import { Predictor } from './predict.js';
 
+export const GAME_VERSION = 172; // aparece na linha de diagnóstico do Jogador 2
+
 const tmp = new THREE.Vector3();
 
 const SEND_EVERY = 1 / 30;
@@ -32,7 +34,7 @@ export class CoopClient {
     // Medidor de ping (ida e volta até o anfitrião) e quadros por segundo, no canto da tela do Jogador 2.
     this.sentAt = new Map(); this.ping = 0; this.fpsN = 0; this.fpsT = 0; this.fps = 0;
     this.pingEl = document.createElement('div');
-    this.pingEl.style.cssText = 'position:fixed;right:10px;bottom:8px;font:600 12px system-ui,sans-serif;color:#cfd6e6;'
+    this.pingEl.style.cssText = 'position:fixed;right:10px;bottom:8px;font:600 14px system-ui,sans-serif;color:#cfd6e6;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:6px;'
       + 'background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;pointer-events:none;z-index:50';
     document.body.appendChild(this.pingEl);
     r.onChoice = (id, options, title) => {
@@ -105,10 +107,16 @@ export class CoopClient {
     }
     this.fpsN++; this.fpsT += dt;
     if (this.fpsT >= 0.5) {
+      const now = performance.now();
       this.fps = Math.round(this.fpsN / this.fpsT); this.fpsN = 0; this.fpsT = 0;
+      const ups = this.upsAt ? Math.round(this.upsN * 1000 / Math.max(1, now - this.upsAt)) : 0; // atualizações/s vindas do anfitrião
+      this.upsN = 0; this.upsAt = now;
+      const hs = this.replica.lastState, hf = hs && hs.hf || 0;
       const ms = Math.round(this.ping);
-      this.pingEl.style.color = ms > 250 ? '#ff7a6b' : ms > 120 ? '#ffd166' : '#9be59b';
-      this.pingEl.textContent = `Ping ${ms} ms · ${this.fps} FPS`;
+      const bad = ms > 250 || this.fps < 25 || (hf && hf < 25) || ups < 12;
+      this.pingEl.style.color = bad ? '#ff7a6b' : ms > 120 || this.fps < 45 || ups < 20 ? '#ffd166' : '#9be59b';
+      // Diagnóstico (08/11): o dono manda print disso quando o co-op atrasa.
+      this.pingEl.textContent = `Ping ${ms} ms · você ${this.fps} FPS · anfitrião ${hf || '?'} FPS · ${ups} atualiz./s · v${GAME_VERSION}`;
     }
   }
 
@@ -118,7 +126,7 @@ export class CoopClient {
     const host = this.net.other(this.net.a, 'host');
     if (host) {
       this.missing = 0;
-      if (host.presence !== this.lastA) { this.lastA = host.presence; this.replica.applyState(host.presence.s); }
+      if (host.presence !== this.lastA) { this.lastA = host.presence; this.replica.lastState = host.presence.s; this.upsN = (this.upsN || 0) + 1; this.replica.applyState(host.presence.s); }
       const fx = this.net.b && this.net.b.peers().find((p) => !p.sameTab && p.presence && p.presence.f);
       if (fx && fx.presence !== this.lastB) { this.lastB = fx.presence; this.replica.applyFx(fx.presence.f); }
     } else if ((this.missing += dt) > LOST_AFTER && this.replica.got && this.onLost) { this.onLost(); this.onLost = null; }

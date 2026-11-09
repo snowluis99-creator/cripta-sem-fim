@@ -213,6 +213,7 @@ export class CoopHost {
       t: r2(this.simTime || 0),
       sp: this.net.spectators ? this.net.spectators() : 0,
       p2: p2 ? this.predInfo(p2) : 0,
+      hf: this.hf || 0, // quadros/s do anfitrião (diagnóstico)
     };
     // Sala muito cheia: corta esqueletos de longe até caber.
     while (sizeOf({ role: 'host', s }) > 3900 && s.e.length) s.e.pop();
@@ -252,6 +253,11 @@ export class CoopHost {
   update(dt, simTime) {
     this.time += dt;
     this.simTime = simTime;
+    // Diagnóstico para o Jogador 2: quadros por segundo do anfitrião (medidos no relógio real).
+    const nowR = performance.now();
+    this.hfN = (this.hfN || 0) + 1;
+    if (!this.hfAt) this.hfAt = nowR;
+    if (nowR - this.hfAt >= 1000) { this.hf = Math.round(this.hfN * 1000 / (nowR - this.hfAt)); this.hfN = 0; this.hfAt = nowR; }
     this.sendT -= dt;
     if (this.sendT > 0) return;
     this.sendT = SEND_EVERY;
