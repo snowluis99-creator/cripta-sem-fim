@@ -315,9 +315,10 @@ export function runRanged(e, dt, ctx, { toPlayer }) {
       e.anim.play(R.shootClip, { once: true, restart: true, speed: R.shootSpeed || 1, fade: 0.05 });
       const s = e.data.scale || 1;
       const n = R.count || 1;
+      const miss = ctx.combat.mc && !e.undead ? ctx.combat.mc.aimOffset(e) : 0; // Fumaça nos Olhos (Cajado de Fogo): queimando erra
       const fetchShot = !!(R.fetch && R === e.data.ranged && !e.undead); // Arqueiro: a flecha cai e ele vai buscar
       for (let i = 0; i < n; i++) {
-        const a = e.facing + (n > 1 ? (i / (n - 1) - 0.5) * R.spread : 0);
+        const a = e.facing + miss + (n > 1 ? (i / (n - 1) - 0.5) * R.spread : 0);
         const fx = e.position.x + Math.sin(a) * (0.9 * s), fz = e.position.z + Math.cos(a) * (0.9 * s);
         ctx.combat.projectiles.fire(fx, fz, a, {
           speed: R.speed, damage: Math.round(R.damage * (e.dmgScale || 1)), scale: R.scale || 1, height: 0.55 * s + 0.6, owner: e,

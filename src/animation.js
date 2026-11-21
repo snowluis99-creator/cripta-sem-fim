@@ -50,6 +50,22 @@ function buildBlockWalk() {
   }
 }
 
+// Montado (Venham, Irmãos): pernas e quadril sentados (Sit_Chair_Idle) + o resto do corpo do clipe pedido.
+// Feito na hora e guardado como "Mount:<clipe>" (fora da lista do co-op).
+export function mountedClip(name) {
+  const key = `Mount:${name}`;
+  if (clips.has(key)) return key;
+  const sit = clips.get('Sit_Chair_Idle'), src = clips.get(name);
+  if (!sit || !src) return name;
+  const bone = (t) => t.name.split('.')[0];
+  const tracks = [
+    ...sit.tracks.filter((t) => LEG_RE.test(bone(t))).map((t) => t.clone().trim(0, Math.min(sit.duration, src.duration))),
+    ...src.tracks.filter((t) => !LEG_RE.test(bone(t))).map((t) => t.clone()),
+  ];
+  clips.set(key, new THREE.AnimationClip(key, src.duration, tracks));
+  return key;
+}
+
 export function getClip(name) {
   const c = clips.get(name);
   if (!c) throw new Error(`Animação não encontrada: ${name}`);

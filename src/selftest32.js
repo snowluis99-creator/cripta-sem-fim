@@ -36,46 +36,16 @@ export function* boltTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('400) Besta: as 20 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.besta');
-  const want = ['Recarga Perfeita', 'Recarga no Pulo', 'Eco do Tiro', 'Gancho', 'Tiro Acrobático', 'Prego', 'Rede', 'Âncora', 'Armadilha de Urso',
-    'Golpe Baixo', 'Virote Divisor', 'Quique na Parede', 'Ricochete no Escudo', 'Rastro Incendiário', 'Chuva de Virotes', 'Roleta', 'Mira de Atirador', 'Divindade', 'Besta Montada'];
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.besta' && !b.id.startsWith('w_rc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns do Ladino (selftest37)
+  const want = ['Recarga no Pulo', 'Eco do Tiro', 'Tiro Acrobático', 'Prego', 'Rede', 'Âncora', 'Armadilha de Urso',
+    'Golpe Baixo', 'Virote Divisor', 'Quique na Parede', 'Ricochete no Escudo', 'Rastro Incendiário', 'Chuva de Virotes', 'Roleta', 'Divindade', 'Besta Montada'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (26; sem Corda Tensa) ${ok(mine.length === 26 && !mine.some((b) => b.name === 'Corda Tensa'))} | as 19 ${ok(!miss.length, miss.join(', '))} | lendárias 4 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 4)} | épicas 8 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 8)} | raras 7 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 7)} | sem Sino/Bomba de Fumaça ${ok(!mine.some((b) => b.name === 'Sino' || b.name === 'Bomba de Fumaça'))}`);
-
-  out('401) Recarga Perfeita: barrinha, faixa dourada, besta travada');
-  fresh(); yield 0.1; give('w_bes11'); give('w_bes5'); // + Aljava (2 virotes)
-  let d1 = dummy(0, -8);
-  player.startAttack(null);
-  yield () => ev('rogueFire').length > 0;
-  out(`  barrinha apareceu ${ok(player.bBar && player.bBarG && player.bBarG.visible)}`);
-  yield () => player.bBar && player.bBar.t >= BES.reload.dur * 0.62;
-  out('  -> barrinha na faixa dourada (screenshot)');
-  yield 'hold';
-  yield* tap();
-  out(`  recarga perfeita ${ok(ev('bReloadOk').length === 1 && player.bPerfect)} | não atirou de novo ${ok(ev('rogueFire').length === 1)} | já pode atirar ${ok(player.state === 'idle')}`);
-  yield 0.1;
-  player.startAttack(null);
-  const ps = player.xstep;
-  out(`  tiro forte e rápido ${ok(ps && ps.perfect && Math.abs(ps.damage - C()[0].damage * BES.reload.mul) < 0.01 && Math.abs(ps.speed - C()[0].speed * BES.reload.speed) < 0.01)}`);
-  yield () => ev('rogueFire').length > 1;
-  out(`  saiu ${ok(ev('bPerfectShot').length === 1 && !player.bPerfect)}`);
-  player.ammo.push({ stack: 0 });
-  yield 0.3; player.setState('idle');
-  // agora erra a faixa
-  shoot(); yield 0.15; yield* tap();
-  out(`  apertou cedo: travou ${ok(ev('bReloadJam').length === 1 && player.bJam > 0)}`);
-  player.ammo.push({ stack: 0 }); const nf = ev('rogueFire').length;
-  yield* tap(); yield 0.1;
-  out(`  travada não atira ${ok(ev('rogueFire').length === nf && player.state !== 'attack')}`);
-  yield BES.reload.jam + 0.1;
-  yield* tap(); yield () => ev('rogueFire').length > nf;
-  out(`  destravou ${ok(ev('rogueFire').length > nf)}`);
-  void d1;
+  out(`  ${mine.length} bênçãos (23; sem Corda Tensa) ${ok(mine.length === 23 && !mine.some((b) => b.name === 'Corda Tensa'))} | as 16 ${ok(!miss.length, miss.join(', '))} | lendárias 0 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 0)} | épicas 9 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 9)} | raras 7 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 7)} | sem Sino/Bomba de Fumaça/Recarga Perfeita/Gancho/Mira ${ok(!mine.some((b) => ['Sino', 'Bomba de Fumaça', 'Recarga Perfeita', 'Gancho', 'Mira de Atirador'].includes(b.name)))}`);
 
   out('402) Recarga no Pulo: pegar o virote já atira no mais perto');
   fresh(); yield 0.1; give('w_bes12');
-  d1 = dummy(0, -6); const d2 = dummy(5, -2);
+  let d1 = dummy(0, -6); const d2 = dummy(5, -2);
   aimAt(d1); shoot();
   yield () => bolts((it) => it.state === 'ground').length > 0;
   const hp2 = d2.hp, gb = bolts()[0];
@@ -97,27 +67,6 @@ export function* boltTests(g, out, flags) {
   yield 'hold';
   yield () => e2.hp < 999;
   out(`  fantasma acertou ${ok(e2.hp < 999, 999 - e2.hp)} | não virou munição ${ok(bolts((it) => it.fake).length === 0)}`);
-
-  out('404) Gancho: besta vazia + ataque = puxa até o inimigo / a parede');
-  fresh(); yield 0.1; give('w_bes14');
-  d1 = dummy(0, -8);
-  player.ammo.length = 0;
-  yield* tap();
-  out(`  gancho saiu ${ok(ev('bHook').length === 1 && player.state === 'boltHook')}`);
-  yield () => ev('bHookCatch').length > 0;
-  yield 0.1;
-  out('  -> puxando pela corda (screenshot)');
-  yield 'hold';
-  yield () => ev('bHookArrive').length > 0;
-  const dd = Math.hypot(player.position.x - d1.position.x, player.position.z - d1.position.z);
-  out(`  chegou no inimigo ${ok(dd < 2.4, dd.toFixed(2))} | levou dano ${ok(d1.hp < 999)}`);
-  yield 0.6;
-  combat.world.addRect(-3, -1.5, 3, -0.8); // parede na frente
-  player.position.set(0, 0, 6); aimAt({ position: { x: 0, z: -5 } }); d1.position.set(9, 0, 9);
-  player.setState('idle'); yield 0.05;
-  yield* tap();
-  yield () => ev('bHookArrive').length > 1;
-  out(`  puxou até a parede ${ok(player.position.z < 1.2 && player.position.z > -0.8, player.position.z.toFixed(2))}`);
 
   out('406) Tiro Acrobático: rolar não interrompe a besta armando');
   // sem a bênção: rolar cancela o disparo
@@ -316,21 +265,6 @@ export function* boltTests(g, out, flags) {
   shoot(); yield 0.4;
   out(`  raio pulou ${ok(z2.hp < 999)}`);
 
-  out('418) Mira de Atirador: parado 1,5 s');
-  fresh(); yield 0.1; give('w_bes28');
-  const m1 = dummy(0, -5, 'warrior', 999, true, 0); m1.shieldCovers = () => true; delete m1.shieldCovers; // escudo de verdade
-  const m2 = dummy(0, -9);
-  yield 1.0;
-  out(`  1 s: ainda não ${ok(!player.bAim)}`);
-  yield 0.6;
-  out(`  1,5 s: linha de mira ${ok(player.bAim && player.bLaser && player.bLaser.visible)}`);
-  out('  -> linha de mira (screenshot)');
-  yield 'hold';
-  shoot(); yield 0.5;
-  out(`  atravessou o escudo e o 2º ${ok(m1.hp < 999 && m2.hp < 999, `${999 - m1.hp}/${999 - m2.hp}`)} | atordoou ${ok(ev('bSniperStun').length >= 1)}`);
-  mv = [1, 0]; yield 1.6; mv = null;
-  out(`  andando não mira ${ok(!player.bAim)}`);
-
   out('419) Divindade: entidade atira uma flecha espectral junto');
   fresh(); yield 0.1; give('w_bes29');
   const v1 = dummy(-5, 2), v2 = dummy(-8, 2.3), v3s = dummy(-11, 1.7, 'warrior'); // de lado: a entidade aparece de perfil
@@ -373,7 +307,7 @@ export function* boltTests(g, out, flags) {
   player.useAbility(null);
   out(`  recarga de 10 s ${ok(!player.bTurret)}`);
 
-  out('421) Besta com as 29: sem erros');
+  out('421) Besta com todas: sem erros');
   fresh(); yield 0.1;
   for (const b of mine) for (let i = 0; i < b.max; i++) player.addBlessing(b);
   combat.world.addRect(-12, -14, 12, -13);

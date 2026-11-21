@@ -3,10 +3,12 @@
 import { BLESSINGS } from './blessings.js';
 import { WEAPON_BLESSINGS } from './weaponbless.js';
 import { wbDamage } from './wbhooks.js';
+import { flail2Tests } from './selftest34.js';
 
 const ok = (c, extra = '') => (c ? `✔${extra ? ` ${extra}` : ''}` : `ERRO${extra ? ` (${extra})` : ''}`);
 
 export function* flailTests(g, out, flags) {
+  if (window.__flail2Only) { yield* flail2Tests(g, out, flags); return; } // teste rápido: só a 2ª leva
   const { player, combat, waves } = g;
   const realInput = player.input;
   const cam = g.cam.camera;
@@ -30,12 +32,12 @@ export function* flailTests(g, out, flags) {
 
   // ---------------- 117) Lista ----------------
   out('117) Mangual: bênçãos do dono');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.mangual');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.mangual' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const by = (n) => mine.find((b) => b.name === n) || {};
   const want = ['Corrente Enroscada', 'Pancada Atordoante', 'Rodopio', 'Esmaga-Guarda', 'Equilíbrio', 'Reflexo', 'Impacto Sísmico', 'Corrente', 'Estrela da Manhã'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
-  out(`  ${mine.length} bênçãos ${ok(mine.length === 9)} | as 9 da lista ${ok(!miss.length, miss.join(', '))}`);
-  out(`  raridades ${ok(by('Corrente Enroscada').rarity === 'common' && by('Rodopio').rarity === 'common' && by('Equilíbrio').rarity === 'rare' && by('Reflexo').rarity === 'rare' && by('Impacto Sísmico').rarity === 'epic' && by('Corrente').rarity === 'epic' && by('Estrela da Manhã').rarity === 'legendary')} | máximos ${ok(by('Pancada Atordoante').max === 3 && by('Rodopio').max === 1 && by('Impacto Sísmico').max === 3)}`);
+  out(`  ${mine.length} bênçãos ${ok(mine.length === 23)} | as 9 da 1ª lista ${ok(!miss.length, miss.join(', '))}`);
+  out(`  raridades ${ok(by('Corrente Enroscada').rarity === 'common' && by('Rodopio').rarity === 'common' && by('Equilíbrio').rarity === 'rare' && by('Reflexo').rarity === 'rare' && by('Impacto Sísmico').rarity === 'epic' && by('Corrente').rarity === 'epic' && by('Estrela da Manhã').rarity === 'epic')} | máximos ${ok(by('Pancada Atordoante').max === 3 && by('Rodopio').max === 1 && by('Impacto Sísmico').max === 3)}`);
 
   // ---------------- 118) Estrela da Manhã ----------------
   out('118) Estrela da Manhã: 1º e 2º golpe atordoam 1 s');
@@ -207,7 +209,7 @@ export function* flailTests(g, out, flags) {
   player.input = fake(); yield 0.1;
 
   // ---------------- 126) Todas juntas ----------------
-  out('126) Mangual: as 9 bênçãos juntas (sem erro)');
+  out('126) Mangual: todas as bênçãos juntas (sem erro)');
   fresh(); yield 0.1;
   for (const b of mine) for (let k = 0; k < b.max; k++) player.addBlessing(b);
   for (let i = 0; i < 5; i++) dummy(-1.2 + i * 0.6, 0.4 - (i % 2) * 0.6, i === 2 ? 'warrior' : 'minion', 300);
@@ -225,4 +227,5 @@ export function* flailTests(g, out, flags) {
   out(`  ${swings} golpes ${ok(swings === 9 && (window.__game.errors || []).length === errs0)}`);
   player.iframes = 0;
   fresh();
+  yield* flail2Tests(g, out, flags); // 2ª leva (09/11/2026)
 }

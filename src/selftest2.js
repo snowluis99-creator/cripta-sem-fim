@@ -1,5 +1,5 @@
 // Teste automático, parte 3: Arqueiro e Guardião enfurecido (chamado por selftest.js).
-import { rollBlessings, ensureLegendary } from './blessings.js';
+import { rollBlessings, ensureEpic } from './blessings.js';
 const press = (code) => {
   dispatchEvent(new KeyboardEvent('keydown', { code }));
   dispatchEvent(new KeyboardEvent('keyup', { code }));
@@ -104,8 +104,8 @@ export function* rangedAndRageTests(g, out, flags, setup) {
   keyUp('KeyK'); yield 0.3;
   for (const m of ms) m.die();
   let okL = 0;
-  for (let i = 0; i < 60; i++) { const o = ensureLegendary(rollBlessings({}, 3, 'epic', Math.random, player.hero), {}, Math.random, player.hero); if (o.some((x) => x.rarity === 'legendary')) okL++; }
-  out(`  bênção do chefe com lendária: ${okL}/60 ${okL === 60 ? '✔' : 'ERRO'}`);
+  for (let i = 0; i < 60; i++) { const o = ensureEpic(rollBlessings({}, 3, 'rare', Math.random, player.hero), {}, Math.random, player.hero); if (o.some((x) => x.rarity === 'epic')) okL++; }
+  out(`  bênção do chefe/guardião com épica: ${okL}/60 ${okL === 60 ? '✔' : 'ERRO'}`);
   player.hp = Math.max(1, player.maxHp - 30); player.potions = Math.max(player.potions, 1); player.restRoom = true;
   const pot0 = player.potions;
   const drank = player.tryDrink();

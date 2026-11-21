@@ -196,6 +196,7 @@ export class CoopHost {
       tv: run.inTavern ? 1 : 0,
       tvv: run.tavernVersion || 0,
       h: [this.heroEntry(p1), p2 ? this.heroEntry(p2) : 0],
+      mk: this.combat.mech ? [this.combat.mech.netEntry(p1), p2 ? this.combat.mech.netEntry(p2) : 0] : 0, // Forma Final: o robô de cada herói
       e: this.combat.enemies.map((e) => this.enemyEntry(e)),
       pk: run.pickups.filter((p) => p.kind !== 'bed').map((p) => [p.id, PICKUP_KINDS.indexOf(p.kind), r2(p.pos.x), r2(p.pos.z),
         p.opts.color ?? 0, p.opts.ringColor ?? -1, p.opts.item === 'potion' ? 1 : 0, p.opts.price || 0, p.opts.size || 1,

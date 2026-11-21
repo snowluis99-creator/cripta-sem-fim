@@ -20,10 +20,11 @@ import { RogueKit2 } from './roguekit.js';
 import { ClawKit } from './clawkit.js';
 import { RapKit } from './rapkit.js';
 import { Rap2Kit } from './rapkit2.js';
+import { FlailKit2 } from './flailkit2.js';
 import { BoltKit } from './boltkit.js';
 import { markDark, onEnemyKilled, undeadTarget, undeadHit, hitUndead, undeadDied, undeadTick, undeadLook } from './undead.js';
 import { isFlail, flailAfterStrike, flailShotBlocked, flailClear, flailStrike } from './flailkit.js';
-import { wbDamage, wbOnHit, wbOnSwing, wbOnKill, wbOnShatter, wbOnBlock, wbTick } from './wbhooks.js';
+import { wbDamage, wbOnHit, wbOnSwing, wbOnKill, wbOnShatter, wbOnBlock, wbTick, wbSetCombat } from './wbhooks.js';
 import { Demolisher } from './demolish.js';
 import { KnightKit, isKit, kitStrike, kitOnSwing, kitGuard, kitOnRepel, kitFlameBlock, kitBumpSafe } from './knightkit.js';
 import { KnightKit2 } from './knightkit2.js';
@@ -36,6 +37,19 @@ import { fistStrike, fistBeforeHit, fistGuard, fistIgnore, fistSway } from './fi
 import { FistKit } from './fistkit2.js';
 import { ArcaneKit } from './arcanekit2.js';
 import { EleKit } from './elekit2.js';
+import { KCKit } from './kckit.js';
+import { MCKit } from './mckit.js';
+import { RCKit } from './rckit.js';
+import { KRKit } from './krkit.js';
+import { R2Kit } from './r2kit.js';
+import { E1Kit, e1RangeMul } from './e1kit.js';
+import { E2Kit } from './e2kit.js';
+import { MechKit } from './mechkit.js';
+import { RexKit } from './rexkit.js'; // Velocidade Rasga-Tempo (lendária da Lança)
+import { GiantKit } from './giantkit.js'; // Gigante de Aço (lendária da Manopla)
+import { GrimKit } from './grimkit.js'; // Grimório Ancestral (lendária do Cajado Arcano)
+import { ThorKit } from './thorkit.js';
+import { BroKit } from './brokit.js'; // Venham, Irmãos (lendária do Mangual)
 
 const DEG = Math.PI / 180;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -49,7 +63,7 @@ const SHIELD_BASH = { time: 0.6, push: 9 };
 // Choque do Escudo: todo bloqueio do Cavaleiro atordoa de leve quem está em volta (raio) e empurra um pouco.
 const SHIELD_SHOCK = { radius: 3.2, stun: 0.55, push: 5 };
 
-const NO_BODY = new Set(['spawn', 'leap', 'held', 'thrown', 'roll', 'hop', 'axeAir', 'lanceHeld', 'lanceFly', 'fistHeld', 'fistFly']); // sem corpo (não empurra nem é empurrado)
+const NO_BODY = new Set(['spawn', 'leap', 'held', 'thrown', 'roll', 'hop', 'axeAir', 'kcLift', 'lanceHeld', 'lanceFly', 'fistHeld', 'fistFly']); // sem corpo (não empurra nem é empurrado)
 export const FEEL = {
   hitstop: 0.055,       // pausa num golpe normal (s)
   hitstopHeavy: 0.11,   // pausa no golpe forte
@@ -136,7 +150,22 @@ export class Combat {
     this.claw2 = new ClawKit(this);     // bênçãos novas das Garras (clawkit.js / clawprops.js)
     this.rap = new RapKit(this);        // bênçãos novas da Rapieira (rapkit.js / rapprops.js)
     this.rap2 = new Rap2Kit(this);      // Rapieira, 3ª leva (rapkit2.js / rapprops2.js)
+    this.flail2 = new FlailKit2(this);  // Mangual, 2ª leva (flailkit2.js / flailprops2.js)
     this.bolt = new BoltKit(this);      // bênçãos novas da Besta (boltkit.js / boltprops.js)
+    wbSetCombat(this);
+    this.kc = new KCKit(this);          // bênçãos comuns das 5 armas do Cavaleiro (kcbless.js / kckit.js)
+    this.mc = new MCKit(this);          // bênçãos comuns dos 5 cajados da Maga (mcbless.js / mckit.js)
+    this.rc = new RCKit(this);          // bênçãos comuns das 5 armas do Ladino (rcbless.js / rckit.js)
+    this.kr = new KRKit(this);          // bênçãos raras do Cavaleiro, lote 1 (krbless.js / krkit.js)
+    this.r2 = new R2Kit(this);          // bênçãos raras, lote 2: Rapieira, Fogo, Manopla, Arcano, Adagas (r2bless.js / r2kit.js)
+    this.e2 = new E2Kit(this);          // bênçãos épicas, lote 2: as 8 do Ladino (e2bless.js / e2kit.js)
+    this.mech = new MechKit(this);      // lendária da Espada e Escudo: Forma Final, o robô gigante (l1bless.js / mechkit.js)
+    this.giant = new GiantKit(this);    // lendária da Manopla: Gigante de Aço, o robô boxeador (l1bless.js / giantkit.js / giant.js / giantfx.js)
+    this.grim = new GrimKit(this);      // lendária do Cajado Arcano: Grimório Ancestral, 1 magia sorteada por ataque (l1bless.js / grimkit.js / grimspells.js / grimlook.js)
+    this.rex = new RexKit(this);        // lendária da Lança: Velocidade Rasga-Tempo, o T-Rex (l1bless.js / rexkit.js / rex.js / rexfx.js)
+    this.bro = new BroKit(this);        // lendária do Mangual: Venham, Irmãos (l1bless.js / brokit.js / brolook.js)
+    this.thor = new ThorKit(this);      // lendária do Machado: Bênção de Odin, o Deus do Trovão (l1bless.js / thorkit.js)
+    this.e1 = new E1Kit(this);          // bênçãos épicas, lote 1: Manopla, Machado, Mangual, Lança, Gelo (e1bless.js / e1kit.js)
   }
 
   // Heróis vivos (co-op: os dois).
@@ -154,7 +183,9 @@ export class Combat {
 
   // Quem o esqueleto persegue: o herói mais perto (troca de alvo só de vez em quando, com folga).
   pickTarget(e, dt) {
-    if (e.undead) return this.dark2.heirTarget(e) || undeadTarget(this, e); // morto-vivo da Maga: o inimigo mais perto (Herança: guarda fica do lado dela)
+    if (e.undead) return this.dark2.heirTarget(e) || this.mc.undeadTarget(e) || undeadTarget(this, e); // Comandante (comum da Maga): o mais forte // morto-vivo da Maga: o inimigo mais perto (Herança: guarda fica do lado dela)
+    const lv = this.e2.loveTarget(e); if (lv) return lv; // Flecha do Cupido (Besta, épica): o casal briga com os outros
+    const gb = this.grim.blindTarget(e, dt); if (gb) return gb; // Eclipse (Grimório): cego bate em quem estiver perto
     const bt = this.dark2.betrayTarget(e, dt); if (bt) return bt; // Traição: o marcado vai atrás de um aliado dele
     // Apanhou de um morto-vivo: vai atrás dele (só depois de apanhar).
     if (e.provokedBy) { if (e.provokedBy.alive) return e.provokedBy; e.provokedBy = null; }
@@ -166,6 +197,7 @@ export class Combat {
     // Mercador contratado: os esqueletos comuns também vão atrás dele (chefes não).
     const m = this.merchant;
     if (m && m.ally && m.alive && m.state !== 'leave' && m.state !== 'gone' && !e.data.boss) alive.push(m);
+    if (!e.data.phantom) for (const b of this.giant.bots()) alive.push(b); // Gigante de Aço: o robô também pode ser o alvo (chefes também)
     if (alive.length <= 1) return alive[0] || this.players[0];
     e.retarget = (e.retarget || 0) - dt;
     // Chefe no co-op: não fica preso num herói só. A cada 4–6 s troca para o outro
@@ -322,19 +354,25 @@ export class Combat {
   // Golpe do herói (chamado no momento do impacto do golpe).
   playerStrike(p, step) {
     const h = p.hero;
+    if (this.grim.strike(p, step)) return; // Grimório Ancestral: sai uma magia do livro (nenhuma bênção vale)
     wbOnSwing(this, p, step); // bênçãos de arma que saem no golpe (Lança do Dragão)
+    if (this.thor.strike(p, step)) return; // Bênção de Odin: relâmpago em todo golpe; sem ninguém no alcance, arremessa o machado
     if (kitStrike(this, p, step)) return; // Espada e Escudo: arremessa o escudo/a espada em vez de cortar
     if (axeStrike(this, p, step)) return; // Machado: Arremesso Mortal
     if (axe3Strike(this, p, step)) return; // Machado: ombrada, cabo, socos
     if (lanceStrike(this, p, step)) return; // Lança: arremessos, socos, Âncora, Molinete, Mil Lanças
     if (flailStrike(this, p, step)) return; // Mangual: Reflexo (bola lançada)
+    if (this.flail2.strike(p, step)) return; // Mangual: Sino da Catedral
+    if (this.kr.strike(p, step)) return; // Ataque Inesperado (Mangual, rara): 1º golpe em 360°
+    if (this.kc.strike(p, step)) return; // Esquiva Pesada (Mangual) / Determinação (Lança)
     if (fistStrike(this, p, step)) return; // Manopla: Arremesso, Suplex, Soco Sísmico, Punho Foguete, Soco Carregado
     if (step.cast) { castSpell(this, p, step); return; } // Maga: a magia sai daqui (magic.js)
     if (this.rap2.strike(p, step)) return; // Rapieira: Pistola de Pederneira (4º golpe)
+    if (this.r2.strike(p, step)) return; // Proficiência (Duas Adagas, rara): arremessa a adaga
     if (step.throw) { if (this.rogue) this.rogue.fire(p, step); return; } // Ladino: kunai / virote (rogue.js)
     const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
     const st = p.stats;
-    const range = h.attackRange * st.rangeMul * axeRangeMul(p, step); // Giro Crescente
+    const range = h.attackRange * st.rangeMul * axeRangeMul(p, step) * this.flail2.rangeMul(p) * this.kc.rangeMul(p) * e1RangeMul(p); // Sangue de Gigante (Machado) // Elo Extra / Ponta de Troféu // Giro Crescente // Bola de Ossos (Mangual)
     // Ponto do impacto: um pouco à frente (lança: bem mais longe; manopla: mais perto).
     const single = h.single && !step.cone; // 2º golpe da Rapieira: cone na frente (acerta todos dentro)
     const reach = Math.min(1.7, range * 0.65) + (single ? range * 0.3 : 0);
@@ -378,6 +416,7 @@ export class Combat {
       const wasBack = step.turnAround && this.rap2.wantsDance(p, e); // Vem Dançar (Rapieira): já estava de costas?
       const r = this.damageEnemy(p, e, step, dx / dist, dz / dist);
       if (r) { hits++; if (r === 'kill') kills++; if (r === 'blocked') blocked.push(e); }
+      if (r) this.r2.onHit(p, e, step, r); // raras, lote 2: 3 Dedos, En Garde (Rapieira), Clinch (Manopla)
       if (r === 'hit' && step.turnAround && e.alive && !(wasBack && this.rap2.dance(p, e))) this.turnAway(p, e); // Rapieira: vira o inimigo de costas
     }
     this.props.strikeArc(p, range, arc, step.heavy ? impact : null, heavyRadius); // objetos quebráveis
@@ -388,6 +427,10 @@ export class Combat {
     flailAfterStrike(this, p, step); // Mangual: Corrente Enroscada
     this.rap.afterStrike(p, step, hits); // Valsa (Rapieira): golpe que errou recomeça
     this.rap2.afterStrike(p, step, hits); // Rapieira: mosqueteiros, Constelação, Espetinho, Linha e Agulha
+    this.kr.afterStrike(p, step, hits); // Postura Firme (Espada, rara)
+    this.e1.afterStrike(p, step, hits); // épicas: Berço de Newton (Mangual), Chute Espartano (Lança)
+    this.kc.afterStrike(p, step, hits); // comuns do Cavaleiro: Elo Extra, Satisfação, Sequência, Varredura, Badalo...
+    this.flail2.afterStrike(p, step, hits); // Mangual, 2ª leva: Laço, Algemas, Strike!, Cometa, Gaiola, Hidra, Poste...
     p.sneakCrit = false; p.parryCrit = false; // ataque furtivo / contra-golpe da Rapieira: vale só para este golpe
     // O Mercador também apanha do herói (e revida).
     const m = this.merchant;
@@ -483,8 +526,8 @@ export class Combat {
     const w = st.w || {};
     fistBeforeHit(this, p, e, step); // Quebra-Escudo (Manopla): o soco arranca o escudo
     const heavyLike = step.heavy || !!w.guardBreak; // Esmaga-Guarda: todo golpe conta como forte contra a guarda
-    const eleThrough = !!step.eleFx || (!!w.eShort && !!opts.spell && p.hero.weaponId === 'eletrico'); // Cajado Elétrico: efeitos no chão / Curto-Circuito passam pelo escudo
-    if (!heavyLike && !eleThrough && e.shieldCovers(p.position.x, p.position.z)) {
+    const eleThrough = !!step.eleFx || (!!w.eShort && !!opts.spell && p.hero.weaponId === 'eletrico') || this.mc.fireThrough(p, opts); // Ferro em Brasa: o fogo passa pelo escudo // Cajado Elétrico: efeitos no chão / Curto-Circuito passam pelo escudo
+    if (!heavyLike && !eleThrough && e.shieldCovers(p.position.x, p.position.z) && !this.rc.pierce(p, e, step, opts)) { // Ponta Fina (Rapieira): a estocada passa pelo escudo
       // Escudo do Guerreiro: sem dano. Magia não para o esqueleto (ele segue andando com o escudo levantado).
       if (!opts.spell || opts.staggers) e.blockHit(nx, nz);
       audio.play('block', e.position.x, e.position.z);
@@ -500,6 +543,7 @@ export class Combat {
       this.text.add('Bloqueou!', e.position, 'block');
       this.claw2.onBlocked(p, e, step); // Rasgar Escudo (Garras)
       this.rap.onBlocked(p, e, step); // Precisão Cirúrgica (Rapieira)
+      this.kc.onBlocked(p, e, step, nx, nz); // Rachador (Machado)
       this.addHitstop(0.04);
       this.shakeFor(p, 0.08);
       if (this.log) this.log({ type: 'blocked', enemy: e });
@@ -507,13 +551,14 @@ export class Combat {
     }
     if (axeDecap(this, p, e, step)) return 'hit'; // Decapitar: a machadada forte arranca a cabeça
     const rx = this.rogue2.beforeHit(p, e, step, nx, nz, opts); if (rx) return rx; // Execução Silenciosa (Duas Adagas)
+    const rx2 = this.rc.beforeHit(p, e, step, nx, nz, opts); if (rx2) return rx2; // Toque Final (Rapieira)
     // Contra-Ataque: o golpe depois de um bloqueio dá dano dobrado.
     // Contra-Ataque: o golpe depois de escapar rolando dá mais dano. Quebra-Gelo: 1º ataque da sala.
     // Fúria: com menos de 50% de vida. Poder Acumulado: 2 combos com dano dobrado depois da ultimate.
     const counter = p.counterReady ? 1 + st.counter : 1;
     const opener = p.openerReady && st.opener > 0 ? 2 : 1; // Quebra-Gelo: 1º combo da sala com dano dobrado (e crítico, abaixo)
     const rage = st.rage > 0 && p.hp < p.maxHp * 0.5 ? 1 + st.rage : 1;
-    const power = (p.powerActive ? 2 : 1) * this.rap2.dmgMul(p); // Xeque-Mate (Rapieira): coroa +30%
+    const power = (p.powerActive ? 2 : 1) * this.rap2.dmgMul(p) * this.flail2.dmgMul(p); // Xeque-Mate (Rapieira): coroa +30% // Bola de Ossos (Mangual)
     const baseMul = st.damageMul * (st.fury && p.lowHp ? 1.6 : 1) * (st.domeFury && p.ultTime > 0 ? 1.6 : 1) * (1 + Math.min(0.75, st.reaperStacks * 0.02)) * counter * opener * rage * power;
     const guardBreak = step.heavy && e.data.staggerOnlyHeavy && e.shieldCovers(p.position.x, p.position.z);
     // Crítico: chance das bênçãos + a do herói (Ladino 25%). Sempre crítico: Precisão Invejável (ultimate do Ladino),
@@ -522,7 +567,7 @@ export class Combat {
     const crit = backstab || opts.forceCrit || opener > 1 || p.sneakCrit || p.parryCrit || (p.heroId === 'rogue' && p.ultTime > 0)
       || coopTakeCrit(p) || Math.random() < st.critChance + (p.hero.crit || 0); // co-op: Vingança
     const exec = st.execute > 0 && e.hp < e.maxHp * 0.3 ? 1 + st.execute : 1;
-    const wb = wbDamage(p, e, step, { backstab, ranged: !!opts.ranged, spell: !!opts.spell });
+    const wb = wbDamage(p, e, step, { backstab, ranged: !!opts.ranged, spell: !!opts.spell, crit }); // crit: já ia ser crítico (Rolar e Cortar, Unhas Grudentas)
     if (wb.pushOnly) return lanceShove(this, p, e, step, nx, nz); // Ponta Doce: de perto a lança só empurra
     const crit2 = crit || wb.forceCrit;
     const critMul = ((st.lethalCrit && p.heroId === 'rogue' && p.ultTime > 0 ? 3 : 2) + wb.critMul) * (st.critDmgMul || 1); // Golpe Letal / bênçãos de arma / Olho do Carrasco
@@ -532,7 +577,7 @@ export class Combat {
     if (shatter) e.shattered = true;
     const vuln = (e.offBalanceT > 0 ? 1.25 : 1) * (e.acidT > 0 ? 1 + (e.acidMul || 0) : 1) * coopDamageMul(this, p, e); // Chuva Ácida // desequilibrado: +25%; co-op: Laço/Marca
     // Perfect: soma +2 (+4) por golpe que acertou, até tomar dano (teto +30 / +60).
-    const perfect = st.perfect > 0 ? Math.min(st.perfect * 15, (p.perfectStacks || 0) * st.perfect) : 0;
+    const perfect = st.perfect > 0 ? (p.perfectStacks || 0) * st.perfect : 0; // Perfect: sem limite (pedido do dono, 11/11)
     const dmg = Math.max(1, Math.round(step.damage * baseMul * exec * vuln * wb.mul * (crit2 ? critMul : 1) * (frozenHit ? 2 + (shatter ? w.shatter || 0 : 0) : 1) * (0.9 + Math.random() * 0.2) + perfect));
     if (st.perfect > 0 && p.perfectSwing !== p.swingSeq) { p.perfectSwing = p.swingSeq; p.perfectStacks = (p.perfectStacks || 0) + 1; }
     const push = (step.heavy ? FEEL.pushHeavy * st.heavyPushMul : FEEL.push) * (opts.spell ? 0.6 : 1) * (1 + (w.pushMul || 0)) * (step.pushMul || 1); // pancada de escudo: empurra longe
@@ -600,6 +645,7 @@ export class Combat {
   // Dano do fogo (Lâmina Flamejante): não atordoa nem empurra.
   burnDamage(e, dmg) {
     if (e.immune) return;
+    dmg = this.mc.burnMul(e, dmg); // Ossos Secos (Cajado de Fogo): lacaios queimam mais rápido
     statDamage(e, dmg, e.hp);
     e.hp -= dmg;
     e.flash = Math.max(e.flash, 0.4);
@@ -615,21 +661,24 @@ export class Combat {
   killed(e, nx, nz, by = null) {
     if (e.data.phantom) { vanishPhantom(e, this); return; } // cópia do Ceifador: só fumaça
     if (e.undead) { undeadDied(this, e); return; } // morto-vivo da Maga: só desmorona
+    this.grim.onDeath(e); // Exército das Sombras (Grimório): lembra onde caiu
     onEnemyKilled(this, e); // marcado pelo Cajado das Trevas: levanta do lado da Maga
-    this.kit2.onKill(e); // Espada Amaldiçoada: conta o tipo pedido
+    const mk = this.mech.striking || this.rex.striking || this.giant.striking || this.grim.striking; // Forma Final / mordida e fogo do T-Rex: golpe do robô, nenhuma bênção interfere (decisão do dono)
+    if (!mk) this.kit2.onKill(e); // Espada Amaldiçoada: conta o tipo pedido
     this.kills++;
     by = by || e.lastHitBy || this.player;
     this.rap2.onKill(e, by); // Rapieira: Xeque-Mate, Um por Todos, placar/furos
+    this.flail2.onKill(e, by); // Bola de Ossos (Mangual): crânio na bola
     statKill(e, by); // estatísticas da descida
     this.ice2.onKilled(e, by); // Estátua / Boneco de Neve (Cajado de Gelo): morreu congelado
     this.fire2.onKilled(e, by); // Cinzas (Cajado de Fogo): morreu queimando
     const st = by.stats;
     // Ultimate: cada inimigo derrotado pelo herói enche 1 (não conta durante a ultimate dele).
     if (by.hero && !e.noUltCharge && !(by.ultTime > 0) && !by.ultCasting && by.state !== 'dead') by.ult = Math.min(by.ultNeed, (by.ult || 0) + 1);
-    if (st.reaper && st.reaperStacks < 38) st.reaperStacks++; // +2% cada, até +75%
+    if (!mk && st.reaper && st.reaperStacks < 38) st.reaperStacks++; // +2% cada, até +75%
     // Restos que o Mago Esqueleto pode reviver (só uma vez por esqueleto; chefes não).
     if (!e.revived && !e.data.boss && !e.noGrave) this.graves.push({ type: e.type, x: e.position.x, z: e.position.z, age: 0, hpScale: e.hpScale, dmgScale: e.dmgScale });
-    if (st.boneBlast > 0 && !e.blasted) { e.blasted = true; this.boneBlast(e.position, st.boneBlast, by); }
+    if (!mk && st.boneBlast > 0 && !e.blasted) { e.blasted = true; this.boneBlast(e.position, st.boneBlast, by); }
     // Chefe morreu: os esqueletos invocados desmoronam juntos.
     if (e.data.final || e.data.finale) {
       this.graves.length = 0;
@@ -637,7 +686,7 @@ export class Combat {
       this.projectiles.clear();
       this.hazards.clear();
     }
-    if (st.lifeOnKill > 0 && by.state !== 'dead' && by.hp < by.maxHp) {
+    if (!mk && st.lifeOnKill > 0 && by.state !== 'dead' && by.hp < by.maxHp) {
       const before = by.hp;
       by.hp = Math.min(by.maxHp, by.hp + st.lifeOnKill);
       this.text.add(`+${by.hp - before}`, by.position, 'heal small');
@@ -649,7 +698,7 @@ export class Combat {
     audio.play('crunch', e.position.x, e.position.z);
     // Rei Skullbone: em vez de desmontar na hora, a cena (vai até o herói, perde a cabeça, agarra...).
     if (e.data.finale && !this.finale.active) this.finale.start(e, by);
-    if (by.hero) wbOnKill(this, e, by);
+    if (by.hero && !mk) wbOnKill(this, e, by);
     if (this.onKill) this.onKill(e, by);
   }
 
@@ -666,7 +715,9 @@ export class Combat {
       for (const o of [...this.enemies]) if (!o.undead && o.targetable && inReach(o.position, o.data.radius)) undeadHit(this, e, o, dmg);
       return;
     }
+    if (this.grim.blindStrike(e, inReach, dmg)) return; // Eclipse (Grimório): o cego acerta os outros, nunca a Maga
     if (this.dark2.foeStrike(e, inReach, dmg)) return; // Traição: brigando com outro inimigo
+    if (this.giant.isBot(e.target) && inReach(e.target.position, e.target.data.radius)) this.giant.hurt(e.target.owner, dmg, e.position.x, e.position.z); // Gigante de Aço: o golpe pega o robô
     // Inimigo que está brigando com um morto-vivo: o golpe pega ele.
     if (e.target && e.target.undead && e.target.alive && inReach(e.target.position, e.target.data.radius)) hitUndead(this, e.target, dmg, e.position.x, e.position.z);
     // O golpe pode pegar o Mercador sem querer (ele revida).
@@ -702,6 +753,7 @@ export class Combat {
       if (u.alive && !opts.contact && Math.hypot(u.position.x - e.position.x, u.position.z - e.position.z) < (e.data.attackRange || 2) + 2) hitUndead(this, u, base, e.position.x, e.position.z);
       return false;
     }
+    if (this.giant.enemyHit(e, base, opts)) return false; // Gigante de Aço: inimigo mirando o robô (salto, investida...): o golpe vai nele
     // Esqueleto mirando o mercador contratado: o golpe vai nele (se estiver perto), nunca no herói longe.
     if (!opts.target && e.target && e.target.ally) {
       const m = e.target;
@@ -711,12 +763,16 @@ export class Combat {
     if (this.dark2.foeHit(e, base, opts)) return false; // Traição: o golpe vai no inimigo que ele persegue
     const p = opts.target || (e.target && this.players.includes(e.target) ? e.target : this.player);
     if (p.state === 'dead') return false;
+    const mh = this.mech.hit(p, e, base, opts); if (mh !== undefined) return mh; // Forma Final: todo dano vai para o robô
+    const rh = this.rex.hit(p, e, base, opts); if (rh !== undefined) return rh; // T-Rex: todo dano vai para ele
+    const gh = this.grim.hit(p, e, base, opts); if (gh !== undefined) return gh; // Grimório Ancestral: escudo anula magia; golpe físico passa
     if (this.rap.riposteCatch(p, base, opts.shooter || e)) return false; // Ripostar (Rapieira): nega e guarda para devolver
     if (this.rogue2.foeMiss(e, p, opts)) return false; // Areia nos Olhos (cego erra) / Desarmar (só empurra)
     base *= this.arcane.enemyDmgMul(opts.shooter || e); // Encolher (Cajado Arcano): metade do dano
     if (fistIgnore(this, e, p, opts)) return false; // Manopla: Duelo (os outros não machucam) / Desmontar (só empurra)
     if (this.kit2.duelBlocks(e, p)) return false; // Duelo Sagrado: golpe de fora do círculo não entra
     if (this.rap.autoParry(p, e, opts)) return false; // En Garde / Aparar em Cadeia (Rapieira): apara sozinho
+    if (this.rc.fence(p, e, opts)) return false; // Esgrima Defensiva (Rapieira, comum): desvia durante a estocada
     // unDodgeable (giro do Guardião enfurecido): rolar não salva, só o escudo.
     if (p.invulnerable && !(opts.unDodgeable && p.state === 'dodge')) {
       if (p.clawBeastT > 0 && p.state !== 'dodge' && !opts.contact) this.text.add('Imune!', p.position, 'miss'); // Fúria da Fera (Garras)
@@ -777,6 +833,9 @@ export class Combat {
       if (!opts.contact && !opts.bossSkill && res !== 'break') kitOnRepel(this, p, e, -nx, -nz); // Bilhar de Ossos: quem bateu no escudo vira bola
       if (!opts.contact) wbOnBlock(this, p, e, nx, nz); // Escudo Pesado, Guarda Curativa...
       if (opts.shooter) flailShotBlocked(this, p, opts.shooter); // Corrente (Mangual): puxa quem atirou
+      this.flail2.onBlock(p, e, opts, res); // Mangual: Escudo Coletor, Panela de Pressão
+      if (!opts.contact) this.kc.onBlock(p, e, opts, res); // Troco do Escudo / Muralha Paciente
+      this.kr.onBlock(p, e, opts, res); // Guarda Total (Espada, rara): 2 bloqueios em 1 s = escudo no chão
       kitFlameBlock(this, p, e); // Escudo Flamejante: quem bateu no escudo pega fogo
       if (res !== 'break') this.shieldShock(p, e);
       this.vfx.sparks(new THREE.Vector3(p.position.x - nx * 0.7, 1.3, p.position.z - nz * 0.7), res === 'parry' ? 0xffe27a : 0xcfe4ff, res === 'parry' ? 16 : 10);
@@ -788,7 +847,9 @@ export class Combat {
       if (this.log) this.log({ type: 'blockedHero', dmg: 0, res });
       return true;
     }
+    if (!reflectBlock && this.kr.autoBlock(p, e, nx, nz, opts)) return true; // Resposta Rápida (Espada, rara): 1º golpe da onda
     // Poção Concentrada: a proteção da poção anula o próximo dano.
+    if (this.mc.shell(p, opts)) return false; // Casca de Mana (Cajado Arcano): anula a flecha/magia
     if (p.potionGuard) {
       p.potionGuard = false;
       p.iframes = Math.max(p.iframes, 0.4);
@@ -807,19 +868,29 @@ export class Combat {
       return false;
     }
     if (this.rogue2.substitute(p, e, opts)) return false; // Substituição (Duas Adagas): fica o boneco de palha
-    let dmg = Math.max(1, Math.round(base * p.stats.damageTaken * coopTakenMul(this, p) * this.rap2.takenMul(p))); // co-op: Escudo Partilhado // Xeque-Mate: coroa -30%
+    let dmg = Math.max(1, Math.round(base * p.stats.damageTaken * coopTakenMul(this, p) * this.rap2.takenMul(p) * this.mc.takenMul(p))); // Escudo de Ossos (Trevas) // co-op: Escudo Partilhado // Xeque-Mate: coroa -30%
     dmg = coopAngel(this, p, dmg); // co-op: Anjo da Guarda segura a queda
     dmg = this.arcane.absorb(p, dmg); // Armadura Arcana: cada camada anula 3
     dmg = this.dark2.link(p, dmg); // Elo de Almas: metade vai para os mortos-vivos
     if (dmg <= 0) return true;
     if (this.claw2.nineLives(p, e, dmg, nx, nz)) return false; // Sete Vidas (Garras): esquiva sozinho
     dmg = this.ice2.beforeHurt(p, dmg); // Iglu (Cajado de Gelo)
+    const hp0 = p.hp;
     p.hurt(dmg, nx, nz, opts.push);
+    this.e2.onHurt(p, hp0 - p.hp); // Regeneração (Garras, épica)
     this.claw2.onHurt(p, opts.shooter || e, opts); // Garras: Revide, Fúria da Fera
     this.rap2.onHurt(p, opts.shooter || e); // Rapieira: Touché! (ponto dele), mosqueteiros somem
+    this.flail2.onHurt(p); // Bola de Ossos (Mangual): caem crânios
+    this.kc.onHurt(p, opts.shooter || e); // Cabeça Fria / Elo Extra / Cotovelada
+    this.kr.onHurt(p); // Recuem! (Lança, rara)
+    this.r2.onHurt(p); // Segundo Round (Manopla, rara)
+    this.e1.onHurt(p); // Sangue de Gigante (Machado, épica): encolhe
+    this.thor.onHurt(p); // Bênção de Odin: explosão de raio na sala inteira (1 a cada 3 s)
     this.ice2.onHurt(p, opts.shooter || e); // Pele Gélida (Cajado de Gelo)
     coopOnHurt(this, p); // co-op: Vingança
     this.ele.onHurt(p, opts.shooter || e); // Bateria (Cajado Elétrico): descarrega em quem atacou
+    this.mc.onHurt(p, opts.shooter || e); // Adrenalina (Cajado de Gelo)
+    this.rc.onHurt(p); // Dança Curta zera; Pelagem Arrepiada (Garras)
     this.text.add(String(dmg), p.position, opts.contact ? 'hurt small' : 'hurt');
     this.addHitstop(opts.contact ? 0.04 : FEEL.hitstopHurt);
     this.shakeFor(p, opts.contact ? 0.15 : FEEL.shakeHurt);
@@ -890,7 +961,7 @@ export class Combat {
       // Herói: durante o rolamento atravessa os esqueletos. Invisível/na sombra: passa por ele sem encostar.
       if (GHOST_STATES.has(a.state) || a.rapCape) continue; // Capa do Toureiro (Rapieira): a investida que errou passa direto pelo Ladino
       for (const p of this.players) {
-        if (p.state === 'dodge' || p.state === 'dead' || p.state === 'lanceVault' || p.state === 'lanceLeap' || p.state === 'fistLeap' || p.state === 'fistDash') continue; // no ar (Lança): passa por cima
+        if (p.state === 'dodge' || p.state === 'dead' || p.state === 'lanceVault' || p.state === 'lanceLeap' || p.state === 'fistLeap' || p.state === 'fistDash' || p.state === 'kcFly' || p.state === 'kcDash' || p.state === 'e2Snipe' || p.state === 'e2Ghost') continue; // no ar (Lança): passa por cima
         const dx = a.position.x - p.position.x, dz = a.position.z - p.position.z;
         const min = a.data.radius + p.hero.radius;
         const d2 = dx * dx + dz * dz;
@@ -898,14 +969,16 @@ export class Combat {
         // Encostar num esqueleto machuca (pouco).
         if (a.abilities && a.data.contact && !a.warDrop && a.state !== 'attack' && a.state !== 'grab' && a.state !== 'eleLost' && a.state !== 'elePuppet' && a.targetable && !p.invulnerable) { // atacando: quem machuca é o golpe // Blecaute/Marionete: não machucam
           if (this.ele.bumper(p, a)) { // Para-choque (Cajado Elétrico): quem encosta leva choque e é jogado para trás
+          } else if (this.kr.bumper(p, a)) { // Cabo de Guarda (Lança, rara): pancada com o cabo, o esbarrão não machuca
           } else if (axe3Unstoppable(p)) { // Imparável: quem encosta é empurrado (sem machucar)
             const d0 = Math.sqrt(d2);
             if (!a.data.boss && a.vel) a.vel.set(dx / d0, 0, dz / d0).multiplyScalar(AXE3.unstop.push * Math.max(0.5, a.data.knockback || 1));
           } else if (!kitBumpSafe(p, a) && !axeWhirlGuard(p) && !this.bumpForgiven(p, a)) this.hitPlayer(a, Math.round(a.data.contact * a.dmgScale), { contact: true, push: 6, noRepel: true, target: p });
         }
         const d = Math.sqrt(d2), push = min - d;
-        a.position.x += (dx / d) * push * 0.75; a.position.z += (dz / d) * push * 0.75;
-        p.position.x -= (dx / d) * push * 0.25; p.position.z -= (dz / d) * push * 0.25;
+        const ka = a.bro ? 1 : 0.75; // Venham, Irmãos: os irmãos saem da frente do Cavaleiro
+        a.position.x += (dx / d) * push * ka; a.position.z += (dz / d) * push * ka;
+        p.position.x -= (dx / d) * push * (1 - ka); p.position.z -= (dz / d) * push * (1 - ka);
       }
     }
     // Os dois heróis também não ficam um dentro do outro (mas não se machucam).
@@ -962,6 +1035,7 @@ export class Combat {
       }
     }
     for (let i = this.graves.length - 1; i >= 0; i--) if ((this.graves[i].age += dt) > 14) this.graves.splice(i, 1);
+    this.bro.tick(dt); // Venham, Irmãos: corneta, irmãos pulando para dentro, seguindo o Cavaleiro
     undeadTick(this, dt); // Cajado das Trevas: marcados levantando, mortos-vivos sem inimigos desmoronam
     this.dark2.tick(dt); // Cajado das Trevas, parte 2: fantasmas, almas, mãos, Gigante, Escuridão, Sombra Faminta
     this.ice2.tick(dt); // Cajado de Gelo: curling, pista, grudento, neblina, iglu, patins, estátuas, granizo...
@@ -969,16 +1043,31 @@ export class Combat {
     this.rogue2.tick(dt);
     this.rap.tick(dt); // Rapieira: câmera lenta, fantasmas, marcas, ponto fraco, punhal...
     this.rap2.tick(dt); // Rapieira, 3ª leva: espeto, furos, estrelas, linha, placar, mosqueteiros, coroa
+    this.flail2.tick(dt); // Mangual, 2ª leva: algemas, cometa, gaiola, sino, panela, hidra, bola do Martelo...
+    this.e2.tick(dt); // épicas, lote 2 (Ladino): Disfarce, Tempo de Bala, Lua Cheia, Regeneração, Destruição, Sniper, Cupido
+    this.mech.tick(dt); // Forma Final (robô gigante): cenas, luz e barra de vida
+    this.giant.tick(dt); this.giant.play(dt); // Gigante de Aço: chegada, nocaute, robô andando e copiando os golpes, boliche
+    this.grim.tick(dt); // Grimório Ancestral: cena, livro, magias que duram
+    this.rex.tick(dt); // Velocidade Rasga-Tempo (T-Rex): cenas, transformação, fogo, barra de vida
+    this.thor.tick(dt); // Bênção de Odin: cena da transformação, visual, machado voando
+    this.e1.tick(dt); // épicas, lote 1: Lenhador, Gigante, Meteoro, chute, poços, Yeti
+    this.r2.tick(dt); // raras, lote 2: Ar Quente, Clinch, Jab, adagas da Proficiência...
+    this.kr.tick(dt); // raras do Cavaleiro: Adaptação, Cabo de Guarda, Bola de Guarda, Âncora de Ferro...
+    this.kc.tick(dt); // comuns do Cavaleiro: Embalo, Calar o Mago, Corrente Quente, Gancho...
+    this.mc.tick(dt); // comuns da Maga: faíscas, gravidade, eco, poças, picolé, fogueira, cargas...
+    this.rc.tick(dt); // comuns do Ladino: vulnerável, Instinto, adagas, ímãs, kunais amaldiçoadas, virotes brilhantes...
     this.bolt.tick(dt); // Besta: fogo no chão, rede, sino, fumaça, chuva, pregos
     this.claw2.tick(dt); // Garras: bote, montaria, poças, riscos, tigre, matilha, contorno // Duas Adagas: boneco, frascos, facas, veneno, caveiras, marca, adagas fantasmas...
     for (const e of this.enemies) if (e.alive) e.target = this.pickTarget(e, dt);
     tactics(this, dt); // brain.js: velocidade dos heróis e vagas do cerco
-    const fdt = dt * this.rap.foeScale(); // Câmera Lenta (Rapieira): inimigos e tiros devagar, o Ladino não
+    const fdt = dt * this.rap.foeScale() * this.e2.foeScale(); // Tempo de Bala (Kunais, épica) // Câmera Lenta (Rapieira): inimigos e tiros devagar, o Ladino não
     for (const e of this.enemies) {
       ctx.player = e.target || this.player;
       e.update(fdt, ctx);
     }
     undeadLook(this);
+    this.bro.after(dt); // Venham, Irmãos: cavalos galopando, quem caiu
+    this.giant.after(); // Gigante de Aço: ninguém entra no corpo do robô
     this.separate();
     this.rollStrikes();
     this.separateMerchant();
@@ -996,10 +1085,12 @@ export class Combat {
     this.ice2.afterMove(dt); // Cajado de Gelo: Grudento (pés presos) e Pista de Gelo (escorregando)
     this.bolt.afterMove(dt); // Besta: presos (rede, prego, armadilha) e ancorados
     this.rap2.afterMove(); // Rapieira: espeto acompanha a lâmina, cabeça dos tontos (Vem Dançar)
+    this.flail2.afterMove(); // Gaiola de Correntes (Mangual): ninguém entra nem sai
     // Mortos: desmontam em ossos e somem.
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (e.alive || e.finale) continue;
+      if (this.bro.dying(e, dt, i)) continue; // Venham, Irmãos: o irmão cai e some numa luz dourada
       e.deathTimer = (e.deathTimer || 0) + dt;
       if (!e.shattered && e.deathTimer >= 0.75) {
         e.shattered = true;
@@ -1034,7 +1125,21 @@ export class Combat {
     this.claw2.clear();
     this.rap.clear();
     this.rap2.clear();
+    this.flail2.clear();
     this.bolt.clear();
+    this.kc.clear();
+    this.kr.clear();
+    this.r2.clear();
+    this.e1.clear();
+    this.e2.clear();
+    this.mech.clear();
+    this.rex.clear();
+    this.grim.clear();
+    this.giant.clear();
+    this.thor.clear();
+    this.bro.clear();
+    this.mc.clear();
+    this.rc.clear();
     this.kit2.clear();
     this.demo.clear();
     for (const e of this.enemies) { if (e.boneSword) { e.boneSword.shatter(true); e.boneSword = null; } this.scene.remove(e.group); }

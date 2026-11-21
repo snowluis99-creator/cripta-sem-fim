@@ -20,10 +20,12 @@ function origin(p) {
 }
 
 export function castSpell(combat, p, step) {
+  if (combat.mc) step = combat.mc.castStep(p, step); // Contagem (Cajado Arcano): o orbe pequeno sai grande
   const c = step.cast;
   const st = p.stats;
   const o = origin(p);
   if (c.type === 'bolt' && !c.instant && arcBeforeCast(combat, p, step)) return; // Pancada de Cajado (Cajado Arcano)
+  if (combat.mc && combat.mc.beforeCast(p, step)) return; // Labareda (Cajado de Fogo); Bateria Cheia, Mira Firme
   combat.spellCount = (combat.spellCount || 0) + 1;
   if (combat.log) combat.log({ type: 'swing', hits: 0, heavy: !!step.heavy, cast: c.type });
   if (step.heavy && st.echo > 0) combat.echoWave(p, Math.round(st.echo * st.damageMul));
@@ -44,7 +46,9 @@ export function castSpell(combat, p, step) {
         hits: 'spell', owner: p, step, life: (p.hero.attackRange * rangeMul) / c.speed, height: 1.25, silent: true,
       });
       if (tok) arcDecorate(combat, p, step, pr, tok);
+      if (combat.mc) combat.mc.decorate(p, step, pr, i); // Orbe Teleguiado, Mira Firme (comuns da Maga)
     }
+    if (combat.mc) combat.mc.afterCast(p);
     if (tok) arcAfterCast(combat, p, step, tok);
     audio.play(step.heavy ? 'swingHeavy' : 'orb', o.x, o.z);
     return;
@@ -163,16 +167,18 @@ function lightningCast(combat, p, step0, o, rangeMul) {
   const c = step.cast;
   if (c.roomZap) roomZap(combat, p, c.roomZap); // todo 3º golpe dá dano em todos da sala
   const range = p.hero.attackRange * rangeMul, n = c.count || 1, used = new Set();
+  let lastChain = 0; // Ricochete Cego: quantos o pulo em volta do último alvo pegou
   for (let i = 0; i < n; i++) {
     const a = o.a + (n > 1 ? THREE.MathUtils.degToRad(c.spread || 14) * (i - (n - 1) / 2) : 0);
     const fx = Math.sin(a), fz = Math.cos(a);
     let from = new THREE.Vector3(p.position.x + fx * 0.55, 1.75, p.position.z + fz * 0.55); // ponta do cajado
     const targets = [];
     let t = pickLightning(combat, p.position.x, p.position.z, a, range, used);
+    const extra = combat.mc ? combat.mc.extraJumps(p) : 0; // Raio Errante / Bateria Cheia (comuns da Maga)
     while (t) {
       if (K && targets.length) K.onJump(p, targets[targets.length - 1], t); // Rede Elétrica
       targets.push(t); used.add(t);
-      if (targets.length > (c.pierce || 0)) break;
+      if (targets.length > (c.pierce || 0) + extra) break;
       t = pickLightning(combat, t.position.x, t.position.z, Math.atan2(t.position.x - p.position.x, t.position.z - p.position.z), range * 0.6, used);
     }
     if (!targets.length) {
@@ -188,9 +194,10 @@ function lightningCast(combat, p, step0, o, rangeMul) {
       combat.vfx.lightning(from, to, c.color, width);
       const dx = to.x - p.position.x, dz = to.z - p.position.z, d = Math.hypot(dx, dz) || 1;
       if (K) K.onStrikePoint(p, to.x, to.z); // Poça Elétrica
-      if (e.targetable) boltImpact(combat, { x: to.x, z: to.z, vx: dx / d, vz: dz / d, step, owner: p }, e);
+      if (e.targetable) lastChain = boltImpact(combat, { x: to.x, z: to.z, vx: dx / d, vz: dz / d, step, owner: p }, e) || 0;
       from = to;
     }
+    if (combat.mc) combat.mc.blindRico(p, targets[targets.length - 1], lastChain); // Ricochete Cego
     if (combat.log) combat.log({ type: 'lightning', targets: targets.length });
   }
   audio.play('thunder', o.x, o.z); // estalo de raio a cada golpe
@@ -273,6 +280,7 @@ function roomZap(combat, p, dmg) {
     combat.vfx.bolt(new THREE.Vector3(e.position.x + (Math.random() - 0.5), 7, e.position.z + (Math.random() - 0.5)), new THREE.Vector3(e.position.x, 1.2, e.position.z), 0xbff0ff);
     const dx = e.position.x - p.position.x, dz = e.position.z - p.position.z, d = Math.hypot(dx, dz) || 1;
     combat.bonusDamage(e, n, dx / d, dz / d, 'burn', p);
+    if (combat.mc) combat.mc.onRoomZap(p, e); // Pane / Paralisia (comuns da Maga)
     hits++;
   }
   if (hits) audio.play('boom', p.position.x, p.position.z, { v: 0.5 });
@@ -283,7 +291,8 @@ function roomZap(combat, p, dmg) {
 export function boltImpact(combat, a, target) {
   const step = a.step, c = step.cast, p = a.owner;
   const sp = Math.hypot(a.vx, a.vz) || 1, nx = a.vx / sp, nz = a.vz / sp;
-  let hits = 0;
+  let hits = 0, chainHits = 0;
+  const prevShot = combat.mcShot; combat.mcShot = a; // Mira Firme: o dano sabe qual orbe acertou
   if (target && spellHit(combat, p, target, step, nx, nz)) hits++;
   // Cajado Elétrico: o raio pula para os inimigos perto do atingido (mesmo dano).
   if (c.chain && target) {
@@ -294,6 +303,7 @@ export function boltImpact(combat, a, target) {
       if (d > c.chain + o.data.radius) continue;
       combat.vfx.bolt(from, new THREE.Vector3(o.position.x, 1.3, o.position.z), c.color);
       if (combat.ele && isEle(p)) combat.ele.onJump(p, target, o); // Rede Elétrica
+      chainHits++;
       if (spellHit(combat, p, o, step, dx / d, dz / d)) hits++;
     }
   }
@@ -319,8 +329,11 @@ export function boltImpact(combat, a, target) {
       if (spellHit(combat, p, e, step, dx / d, dz / d)) hits++;
     }
   } else combat.vfx.sparks(new THREE.Vector3(a.x, 1.2, a.z), c.color, 8);
+  combat.mcShot = prevShot;
   if (combat.arcane) combat.arcane.onBolt(a, target, hits); // Cajado Arcano: Armadura, Bolha, Repulsor, Ressonância...
+  if (combat.mc) combat.mc.onBolt(a, target, chainHits); // Contagem, Brago, Eco, Saltitante (comuns da Maga)
   hitFeel(combat, p, step, hits, a);
+  return chainHits;
 }
 
 // Bloco de gelo em volta de um esqueleto/herói congelado (some sozinho).

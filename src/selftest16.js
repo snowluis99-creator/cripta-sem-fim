@@ -27,7 +27,7 @@ export function* axeTests(g, out, flags) {
 
   // ---------------- 90) Lista ----------------
   out('90) Machado: lista nova de bênçãos (1ª leva)');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.machado');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.machado' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const names = mine.map((b) => b.name);
   const gone = ['Cabo Longo', 'Sangue Quente', 'Fúria do Berserker', 'Fio Pesado', 'Rolagem Giratória', 'Giro Voraz'].filter((n) => names.includes(n)); // as duas últimas saíram em 06/11
   const want = ['Sede de Batalha', 'Braços de Ferro', 'Racha-Crânios', 'Redemoinho', 'Lenhador', 'Machado Sedento', 'Terremoto Rubro', 'Arremesso Mortal', 'Pião', 'Tornado', 'Giro Crescente',

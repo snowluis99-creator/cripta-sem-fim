@@ -96,6 +96,7 @@ export class RogueKit {
 
   // Ladino levou dano: todas as kunais dele (na mão, no ar, no chão) voltam ao dano do começo.
   breakStreak(p) {
+    if (this.combat.rc) this.combat.rc.onStreakBreak(p); // Estoque Escondido: a kunai extra com corrente some
     let lost = false;
     const keep = W(p).kKeep ? 0.5 : 0; // Disciplina: perde só metade
     for (const c of p.ammo || []) if (c.stack) { c.stack = Math.floor(c.stack * keep); lost = true; }
@@ -124,7 +125,8 @@ export class RogueKit {
     this.scene.add(g);
     this.items.push({ id: ++this.seq, kind, owner: p, state: 'fly', x, z, y: 1.3, a, vx: Math.sin(a) * cfg.speed, vz: Math.cos(a) * cfg.speed,
       life: cfg.life, stack: kind === 'kunai' ? c.stack : 0, g, step, sneak: !!p.sneakCrit,
-      pierce: kind === 'kunai' ? (W(p).kPierce || 0) : (W(p).bPierce || 0), hitSet: new Set() });
+      pierce: kind === 'kunai' ? (W(p).kPierce || 0) : (W(p).bPierce || 0), hitSet: new Set(), rcExtra: !!c.rcExtra });
+    if (this.combat.rc) this.combat.rc.onFire(p, this.items[this.items.length - 1]); // comuns do Ladino: Lâminas Gêmeas, Primeiro Tiro, Virote Magnético
     if (kind === 'kunai') this.k2.onFire(p, this.items[this.items.length - 1]); // Malabarista, Bumerangue
     else if (this.combat.bolt) this.combat.bolt.onFire(p, this.items[this.items.length - 1], src); // Besta: Recarga Perfeita, Mira, Roleta, Recuo
     p.sneakCrit = false;
@@ -141,9 +143,12 @@ export class RogueKit {
     const crit = it.sneak || (it.kind === 'kunai' && w.kCrit && it.stack >= w.kCrit); // Tempestade de Aço
     const pierceShield = (it.sniper || it.divine) && !e.rapPierced; // Mira de Atirador / Divindade: atravessa o escudo
     if (pierceShield) e.rapPierced = true;
+    this.combat.rcShot = it; // comuns do Ladino: qual kunai/virote está acertando
     const r = this.combat.damageEnemy(it.owner, e, step, nx, nz, { ranged: true, forceCrit: crit });
+    this.combat.rcShot = null;
     if (pierceShield) e.rapPierced = false;
     if (it.kind === 'bolt' && this.combat.bolt) this.combat.bolt.onHit(it, e, r); // Besta: Eco, Prego, Âncora, Roleta, Mira
+    if (it.kind === 'bolt' && this.combat.e2) this.combat.e2.onBoltHit(it, e, r); // Flecha do Cupido (Besta, épica)
     if ((r === 'hit') && e.alive && it.kind === 'kunai' && w.kBleed && it.stack >= w.kBleed) addBleed(this.combat, it.owner, e, 1); // Ponta Envenenada
     if ((r === 'hit' || r === 'kill') && it.kind === 'bolt' && w.bBlast) this.boltBlast(it, e, w.bBlast); // Virote Explosivo
     return r;
@@ -165,11 +170,13 @@ export class RogueKit {
 
   // Item vira "no chão" num ponto (fica parado até o dono passar por cima).
   toGround(it, x, z, reset = false, why = '') {
+    if (it.kind === 'bolt' && this.combat.e2) this.combat.e2.onBoltEnd(it); // Flecha do Cupido: virote parou sem acertar = errou
     if (it.fake && this.combat.bolt) { this.combat.bolt.fakeEnd(it, x, z); return; } // Besta: virote extra (Divisor, Eco, torre) some
     const v = new THREE.Vector3(x, 0, z);
     const w = this.combat.world;
     if (w) { w.resolveCircle(v, 0.45); if (w.clampInside) w.clampInside(v, 0.45); }
     it.state = 'ground';
+    const before = it.stack || 0;
     it.x = v.x; it.z = v.z; if (reset) it.stack = 0;
     it.g.position.set(v.x, 0.18, v.z);
     it.g.userData.inner.rotation.set(0, 0, 0);
@@ -182,6 +189,7 @@ export class RogueKit {
     it.t = 0;
     if (it.kind === 'kunai') this.k2.onGround(it, why); // Selo, Estrepes, Pregar a Sombra, Kunai Fantasma, Malabarista
     else if (this.combat.bolt) this.combat.bolt.onGround(it, why); // Besta: Rede, Sino, Armadilha, Fumaça
+    if (this.combat.rc && it.state === 'ground') this.combat.rc.onGround(it, why, before); // comuns do Ladino: Estoque Escondido, Virote Magnético, Virote Teimoso
   }
 
   // Kunai acertou: sobe girando e cai num ponto um pouco além do inimigo (círculo mostra onde).
@@ -208,22 +216,24 @@ export class RogueKit {
   }
 
   catchKunai(it, idx, p) {
-    const stack = Math.min(it.stack + (W(p).kKeep || 0), kMax(p)); // Disciplina: pegar no ar dá +1 de corrente
-    p.ammo.push({ stack });
+    const stack = Math.min(it.stack + (W(p).kKeep || 0) + (this.combat.rc ? this.combat.rc.catchBonus(p) : 0), kMax(p)); // Disciplina / Pegada Rápida: pegar no ar dá +1 de corrente
+    p.ammo.push({ stack, rcExtra: !!it.rcExtra });
     this.drop(idx);
     this.combat.text.add(`Pegou! ×${stack + 1}`, p.position, 'crit', 3.2);
     this.vfx.sparks(new THREE.Vector3(p.position.x, 1.3, p.position.z), KUNAI.color, 10);
     audio.play('gold', p.position.x, p.position.z);
     if (this.combat.log) this.combat.log({ type: 'kunaiCatch', stack });
     this.k2.onCatch(p, stack); // Malabarista, Faísca, Pegada Heroica, Passar a Corrente
+    if (this.combat.e2) this.combat.e2.onCatch(p); // Tempo de Bala (Kunais, épica)
   }
 
   pickUp(it, idx, p) {
-    p.ammo.push({ stack: it.kind === 'kunai' ? it.stack : 0 });
+    p.ammo.push({ stack: it.kind === 'kunai' ? it.stack : 0, rcExtra: !!it.rcExtra });
     this.drop(idx);
     this.combat.text.add(it.kind === 'kunai' ? (it.stack ? `+1 kunai ×${it.stack + 1}` : '+1 kunai') : '+1 virote', p.position, 'miss', 2.8);
     audio.play('potion', p.position.x, p.position.z, { v: 0.5 });
     if (this.combat.log) this.combat.log({ type: 'ammoPick', kind: it.kind });
+    if (this.combat.rc) this.combat.rc.onPick(p, it); // Coleta Ligeira (Besta, comum)
     if (it.kind === 'bolt' && this.combat.bolt) this.combat.bolt.onPick(p, it); // Armadilha desmontada; Recarga no Pulo
   }
 
@@ -234,7 +244,7 @@ export class RogueKit {
       if (it.kind === 'bolt' && c.bolt) c.bolt.flyTick(it, dt); // Besta: Divisor, Rastro Incendiário, fantasma do Eco
       it.life -= dt;
       if (it.life <= 0 && it.flyD !== undefined) { this.k2.startBack(it); return; } // Bumerangue
-      if (it.life <= 0) { this.toGround(it, it.x, it.z, !it.hitSet.size); return; }
+      if (it.life <= 0) { const keep = it.kind === 'kunai' && !it.hitSet.size && this.combat.rc && this.combat.rc.keepChain(it); this.toGround(it, it.x, it.z, !it.hitSet.size && !keep); return; } // Corrente Viva
       // Bumerangue: no fim do voo (sem ter acertado ninguém) faz a curva e volta.
       if (it.flyD !== undefined && !it.hitSet.size) { it.flyD += Math.hypot(it.vx, it.vz) * dt; if (it.flyD >= KUN.boom.range) { this.k2.startBack(it); return; } } // já acertou alguém nesta jogada: não perde
       let left = Math.hypot(it.vx, it.vz) * dt;
@@ -261,11 +271,12 @@ export class RogueKit {
           if (it.kind === 'kunai' && it.flyD !== undefined) { it.x -= dx * 0.6; it.z -= dz * 0.6; this.k2.startBack(it); return; } // Bumerangue: volta da parede sem perder a corrente
           // Só perde a corrente se foi direto na parede. Atravessou um inimigo antes (Ricochete de Aço/Atravessar): mantém.
           const hitSomeone = it.hitSet.size > 0;
-          it.lostStack = it.stack > 0 && !hitSomeone;
+          const keep = it.kind === 'kunai' && !hitSomeone && this.combat.rc && this.combat.rc.keepChain(it); // Corrente Viva (comum)
+          it.lostStack = it.stack > 0 && !hitSomeone && !keep;
           c.vfx.sparks(new THREE.Vector3(it.x, 1.2, it.z), 0xffffff, 5);
           audio.play('block', it.x, it.z, { v: 0.5 });
           if (W(p).kWall) it.lostStack = false; // Aço Resistente: a corrente continua
-          this.toGround(it, it.x - dx * 0.6, it.z - dz * 0.6, !W(p).kWall && !hitSomeone); // parede/objeto: a corrente volta ao começo
+          this.toGround(it, it.x - dx * 0.6, it.z - dz * 0.6, !W(p).kWall && !hitSomeone && !keep); // parede/objeto: a corrente volta ao começo
           if (it.kind === 'kunai' && it.lostStack) c.text.add('Corrente perdida', new THREE.Vector3(it.x, 0, it.z), 'miss', 3);
           if (c.log) c.log({ type: 'ammoWall', kind: it.kind });
           return;
@@ -287,7 +298,10 @@ export class RogueKit {
             this.k2.onHit(it, e, r); // Troca de Lugar, Grand Finale
             if (this.k2.wantStick(it, e, r)) this.k2.stick(it, e); else this.toPop(it, e); // Sanguessuga
           }
-          else this.toGround(it, e.position.x - dx * 0.3, e.position.z - dz * 0.3); // virote / bloqueado: cai embaixo dele
+          else {
+            this.toGround(it, e.position.x - dx * 0.3, e.position.z - dz * 0.3); // virote / bloqueado: cai embaixo dele
+            if (r === 'blocked' && it.kind === 'kunai' && it.state === 'ground' && this.combat.rc) this.combat.rc.nail(it, e); // Prego no Escudo (comum)
+          }
           return;
         }
       }
@@ -382,7 +396,7 @@ export class RogueKit {
     if (run && run.roomVersion !== this.room) { // sala nova: tudo volta para a mão
       this.room = run.roomVersion;
       this.clear();
-      for (const p of this.combat.players) if (isRogue(p)) this.refill(p);
+      for (const p of this.combat.players) if (isRogue(p)) { this.refill(p); if (this.combat.rc) this.combat.rc.onRefill(p); } // Estoque Escondido (comum)
     }
     this.k2.tick(dt); // Kunais: segurar o ataque, fio, corrente, fantasmas
     for (let i = this.items.length - 1; i >= 0; i--) {

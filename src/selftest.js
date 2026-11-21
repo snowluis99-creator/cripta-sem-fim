@@ -2,6 +2,7 @@ import { input } from './input.js';
 import { rangedAndRageTests } from './selftest2.js';
 import { findBone } from './characters.js';
 import * as THREE from 'three';
+window.__realRandom = window.__realRandom || Math.random; // Venham, Irmãos (selftest44): restaura o sorteio real se outro teste deixou viciado
 const handY = (e, b) => { const o = findBone(e.model, b); o.updateWorldMatrix(true, false); return o.getWorldPosition(new THREE.Vector3()).y; };
 import { newRulesTests } from './selftest3.js';
 import { m4Tests } from './selftest4.js';
@@ -30,9 +31,29 @@ import { kunaiTests } from './selftest29.js';
 import { clawTests } from './selftest30.js';
 import { rapTests } from './selftest31.js';
 import { boltTests } from './selftest32.js';
+import { kcTests } from './selftest35.js';
+import { mcTests } from './selftest36.js';
+import { rcTests } from './selftest37.js';
+import { krTests } from './selftest38.js';
+import { r2Tests } from './selftest39.js';
+import { e1Tests } from './selftest40.js';
+import { e2Tests } from './selftest41.js';
+import { l1Tests } from './selftest42.js';
+import { broTests } from './selftest44.js'; // Venham, Irmãos (tecla . do numérico)
+import { rexTests } from './selftest45.js'; // Velocidade Rasga-Tempo (tecla + do numérico)
+import { grimTests } from './selftest47.js'; // Grimório Ancestral (tecla 3 do numérico; 4 = com pausas)
+import { giantTests } from './selftest46.js'; // Gigante de Aço (tecla 1 do numérico; 2 = com pausas)
 import { save as SAVE } from './save.js';
 const FIST_KEYS = [';', 'ç', 'Ç']; // tecla Ç (teclado ABNT) = só a Manopla
 const ICE_KEYS = ["'", '"']; // tecla ' (aspas) = só o Cajado de Gelo (bênçãos novas)
+const KC_CODES = ['Delete']; // tecla Delete = só as bênçãos comuns do Cavaleiro (selftest35)
+const L1_CODES = ['Numpad3', 'Numpad4', 'NumpadMultiply', 'NumpadDivide', 'NumpadDecimal', 'NumpadAdd', 'NumpadSubtract', 'Numpad1', 'Numpad2']; // 1 do numérico = só o Gigante de Aço (selftest46), corrido; 2 do numérico = com as pausas de screenshot; // + do numérico = só a Velocidade Rasga-Tempo (selftest45), corrido; - do numérico = a mesma com as pausas de screenshot; // . do numérico = só a Venham, Irmãos (selftest44), corrido; // * do numérico = só a lendária Forma Final (selftest42), corrido; / do numérico = com as pausas de screenshot
+const E2_CODES = ['NumpadAdd', 'NumpadSubtract']; // + do numérico = só as bênçãos épicas, lote 2 (selftest41), corrido; - do numérico = com as pausas de screenshot
+const E1_CODES = ['F6', 'F3']; // F6 = só as bênçãos épicas, lote 1 (selftest40), corrido; F3 = com as pausas de screenshot
+const R2_CODES = ['F2', 'F4']; // F2 = só as bênçãos raras, lote 2 (selftest39), corrido; F4 = com as pausas de screenshot
+const KR_CODES = ['F8', 'F7']; // F8 = só as bênçãos raras do Cavaleiro, lote 1 (selftest38), corrido; F7 = com as pausas de screenshot
+const RC_CODES = ['F9', 'F10']; // F9 = só as bênçãos comuns do Ladino (selftest37), corrido; F10 = com as pausas de screenshot
+const MC_CODES = ['Slash']; // tecla ; (ao lado do ponto, ABNT) = só as bênçãos comuns da Maga (selftest36)
 const CLAW_CODES = ['End']; // tecla End = só as Garras (bênçãos novas)
 const BOLT_CODES = ['PageDown', 'Insert']; // PageDown = só a Besta (bênçãos novas), corrido; Insert = com as pausas de screenshot
 const RAP_CODES = ['Home', 'PageUp']; // Home = só a Rapieira (bênçãos novas), corrido; PageUp = com as pausas de screenshot
@@ -165,6 +186,14 @@ function* script(g, out, flags) {
   yield* clawTests(g, out, flags);
   yield* rapTests(g, out, flags);
   yield* boltTests(g, out, flags);
+  yield* kcTests(g, out, flags);
+  yield* mcTests(g, out, flags);
+  yield* rcTests(g, out, flags);
+  yield* krTests(g, out, flags);
+  yield* r2Tests(g, out, flags);
+  yield* e1Tests(g, out, flags);
+  yield* e2Tests(g, out, flags);
+  yield* l1Tests(g, out, flags);
   waves.paused = false;
   out('FIM (partida nova começou)');
   g.restart();
@@ -362,11 +391,11 @@ function* roomFlow(g, out) {
   out(`  sem itens durante o combate: ${!run.pickups.some((p) => p.kind === 'shop') ? '✔' : 'ERRO'}`);
   for (let i = 0; i < 4 && waves.active; i++) yield () => { killAll(); return !waves.active; };
   yield 1.2;
-  out(`  depois do combate: ${run.pickups.filter((p) => p.kind === 'shop').length === 6 ? '✔ 5 itens + contratar' : 'ERRO itens'} + bênção ${run.pickups.some((p) => p.kind === 'blessing') ? '✔' : 'ERRO'}`);
+  out(`  depois do combate: ${run.pickups.filter((p) => p.kind === 'shop').length === 6 ? '✔ 5 itens + contratar (com a lendária Forma Final)' : 'ERRO itens'} + bênção ${run.pickups.some((p) => p.kind === 'blessing') ? '✔' : 'ERRO'}`);
   { const sh = run.pickups.filter((p) => p.kind === 'shop');
     const tiers = sh.filter((p) => p.opts.blessing).map((p) => `${p.opts.blessing.rarity}:${p.opts.price}`).join(' ');
     const pp = sh.find((p) => p.opts.item === 'potion');
-    out(`  uma de cada raridade: ${tiers === 'common:200 rare:300 epic:400 legendary:500' && pp && pp.opts.price === 150 ? '✔' : 'ERRO'} (${tiers}; poção ${pp && pp.opts.price})`); }
+    out(`  uma de cada raridade: ${tiers === 'common:200 rare:300 epic:500 legendary:1200' && pp && pp.opts.price === 150 ? '✔' : 'ERRO'} (${tiers}; poção ${pp && pp.opts.price})`); }
   run.pickups.filter((p) => p.kind === 'blessing').forEach((p) => { p.taken = true; run.removePickup(p); });
   run.gold = 1000; g.hud.setGold(1000);
   const shop = run.pickups.find((p) => p.opts.item === 'potion');
@@ -511,17 +540,17 @@ export function createSelfTest(state, game, isDebug) {
   // T = teste com pausas para screenshot; Y = teste corrido (sem pausas); U = rápido mas parando nas pausas.
   let fast = false, skipHolds = false, saveBackup = null;
   addEventListener('keydown', (e) => {
-    if (!['Equal', 'KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Digit5', 'Digit4', 'Digit3', 'Digit2', 'Digit1', 'Minus', 'Backslash', 'BracketRight', 'Semicolon', 'Comma', 'Period'].includes(e.code) && !FIST_KEYS.includes(e.key) && !ARC_KEYS.includes(e.key) && !ELE_KEYS.includes(e.key) && !DARK_KEYS.includes(e.key) && !ICE_KEYS.includes(e.key) && !FIRE_KEYS.includes(e.key) && e.code !== 'Quote' && !DAGGER_CODES.includes(e.code) && !KUNAI_CODES.includes(e.code) && !CLAW_CODES.includes(e.code) && !RAP_CODES.includes(e.code) && !BOLT_CODES.includes(e.code) || !isDebug()) return;
+    if (!['Equal', 'KeyT', 'KeyY', 'KeyU', 'KeyV', 'KeyM', 'KeyX', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Digit5', 'Digit4', 'Digit3', 'Digit2', 'Digit1', 'Minus', 'Backslash', 'BracketRight', 'Semicolon', 'Comma', 'Period'].includes(e.code) && !FIST_KEYS.includes(e.key) && !ARC_KEYS.includes(e.key) && !ELE_KEYS.includes(e.key) && !DARK_KEYS.includes(e.key) && !ICE_KEYS.includes(e.key) && !FIRE_KEYS.includes(e.key) && e.code !== 'Quote' && !DAGGER_CODES.includes(e.code) && !KUNAI_CODES.includes(e.code) && !CLAW_CODES.includes(e.code) && !RAP_CODES.includes(e.code) && !BOLT_CODES.includes(e.code) && !KC_CODES.includes(e.code) && !MC_CODES.includes(e.code) && !RC_CODES.includes(e.code) && !KR_CODES.includes(e.code) && !R2_CODES.includes(e.code) && !E1_CODES.includes(e.code) && !E2_CODES.includes(e.code) && !L1_CODES.includes(e.code) || !isDebug()) return;
     if (running) { holding = false; return; }
     if (game.ui && game.ui.modal) return; // menu aberto (ex.: pergunta da porta): os números escolhem, não rodam teste
     fast = e.code !== 'KeyT';
-    skipHolds = e.code === 'KeyY' || DAGGER_CODES.includes(e.code) || KUNAI_CODES.includes(e.code) || CLAW_CODES.includes(e.code) || e.code === 'Home' || e.code === 'PageDown' || DARK_KEYS.includes(e.key) || ICE_KEYS.includes(e.key) || FIRE_KEYS.includes(e.key) || e.code === 'Quote' || ARC_KEYS.includes(e.key) || e.code === 'Comma' || ((ELE_KEYS.includes(e.key) || e.code === 'Period') && !e.shiftKey && e.key !== '>'); // > (Shift+ponto) = Cajado Elétrico com pausas // vírgula: corrido (o resultado fica na tela)
+    skipHolds = e.code === 'KeyY' || e.code === 'Numpad1' || e.code === 'Numpad3' || e.code === 'NumpadAdd' || e.code === 'NumpadMultiply' || e.code === 'NumpadDecimal' || e.code === 'F8' || e.code === 'F2' || e.code === 'F6' || KC_CODES.includes(e.code) || MC_CODES.includes(e.code) || e.code === 'F9' || DAGGER_CODES.includes(e.code) || KUNAI_CODES.includes(e.code) || CLAW_CODES.includes(e.code) || e.code === 'Home' || e.code === 'PageDown' || DARK_KEYS.includes(e.key) || ICE_KEYS.includes(e.key) || FIRE_KEYS.includes(e.key) || e.code === 'Quote' || ARC_KEYS.includes(e.key) || e.code === 'Comma' || ((ELE_KEYS.includes(e.key) || e.code === 'Period') && !e.shiftKey && e.key !== '>'); // > (Shift+ponto) = Cajado Elétrico com pausas // vírgula: corrido (o resultado fica na tela)
     running = true; holding = false; log = []; page = -1; wait = 0; waitFn = null;
     saveBackup = JSON.parse(JSON.stringify(SAVE.data)); // os testes mexem no progresso: no fim volta tudo como estava
     if (game.ult) game.ult.cinematic = false; // testes antigos: a ultimate sai na hora (a cena tem teste próprio)
     if (game.combat) game.combat.noEvade = true;
     if (game.waves) game.waves.noHold = true; // testes antigos: a onda não espera pegarem a recompensa da entrada // desvio de 10% do Ladino desligado nos testes antigos (tem teste próprio)
-    gen = BOLT_CODES.includes(e.code) ? (function* () { yield 0.5; yield* boltTests(game, out, flags); })() : RAP_CODES.includes(e.code) ? (function* () { yield 0.5; yield* rapTests(game, out, flags); })() : CLAW_CODES.includes(e.code) ? (function* () { yield 0.5; yield* clawTests(game, out, flags); })() : KUNAI_CODES.includes(e.code) ? (function* () { yield 0.5; yield* kunaiTests(game, out, flags); })() : DAGGER_CODES.includes(e.code) ? (function* () { yield 0.5; yield* daggerTests(game, out, flags); })() : ICE_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* iceTests(game, out, flags); })() : (FIRE_KEYS.includes(e.key) || e.code === 'Quote') ? (function* () { yield 0.5; yield* fireTests(game, out, flags); })() : DARK_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* darkTests(game, out, flags); })() : e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : e.code === 'Digit5' ? (function* () { yield 0.5; yield* tweakTests(game, out, flags); })() : e.code === 'Digit4' ? (function* () { yield 0.5; yield* wbTests(game, out, flags); })() : e.code === 'Digit3' ? (function* () { yield 0.5; yield* newWeaponTests(game, out, flags); })() : e.code === 'Digit2' ? (function* () { yield 0.5; yield* changes30Tests(game, out, flags); })() : e.code === 'Digit1' ? (function* () { yield 0.5; yield* kitTests(game, out, flags); })() : e.code === 'Minus' ? (function* () { yield 0.5; yield* axeTests(game, out, flags); yield* axe3Tests(game, out, flags); })() : e.code === 'Backslash' ? (function* () { yield 0.5; yield* flailTests(game, out, flags); })() : e.code === 'BracketRight' ? (function* () { yield 0.5; yield* lanceTests(game, out, flags); })() : (e.code === 'Semicolon' || FIST_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* fistTests(game, out, flags); })() : (e.code === 'Comma' || ARC_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* arcTests(game, out, flags); })() : (e.code === 'Period' || ELE_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* eleTests(game, out, flags); })() : e.code === 'Equal' ? (function* () { yield 0.5; yield* sceneTests(game, out, flags); })() : script(game, out, flags);
+    gen = (e.code === 'Numpad3' || e.code === 'Numpad4') ? (function* () { yield 0.5; yield* grimTests(game, out, flags); })() : (e.code === 'Numpad1' || e.code === 'Numpad2') ? (function* () { yield 0.5; yield* giantTests(game, out, flags); })() : (e.code === 'NumpadAdd' || e.code === 'NumpadSubtract') ? (function* () { yield 0.5; yield* rexTests(game, out, flags); })() : e.code === 'NumpadDecimal' ? (function* () { yield 0.5; yield* broTests(game, out, flags); })() : L1_CODES.includes(e.code) ? (function* () { yield 0.5; yield* l1Tests(game, out, flags); })() : E2_CODES.includes(e.code) ? (function* () { yield 0.5; yield* e2Tests(game, out, flags); })() : E1_CODES.includes(e.code) ? (function* () { yield 0.5; yield* e1Tests(game, out, flags); })() : R2_CODES.includes(e.code) ? (function* () { yield 0.5; yield* r2Tests(game, out, flags); })() : KR_CODES.includes(e.code) ? (function* () { yield 0.5; yield* krTests(game, out, flags); })() : RC_CODES.includes(e.code) ? (function* () { yield 0.5; yield* rcTests(game, out, flags); })() : MC_CODES.includes(e.code) ? (function* () { yield 0.5; yield* mcTests(game, out, flags); })() : KC_CODES.includes(e.code) ? (function* () { yield 0.5; yield* kcTests(game, out, flags); })() : BOLT_CODES.includes(e.code) ? (function* () { yield 0.5; yield* boltTests(game, out, flags); })() : RAP_CODES.includes(e.code) ? (function* () { yield 0.5; yield* rapTests(game, out, flags); })() : CLAW_CODES.includes(e.code) ? (function* () { yield 0.5; yield* clawTests(game, out, flags); })() : KUNAI_CODES.includes(e.code) ? (function* () { yield 0.5; yield* kunaiTests(game, out, flags); })() : DAGGER_CODES.includes(e.code) ? (function* () { yield 0.5; yield* daggerTests(game, out, flags); })() : ICE_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* iceTests(game, out, flags); })() : (FIRE_KEYS.includes(e.key) || e.code === 'Quote') ? (function* () { yield 0.5; yield* fireTests(game, out, flags); })() : DARK_KEYS.includes(e.key) ? (function* () { yield 0.5; yield* darkTests(game, out, flags); })() : e.code === 'KeyV' ? bossShowcase(game, out, flags) : e.code === 'KeyM' ? m4Only(game, out, flags) : e.code === 'KeyX' ? duoOnly(game, out, flags) : e.code === 'Digit6' ? (function* () { yield 0.5; yield* shadowTests(game, out, flags); })() : e.code === 'Digit7' ? (function* () { yield 0.5; yield* tavernTests(game, out, flags); })() : e.code === 'Digit8' ? (function* () { yield 0.5; yield* mageTests(game, out, flags); })() : e.code === 'Digit9' ? (function* () { yield 0.5; yield* newTests(game, out, flags); })() : e.code === 'Digit0' ? (function* () { yield 0.5; yield* rogueTests(game, out, flags); })() : e.code === 'Digit5' ? (function* () { yield 0.5; yield* tweakTests(game, out, flags); })() : e.code === 'Digit4' ? (function* () { yield 0.5; yield* wbTests(game, out, flags); })() : e.code === 'Digit3' ? (function* () { yield 0.5; yield* newWeaponTests(game, out, flags); })() : e.code === 'Digit2' ? (function* () { yield 0.5; yield* changes30Tests(game, out, flags); })() : e.code === 'Digit1' ? (function* () { yield 0.5; yield* kitTests(game, out, flags); })() : e.code === 'Minus' ? (function* () { yield 0.5; yield* axeTests(game, out, flags); yield* axe3Tests(game, out, flags); })() : e.code === 'Backslash' ? (function* () { yield 0.5; yield* flailTests(game, out, flags); })() : e.code === 'BracketRight' ? (function* () { yield 0.5; yield* lanceTests(game, out, flags); })() : (e.code === 'Semicolon' || FIST_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* fistTests(game, out, flags); })() : (e.code === 'Comma' || ARC_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* arcTests(game, out, flags); })() : (e.code === 'Period' || ELE_KEYS.includes(e.key)) ? (function* () { yield 0.5; yield* eleTests(game, out, flags); })() : e.code === 'Equal' ? (function* () { yield 0.5; yield* sceneTests(game, out, flags); })() : script(game, out, flags);
     box.style.display = 'block';
     out('TESTE AUTOMÁTICO DE COMBATE');
   });

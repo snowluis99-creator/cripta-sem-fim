@@ -31,14 +31,14 @@ export function* eleTests(g, out, flags) {
 
   // ---------------- 193) Lista ----------------
   out('193) Cajado Elétrico: bênçãos do dono');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.eletrico');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.eletrico' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const by = (n) => mine.find((b) => b.name === n) || {};
   const want = ['Polaridade', 'Ímã', 'Pulso Magnético', 'Poça Elétrica', 'Torre Tesla', 'Nuvem Pessoal', 'Rede Elétrica', 'Marionete', 'Curto-Circuito', 'Sobrecarga',
     'Blecaute', 'Passo Relâmpago', 'Para-choque', 'Gerador', 'Bateria', 'Arco Voltaico', 'Ping-Pong', 'Ionizar', 'Ossos Magnéticos', 'Choque Amigo'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   out(`  ${mine.length} bênçãos (6 antigas + 20) ${ok(mine.length === 26)} | as 20 da lista ${ok(!miss.length, miss.join(', '))}`);
-  out(`  raridades ${ok(by('Polaridade').rarity === 'epic' && by('Ímã').rarity === 'rare' && by('Torre Tesla').rarity === 'legendary' && by('Blecaute').rarity === 'legendary'
-    && by('Arco Voltaico').rarity === 'legendary' && by('Bateria').rarity === 'epic' && by('Ping-Pong').rarity === 'rare' && by('Choque Amigo').rarity === 'epic')} | Choque Amigo só no co-op ${ok(by('Choque Amigo').coop === true)}`);
+  out(`  raridades ${ok(by('Polaridade').rarity === 'epic' && by('Ímã').rarity === 'rare' && by('Torre Tesla').rarity === 'epic' && by('Blecaute').rarity === 'epic'
+    && by('Arco Voltaico').rarity === 'epic' && by('Bateria').rarity === 'epic' && by('Ping-Pong').rarity === 'rare' && by('Choque Amigo').rarity === 'epic')} | Choque Amigo só no co-op ${ok(by('Choque Amigo').coop === true)}`);
 
   // ---------------- 194) Polaridade ----------------
   out('194) Polaridade: opostos se puxam e batem; iguais se empurram');

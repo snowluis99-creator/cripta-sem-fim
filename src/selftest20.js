@@ -32,13 +32,13 @@ export function* lanceTests(g, out, flags) {
 
   // ---------------- 127) Lista ----------------
   out('127) Lança: bênçãos do dono');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.lanca');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.lanca' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const by = (n) => mine.find((b) => b.name === n) || {};
   const want = ['Ponta Doce', 'Pregar na Parede', 'Contra-Carga', 'Muralha de Pontas', 'Arpão', 'Espetinho', 'Lança Bumerangue', 'Lança Cravada', 'Salto com Vara', 'Salto do Dragão', 'Âncora',
     'Estandarte de Guerra', 'Cemitério de Lanças', 'Para-raios', 'Espinhos de Pedra', 'Estocada Fantasma', 'Mil Lanças', 'Molinete', 'Lança de Troféus', 'Domador', 'Lança do Dragão'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   out(`  ${mine.length} bênçãos ${ok(mine.length === 21)} | as 21 da lista ${ok(!miss.length, miss.join(', '))}`);
-  out(`  raridades ${ok(by('Ponta Doce').rarity === 'rare' && by('Contra-Carga').rarity === 'epic' && by('Lança Bumerangue').rarity === 'legendary' && by('Mil Lanças').rarity === 'legendary' && by('Domador').rarity === 'epic' && by('Molinete').rarity === 'rare')}`
+  out(`  raridades ${ok(by('Ponta Doce').rarity === 'rare' && by('Contra-Carga').rarity === 'epic' && by('Lança Bumerangue').rarity === 'epic' && by('Mil Lanças').rarity === 'epic' && by('Domador').rarity === 'epic' && by('Molinete').rarity === 'rare')}`
     + ` | Bumerangue não vem com Cravada/Âncora/Espetinho ${ok(['w_lan16', 'w_lan18', 'w_lan21'].every((id) => by('Lança Bumerangue').excludes.includes(id)))}`);
 
   // ---------------- 128) Ponta Doce ----------------
@@ -196,12 +196,13 @@ export function* lanceTests(g, out, flags) {
   out(`  terminou ${ok(player.state === 'idle' || player.state === 'run')}`);
 
   // ---------------- 138) Âncora ----------------
-  out('138) Âncora: crava a lança e gira chutando em volta');
+  out('138) Âncora: 4º golpe crava a lança e gira chutando em volta');
   fresh(); yield 0.1;
   give('w_lan21');
+  out(`  combo de 4 ${ok(C().length === 4 && C()[3].kit === 'lanceAnchor')} | 3º continua a estocada forte ${ok(C()[2].heavy && !C()[2].kit && C()[2].window > 0)} | giro mais rápido ${ok(C()[3].speed >= 1.2, C()[3].speed)}`);
   const an = [dummy(0, 0.3), dummy(1.6, 1.4), dummy(-1.6, 1.4), dummy(0, 4)];
   const ad0 = an.map((e) => Math.hypot(e.position.x, e.position.z - 0.9));
-  player.combo = 2; player.startAttack(cam);
+  player.combo = 3; player.startAttack(cam);
   yield 0.2;
   out(`  lança cravada na frente ${ok(!!player.lanceAnchor && !player.weapon.visible)}`);
   out('  -> girando em volta da lança (screenshot)');

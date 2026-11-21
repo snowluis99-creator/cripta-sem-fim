@@ -11,7 +11,7 @@ import { buildRoom } from './dungeon/builder.js';
 import { generateFloor, NODE_INFO, FLOORS } from './dungeon/generator.js';
 import { repairShield } from './shield.js';
 import { updateSpikes } from './traps.js';
-import { rollBlessings, rollShop, rollRisky, rollUltBlessings, ensureLegendary, RARITY, BLESSINGS, blockKind } from './blessings.js';
+import { rollBlessings, rollShop, rollRisky, rollUltBlessings, ensureEpic, RARITY, BLESSINGS, blockKind } from './blessings.js';
 import { Pickup, iconFor } from './rewards.js';
 import { Merchant } from './merchant.js';
 import { Mercenary, ALLY } from './ally.js';
@@ -234,10 +234,19 @@ export class Run {
       mult: this.coop ? DIFF.coopWaveMult : DIFF.waveMult, coop: !!this.coop, bossMul: this.coop ? DIFF.coopBossMul : 1, // difficulty.js (modo brutal)
     });
     if (node.waves && this.darkCarry && this.darkCarry.length) darkCarryIn(this.combat, this.darkCarry);
+    if (node.kind !== 'tavern') this.combat.bro.carryIn(this.broCarry); // Venham, Irmãos: os irmãos vivos vêm junto
+    this.broCarry = [];
     this.darkCarry = [];
     this.combat.hazards.bounds = built; // magias do Necromante usam o tamanho da sala
     this.combat.kit2.roomStart(node); // Espada Amaldiçoada: pedido da sala
     this.combat.axe.roomStart(); // Machado: Giro Crescente e Sede de Batalha zeram a cada sala
+    this.combat.mc.roomStart(); // Lua Negra, Labareda, Contagem
+    this.combat.rc.roomStart(); // Ladino: Assobio, Coleta, Primeiro Tiro, Cicatriz, Saudação zeram
+    this.combat.e2.roomStart(); // épicas, lote 2: disfarce, Sniper e Destruição terminam; nova contagem de ondas
+    this.combat.e1.roomStart(); // épicas: poços e Yeti somem; Meteoro no meio termina
+    this.combat.r2.roomStart(); // Segundo Round volta; adagas da Proficiência voltam para a mão
+    this.combat.kr.roomStart(); // Recuem! volta; Resposta Rápida conta as ondas da sala nova
+    this.combat.kc.roomStart(); // Brasão Restaurado; Sequência / Ponta de Troféu / Elo Extra zeram
     // A recompensa vem no começo da sala (pedido do dono, 30/10): a 1ª onda espera até pegarem tudo.
     this.rewardsGiven = false;
     if (node.waves && !this.waves.noHold && !(node.kind === 'boss' && this.floorNum >= 3)) this.giveRewards(); // (noHold = testes antigos: recompensa no fim, como antes)
@@ -273,6 +282,7 @@ export class Run {
     if (this.built) this.scene.remove(this.built.group);
     this.built = null;
     this.waves.stop();
+    this.broCarry = this.combat ? this.combat.bro.carryOut() : []; // Venham, Irmãos: vão junto para a sala seguinte
     this.darkCarry = this.combat ? darkCarryOut(this.combat) : []; // Rei dos Mortos: vão junto para a sala seguinte
     this.combat.clear();
     this.debris.clear();
@@ -306,6 +316,7 @@ export class Run {
     if (this.npc && this.npc.ally) this.npc.leave(); // luta acabou: o mercador contratado vai embora
     if (n.kind === 'boss' && this.floorNum >= 3) { this.victory(); return; } // o Ceifador: fim da partida
     darkRoomClear(this.combat, (u) => { u.die(); undeadDied(this.combat, u); }); // Dízimo / Rei dos Mortos (Cajado das Trevas)
+    this.combat.bro.roomClear(); // Venham, Irmãos: comemoram
     this.combat.kit2.roomClear(); // Vassalo vai embora; Espada Amaldiçoada cobra o pedido
     this.hud.banner('Sala limpa!', 'big');
     audio.play('clear', null, null);
@@ -324,7 +335,7 @@ export class Run {
       const side = this.spot(at.clone().add(new THREE.Vector3(3, 0, 0)), p, 0).add(new THREE.Vector3(0, 0, this.coop ? (p.id === 1 ? -1 : 1) : 0));
       // Toda sala dá uma bênção (o Guardião dá uma rara ou melhor)...
       const bigBoss = n.kind === 'elite' || n.kind === 'boss'; // Rei Skullbone / Necromante
-      if (bigBoss) this.ownPickup('blessing', this.spot(at, p), { minRarity: n.kind === 'boss' ? 'epic' : 'rare', color: 0xffc24a, size: 1.2, legend: true }, p);
+      if (bigBoss) this.ownPickup('blessing', this.spot(at, p), { minRarity: n.kind === 'boss' ? 'epic' : 'rare', color: 0xc27bff, size: 1.2, legend: true }, p);
       else this.ownPickup('blessing', this.spot(n.kind === 'treasure' ? at.clone().add(new THREE.Vector3(-3.5, 0, 1)) : at, p), {}, p);
       // ... mais o prêmio da porta.
       if (bigBoss) this.ownPickup('gold', side, { amount: 60 + (this.floorNum - 1) * 20 }, p);
@@ -446,7 +457,7 @@ export class Run {
         p.taken = true;
         this.removePickup(p);
         if (p.opts.ult) this.offerBlessings('common', p.pos, () => this.checkDoors(), 'Bênção da Ultimate', pl, true);
-        else this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl, false, !!p.opts.legend); // sala do chefe: 1 lendária garantida
+        else this.offerBlessings(p.opts.minRarity || 'common', p.pos, () => this.checkDoors(), undefined, pl, false, !!p.opts.legend); // sala do chefe: 1 épica garantida
         return;
       case 'gold':
         p.taken = true;
@@ -607,7 +618,7 @@ export class Run {
   // ult = escolha da sala "Bênção da Ultimate" (só melhorias da ultimate, sem a carta arriscada).
   offerBlessings(minRarity, pos, after, title, pl = this.player, ult = false, legend = false) {
     const options = ult ? rollUltBlessings(pl.blessings, pl.heroId) : rollBlessings(pl.blessings, 3, minRarity, Math.random, pl.hero);
-    if (legend && !ult) ensureLegendary(options, pl.blessings, Math.random, pl.hero);
+    if (legend && !ult) ensureEpic(options, pl.blessings, Math.random, pl.hero);
     const risky = ult ? null : rollRisky(pl.blessings);
     if (risky && options.length) options.push(risky); // 4ª carta: arriscada (borda vermelha)
     if (!options.length) { if (after) after(); return; }

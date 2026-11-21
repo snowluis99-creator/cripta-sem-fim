@@ -32,7 +32,7 @@ export function* rapTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('353) Rapieira: bênçãos (sem aparar, com Ripostar)');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.rapieira');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.rapieira' && !b.id.startsWith('w_rc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns do Ladino (selftest37)
   const want = ['Assinatura', 'Ponto Fraco', 'Precisão Cirúrgica', 'Chuva de Estocadas', 'Golpe Fantasma', 'Ripostar', 'Velocidade da Luz', 'Vem Dançar'];
   const gone = ['Riposta', 'Reflexos Felinos', 'Aparar Restaurador', 'Mestre Espadachim', 'Câmera Lenta', 'Desarme', 'Rebater', 'Lâmina Cantante', 'Punhal de Canhota', 'Espadachim Fantasma',
     'En Garde', 'Aparar em Cadeia', 'Bravata', 'Aplausos', 'Valsa', 'Mosqueteiro', 'Passo de Esgrima', 'Capa do Toureiro', 'Estocada Relâmpago'];

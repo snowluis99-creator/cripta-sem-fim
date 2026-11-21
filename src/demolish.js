@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { audio } from './audio.js';
 
-export const DEMO = { reach: 2.4, arc: 80, width: 1.6, minLen: 2.5, maxLen: 5, dmg: 0.5, bossDmg: 0.2, fall: 0.6, lie: 1.2, sink: 0.6 };
+export const DEMO = { reach: 2.4, arc: 80, width: 1.6, minLen: 2.5, maxLen: 5, dmg: 0.5, bossDmg: 0.2, swordBoss: 0.25, fall: 0.6, lie: 1.2, sink: 0.6 };
 const DEG = Math.PI / 180;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -89,7 +89,11 @@ export class Demolisher {
     let n = 0;
     for (const e of this.inStrip(s.x, s.z, dx, dz, len)) {
       if (c.kit2 && c.kit2.duelBlocks(p, e)) continue;
-      const amt = Math.max(1, Math.round(e.maxHp * (e.data.boss ? DEMO.bossDmg : DEMO.dmg)));
+      // Demolidor (Espada): comuns morrem esmagados, chefes perdem 25% (pedido do dono, 11/11). Derrubar Pilar (Machado) continua 50%/20%.
+      const sword = !!(p && p.stats && p.stats.w && p.stats.w.demolish && p.hero && p.hero.weaponId === 'espada');
+      const amt = sword
+        ? (e.data.boss ? Math.max(1, Math.round(e.maxHp * DEMO.swordBoss)) : Math.max(1, Math.ceil(e.hp)))
+        : Math.max(1, Math.round(e.maxHp * (e.data.boss ? DEMO.bossDmg : DEMO.dmg)));
       c.bonusDamage(e, amt, dx, dz, 'crit', p);
       if (e.alive && !e.data.boss && e.daze) e.daze(1.0);
       n++;

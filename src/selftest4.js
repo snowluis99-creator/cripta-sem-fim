@@ -26,7 +26,7 @@ export function* m4Tests(g, out, flags) {
   out('20) Bênçãos (30 no total)');
   fresh();
   const sede = BLESSING_BY_ID.sede;
-  out(`  total ${BLESSINGS.length} (31 + 5 arriscadas + 12 da ultimate + 336 das armas + 8 do co-op): ${ok(BLESSINGS.length === 392)} | Sede de Sangue lendária, máx. 1: ${ok(sede.rarity === 'legendary' && sede.max === 1)}`);
+  out(`  total ${BLESSINGS.length} (31 + 5 arriscadas + 12 da ultimate + 537 das armas + 8 do co-op): ${ok(BLESSINGS.length === 593)} | Sede de Sangue épica, máx. 1: ${ok(sede.rarity === 'epic' && sede.max === 1)}`);
 
   // Sem Limites (+30%): alcança um esqueleto a 120% do alcance.
   let e = dummy(0, -6);
@@ -347,14 +347,14 @@ function* newGeneral(g, out, flags, t) {
   const { fresh, face, give, dummy, lastDmg } = t;
   out('20b) Bênçãos gerais novas');
   let e;
-  // Mãos Leves ×5: +75% de velocidade.
+  // Mãos Leves ×5: +100% de velocidade (20% por nível desde 11/11).
   fresh(); const s0 = player.atkSpeed; give('maos', 5);
-  out(`  Mãos Leves ×5: golpes ${s0.toFixed(2)} -> ${player.atkSpeed.toFixed(2)} ${ok(Math.abs(player.atkSpeed - s0 - 0.75) < 0.01)}`);
-  // Habilidoso ×3: +30% de crítico (10% por nível desde 06/11).
+  out(`  Mãos Leves ×5: golpes ${s0.toFixed(2)} -> ${player.atkSpeed.toFixed(2)} ${ok(Math.abs(player.atkSpeed - s0 - 1) < 0.01)}`);
+  // Habilidoso ×3: +60% de crítico (20% por nível desde 11/11).
   fresh(); const c0 = player.stats.critChance; give('habil', 3);
-  out(`  Habilidoso ×3: crítico +${Math.round((player.stats.critChance - c0) * 100)}% ${ok(Math.abs(player.stats.critChance - c0 - 0.3) < 0.001)}`);
+  out(`  Habilidoso ×3: crítico +${Math.round((player.stats.critChance - c0) * 100)}% ${ok(Math.abs(player.stats.critChance - c0 - 0.6) < 0.001)}`);
   fresh(); const ev0 = player.stats.evade; give('furtivo', 2);
-  out(`  Furtivo ×2: desvio +${Math.round((player.stats.evade - ev0) * 100)}% ${ok(Math.abs(player.stats.evade - ev0 - 0.2) < 0.001)}`);
+  out(`  Furtivo ×2: desvio +${Math.round((player.stats.evade - ev0) * 100)}% ${ok(Math.abs(player.stats.evade - ev0 - 0.3) < 0.001)}`);
   // Furtivo: com 100% de desvio nada machuca.
   fresh(); give('furtivo'); player.stats.evade = 1;
   e = dummy(0, 0.5); const hf = player.hp;
@@ -364,7 +364,7 @@ function* newGeneral(g, out, flags, t) {
   fresh(); give('carrasco', 3); player.stats.critChance = 1;
   e = dummy(0, 0.4); e.hp = 999; face(e);
   combat.playerStrike(player, { ...hero.combo[0], damage: 10 });
-  out(`  Olho do Carrasco ×3: crítico de 10 tirou ${lastDmg()} ${ok(lastDmg() >= 26)}`);
+  out(`  Olho do Carrasco ×3: crítico de 10 tirou ${lastDmg()} ${ok(lastDmg() >= 29)}`);
   // Frenesi: o último golpe do combo atordoa mais.
   fresh();
   e = dummy(0, 0.4); e.hp = 999; face(e);
@@ -372,7 +372,7 @@ function* newGeneral(g, out, flags, t) {
   fresh(); give('frenesi', 2);
   e = dummy(0, 0.4); e.hp = 999; face(e);
   combat.playerStrike(player, hero.combo[hero.heavyIdx]);
-  out(`  Frenesi ×2: atordoado ${st0.toFixed(2)} s -> ${e.stunTime.toFixed(2)} s ${ok(e.stunTime > st0 * 1.45)}`);
+  out(`  Frenesi ×2: atordoado ${st0.toFixed(2)} s -> ${e.stunTime.toFixed(2)} s ${ok(e.stunTime > st0 * 1.7)}`);
   // Poção Concentrada: depois de beber, o próximo dano é anulado.
   fresh(); player.potions = 1; give('pocaoesc'); const pz = player.potions; player.potions = 2; player.hp = 30;
   press('KeyQ'); yield () => player.state !== 'drink'; yield 0.2;
@@ -389,7 +389,7 @@ function* newGeneral(g, out, flags, t) {
   combat.playerStrike(player, { ...hero.combo[0], damage: 20 });
   const fr = lastDmg();
   player.hp = player.maxHp; combat.playerStrike(player, { ...hero.combo[0], damage: 20 });
-  out(`  Fúria ×2: com 45% de vida tirou ${fr} ${ok(fr >= 27)} | vida cheia ${lastDmg()} ${ok(lastDmg() <= 22)}`);
+  out(`  Fúria ×2: com 45% de vida tirou ${fr} ${ok(fr >= 36)} | vida cheia ${lastDmg()} ${ok(lastDmg() <= 22)}`);
   // Quebra-Gelo: o 1º combo da sala que acertar = dano dobrado e crítico; vale já na sala em que é escolhida.
   fresh();
   run.enter({ kind: 'combat', reward: 'gold', room: 'guarita', waves: [[['minion', 1]]], level: 1 }, true);
@@ -424,6 +424,11 @@ function* newGeneral(g, out, flags, t) {
   combat.hitPlayer(e, 5); player.iframes = 0;
   combat.playerStrike(player, { ...hero.combo[0], damage: 10 }); const after = lastDmg();
   out(`  Perfect ×2: golpes ${hits.join(', ')} ${ok(hits[3] - hits[0] >= 9)} | depois de apanhar ${after} ${ok(after <= 12)}`);
+  // Perfect sem limite (11/11): 20 golpes seguidos passam dos +60 antigos.
+  fresh(); give('perfect', 2);
+  e = dummy(0, 0.4); e.hp = 99999; face(e);
+  for (let i = 0; i < 20; i++) combat.playerStrike(player, { ...hero.combo[0], damage: 10 });
+  out(`  Perfect sem limite: 20º golpe tirou ${lastDmg()} ${ok(lastDmg() >= 80)}`);
   // Poção Premiada: com 100% não gasta.
   fresh(); give('premiada'); player.stats.potionSave = 1; player.potions = 1; player.hp = 30;
   press('KeyQ'); yield () => player.state !== 'drink'; yield 0.2;

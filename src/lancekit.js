@@ -19,7 +19,7 @@ export const LANCE = {
   plant: { dist: 7, speed: 24, r: 2.4, tick: 0.6, dmg: 5, pick: 1.4, daze: 0.35 }, // Lança Cravada
   vault: { range: 4.5, arc: 40, time: 0.5, h: 1.8, ready: 1.2 }, // Salto com Vara
   dragon: { after: 0.4, dist: 3.6, time: 0.6, h: 2.4, r: 3.0, dmg: 30, rest: 0.25 }, // Salto do Dragão
-  anchor: { r: 3.2, push: 15, rad: 1.1 },                // Âncora
+  anchor: { r: 3.2, push: 15, rad: 1.1, speed: 1.3 }, // speed: velocidade do giro (era 0,7)                // Âncora
   banner: { time: 6, r: 3.5, speed: 1.35, heal: 1, every: 0.5 }, // Estandarte de Guerra
   grave: { r: 0.8, dmg: 8, rearm: 1.5, life: 15, max: 8, daze: 0.3 }, // Cemitério de Lanças
   rod: { every: 5, dmg: 20, daze: 0.5 },                 // Para-raios
@@ -64,7 +64,12 @@ export function applyLance(p) {
     const s = h.combo[i];
     if (i >= 0 && w.lanceBoomer) h.combo[i] = { ...s, clip: 'Throw', speed: 1.5, hit: 0.42, end: 0.75, lunge: 0.15, kit: 'lanceBoomer' };
     else if (i >= 0 && w.lancePlant) h.combo[i] = { ...s, clip: 'Throw', speed: 1.5, hit: 0.42, end: 0.75, lunge: 0.15, kit: 'lancePlant' };
-    else if (i >= 0 && w.anchor) h.combo[i] = { ...s, clip: 'Melee_Unarmed_Attack_Kick', speed: 0.7, hit: 0.55, end: 0.95, lunge: 0, kit: 'lanceAnchor' };
+    else if (i >= 0 && w.anchor) {
+      // Âncora: 4º golpe depois da estocada forte (pedido do dono, 11/11), giro mais rápido.
+      const n = h.combo.length - 1;
+      h.combo[n] = { ...h.combo[n], window: h.combo[n].window ?? 0.45 };
+      h.combo.push({ clip: 'Melee_Unarmed_Attack_Kick', speed: LANCE.anchor.speed, hit: 0.55, end: 0.95, lunge: 0, damage: s.damage, kit: 'lanceAnchor' });
+    }
   }
   if (p.combo >= h.combo.length) p.combo = 0;
   if (p.weapon) p.weapon.visible = !p.lanceAway && !p.axeAway;

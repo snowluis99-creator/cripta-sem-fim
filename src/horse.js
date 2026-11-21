@@ -6,18 +6,21 @@ import * as THREE from 'three';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
-export function makeHorse() {
+// opts (Venham, Irmãos: cavalo de verdade dos irmãos): { coat, hoof, mane, cloth } = cores; sem opts = Cavalo Fantasma.
+export function makeHorse(opts = null) {
   const mats = [];
+  const real = !!opts;
   const mat = (color, emissive, ei, op) => {
-    const m = new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, transparent: true, opacity: op, roughness: 0.55, metalness: 0.05 });
-    m.userData.op = op; mats.push(m); return m;
+    const m = real ? new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei * 0.15, roughness: 0.75, metalness: 0.05 })
+      : new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, transparent: true, opacity: op, roughness: 0.55, metalness: 0.05 });
+    m.userData.op = real ? 1 : op; mats.push(m); return m;
   };
-  const coat = mat(0xe4ecf2, 0x3d6a9a, 0.35, 0.95);
-  const dark = mat(0x2c3542, 0x1a4f90, 0.5, 0.95);
-  const glow = mat(0xb8f0ff, 0x3aa8ff, 1.5, 0.85);
+  const coat = real ? mat(opts.coat, 0x000000, 0, 1) : mat(0xe4ecf2, 0x3d6a9a, 0.35, 0.95);
+  const dark = real ? mat(opts.hoof ?? 0x2a2420, 0x000000, 0, 1) : mat(0x2c3542, 0x1a4f90, 0.5, 0.95);
+  const glow = real ? mat(opts.mane ?? 0x2a1d14, 0x000000, 0, 1) : mat(0xb8f0ff, 0x3aa8ff, 1.5, 0.85);
   const leather = mat(0x6a3f22, 0x1a0c04, 0.2, 0.97);
   const gold = mat(0xe8b84a, 0x4a3000, 0.4, 0.97);
-  glow.depthWrite = false;
+  if (!real) glow.depthWrite = false;
   const g = new THREE.Group();
   const add = (parent, geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); return o; };
   const sphere = (r, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 18, 12).scale(sx, sy, sz);
@@ -40,7 +43,7 @@ export function makeHorse() {
   add(body, new THREE.CylinderGeometry(0.34, 0.34, 0.42, 16, 1, false, -Math.PI / 2, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2).scale(1, 0.55, 1), leather, 0, 1.33, -0.02);
   add(body, new THREE.BoxGeometry(0.66, 0.04, 0.5), gold, 0, 1.2, -0.02);
   // Manta: tecido azul com barra dourada, caindo dos dois lados.
-  const cloth = mat(0x5a8ee0, 0x2a5aa8, 0.6, 0.97);
+  const cloth = real ? mat(opts.cloth ?? 0x8a1e1e, 0x000000, 0, 1) : mat(0x5a8ee0, 0x2a5aa8, 0.6, 0.97);
   for (const sd of [-1, 1]) {
     const c = add(body, new THREE.BoxGeometry(0.035, 0.36, 0.5), cloth, 0.335 * sd, 1.08, -0.02); c.rotation.z = 0.12 * sd;
     const t = add(body, new THREE.BoxGeometry(0.04, 0.05, 0.52), gold, 0.355 * sd, 0.9, -0.02); t.rotation.z = 0.12 * sd;
@@ -55,7 +58,7 @@ export function makeHorse() {
   limb(head, v(0, 0, 0.02), v(0, -0.2, 0.44), 0.16, 0.115, coat);  // cara alongada até o focinho
   add(head, sphere(0.12, 1, 0.9, 1.15), dark, 0, -0.22, 0.46);         // focinho
   for (const s of [-1, 1]) {
-    add(head, sphere(0.032), mat(0x0a0f1a, 0x58c8ff, 2.2, 1), 0.145 * s, 0.03, 0.09);        // olho brilhando
+    add(head, sphere(0.032), real ? mat(0x0a0a0a, 0x000000, 0, 1) : mat(0x0a0f1a, 0x58c8ff, 2.2, 1), 0.145 * s, 0.03, 0.09);        // olho brilhando
     const ear = add(head, new THREE.ConeGeometry(0.05, 0.19, 8), coat, 0.08 * s, 0.2, -0.04);
     ear.rotation.set(-0.25, 0, 0.2 * s);
   }
@@ -118,6 +121,18 @@ export function makeHorse() {
     for (const m of mats) m.opacity = m.userData.op * Math.max(0.15, fade);
     return body.position.y;
   };
+  // Parado (cavalo dos irmãos): pernas retas, respirando de leve.
+  const stand = (t) => {
+    for (const L of legs) { L.hip.rotation.x *= 0.8; L.knee.rotation.x *= 0.8; }
+    body.position.y = Math.sin(t * 2) * 0.012; body.rotation.x *= 0.8;
+    neck.rotation.x = -0.05 + Math.sin(t * 1.3) * 0.05; head.rotation.x = Math.sin(t * 1.7) * 0.06;
+    tail.forEach((s, i) => { s.rotation.x = (i ? 0.25 : 0) + Math.sin(t * 2 - i * 0.9) * 0.12; s.rotation.z = Math.sin(t * 1.5 - i) * 0.1; });
+  };
+  // No ar (pulando o muro): pernas da frente dobradas, de trás esticadas.
+  const leap = () => {
+    for (const L of legs) { L.hip.rotation.x = L.front ? -0.9 : 0.75; L.knee.rotation.x = L.front ? 1.6 : -0.3; }
+    body.rotation.x = -0.12; neck.rotation.x = 0.15;
+  };
   animate(0);
-  return { g, legs, mats, animate };
+  return { g, legs, mats, animate, stand, leap };
 }

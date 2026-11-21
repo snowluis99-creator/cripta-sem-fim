@@ -31,11 +31,11 @@ export function* clawTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('331) Garras: as 20 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.garras');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.garras' && !b.id.startsWith('w_rc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns do Ladino (selftest37)
   const want = ['Investida do Leão', 'Rugido', 'Montaria', 'Revide', 'Cair de Pé', 'Morte Dolorosa', 'Contágio de Sangue', 'Poça de Sangue', 'Marcas de Garra', 'Cortes de Vento', 'Tigre Fantasma', 'Afiar na Parede', 'Rasgar Escudo', 'Armadilha de Urso', 'Fúria da Fera', 'Sete Vidas', 'Matilha'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (23) ${ok(mine.length === 23)} | as 17 ${ok(!miss.length, miss.join(', '))} | lendárias 3 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 3)} | raras 8 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 8)} | épicas 6 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 6)}`);
+  out(`  ${mine.length} bênçãos (23) ${ok(mine.length === 23)} | as 17 ${ok(!miss.length, miss.join(', '))} | lendárias 0 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 0)} | raras 8 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 8)} | épicas 9 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 9)}`);
 
   out('332) Investida do Leão: ataque + rolamento juntos = some e reaparece cortando o caminho');
   fresh(); yield 0.1; give('w_gar11');

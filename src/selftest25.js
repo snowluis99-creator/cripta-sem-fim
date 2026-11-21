@@ -35,12 +35,12 @@ export function* dark2Tests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('223) Cajado das Trevas: bênçãos médias e difíceis');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.trevas');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.trevas' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const want = ['Cadáver Explosivo', 'Último Suspiro', 'Guarda-Costas', 'Elo de Almas', 'Pavor', 'Possessão', 'Coletora de Almas',
     'Herança', 'Gigante de Ossos', 'Mãos da Cova', 'Escuridão', 'Traição', 'Sombra Faminta'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (26) ${ok(mine.length === 26)} | as 13 ${ok(!miss.length, miss.join(', '))} | lendárias: Possessão, Gigante, Escuridão ${ok(['Possessão', 'Gigante de Ossos', 'Escuridão'].every((n) => by(n).rarity === 'legendary'))}`);
+  out(`  ${mine.length} bênçãos (26) ${ok(mine.length === 26)} | as 13 ${ok(!miss.length, miss.join(', '))} | lendárias: Possessão, Gigante, Escuridão ${ok(['Possessão', 'Gigante de Ossos', 'Escuridão'].every((n) => by(n).rarity === 'epic'))}`);
 
   out('225) Cadáver Explosivo: golpe forte no morto-vivo = explosão');
   fresh(); yield 0.1; give('w_tre18');

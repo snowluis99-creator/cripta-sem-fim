@@ -102,9 +102,8 @@ export class Rap2Kit {
   // Depois do golpe normal (playerStrike): mosqueteiros repetem, estrela, golpe forte puxa/arremessa.
   afterStrike(p, step, hits) {
     if (!isRap(p) || step.musk || step.rapExtra) return;
-    void hits;
     this.muskStrike(p, step);
-    if (has(p, 'rStars')) this.addStar(p);
+    if (has(p, 'rStars') && hits > 0) this.addStar(p); // Constelação: só nasce estrela quando o golpe acerta alguém (pedido do dono, 11/11)
     if (step.heavy && has(p, 'rSkewer')) this.launch(p);
     if (step.heavy && has(p, 'rThread')) this.pull(p);
   }

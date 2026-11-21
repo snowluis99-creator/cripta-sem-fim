@@ -32,8 +32,8 @@ export function* rap3Tests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('420) Rapieira, 3ª leva: as 8 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.rapieira');
-  const want = { 'Espetinho': 'epic', 'Já Está Morto': 'legendary', 'Constelação': 'epic', 'Linha e Agulha': 'rare', 'Touché!': 'epic', 'Pistola de Pederneira': 'rare', 'Um por Todos': 'legendary', 'Xeque-Mate': 'legendary' };
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.rapieira' && !b.id.startsWith('w_rc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns do Ladino (selftest37)
+  const want = { 'Espetinho': 'epic', 'Já Está Morto': 'epic', 'Constelação': 'epic', 'Linha e Agulha': 'rare', 'Touché!': 'epic', 'Pistola de Pederneira': 'rare', 'Um por Todos': 'epic', 'Xeque-Mate': 'epic' };
   const bad = Object.entries(want).filter(([n, r]) => !mine.some((b) => b.name === n && b.rarity === r)).map(([n]) => n);
   out(`  as 8 com a raridade certa ${ok(!bad.length, bad.join(', '))} | Rapieira com 18 ${ok(mine.length === 18, mine.length)}`);
 
@@ -81,19 +81,24 @@ export function* rap3Tests(g, out, flags) {
   const rel = ev('rapRelease')[0];
   out(`  abriu com +50% ${ok(rel && 999 - d1.hp >= Math.round(held.dmg * 1.4), `${held.dmg} -> ${999 - d1.hp}`)} | furos sumiram ${ok(!K.holes.has(d1))}`);
 
-  out('423) Constelação: estrela em cada golpe; 3 ligam numa figura');
+  out('423) Constelação: estrela só no golpe que acerta; 3 ligam numa figura');
   fresh(); yield 0.1; give('w_rap34');
-  const inn = dummy(0, 1.2, 'minion', 999), outE = dummy(0, -6, 'minion', 999);
+  const at = (f, d = 1.2) => dummy(player.position.x + Math.sin(f) * d, player.position.z + Math.cos(f) * d, 'minion', 999);
+  const outE = dummy(0, -6, 'minion', 999);
+  player.facing = 0; hit(0); yield 0.05; // nada na frente: sem estrela
+  const none = !player.rap2Stars || player.rap2Stars.list.length === 0;
+  const tri = [Math.PI, Math.PI / 2, -Math.PI / 2].map((f) => at(f));
   for (const f of [Math.PI, Math.PI / 2, -Math.PI / 2]) { player.facing = f; hit(0); yield 0.05; }
-  const hpIn = inn.hp;
-  out(`  3 estrelas ${ok(player.rap2Stars && player.rap2Stars.list.length === 3, player.rap2Stars && player.rap2Stars.list.length)}`);
+  const starHp0 = tri.map((e) => e.hp);
+  out(`  errou = sem estrela ${ok(none)} | 3 acertos = 3 estrelas ${ok(player.rap2Stars && player.rap2Stars.list.length === 3, player.rap2Stars && player.rap2Stars.list.length)}`);
   out('  -> 3 estrelas (screenshot)');
   yield 'hold';
   yield 1.1;
   const cs = ev('rapConstellation')[0];
-  out(`  formou a figura ${ok(cs && cs.n === 3)} | quem estava dentro apanhou ${ok(inn.hp < hpIn, hpIn - inn.hp)} | fora não ${ok(outE.hp === 999)}`);
+  out(`  formou a figura ${ok(cs && cs.n === 3)} | quem estava na figura apanhou ${ok(tri.some((e, i) => e.hp < starHp0[i]))} | fora não ${ok(outE.hp === 999)}`);
   // 5 estrelas = forma na hora
   fresh(); yield 0.1; give('w_rap34');
+  for (let i = 0; i < 5; i++) at(i * 1.25);
   for (let i = 0; i < 5; i++) { player.facing = i * 1.25; hit(0); }
   out(`  5 estrelas formam na hora ${ok(ev('rapConstellation').length === 1 && ev('rapConstellation')[0].n === 5)}`);
 

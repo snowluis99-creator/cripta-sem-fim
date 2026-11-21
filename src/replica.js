@@ -25,6 +25,7 @@ import { shieldVisual } from './shield.js';
 import { setGhost } from './shadow.js';
 import { Tavern } from './tavern.js';
 import { save } from './save.js';
+import { mechNetDraw } from './mechkit.js';
 import { WEAPONS, heroWith, ownsHero } from './heroes.js';
 import { UnlockScene } from './unlock.js';
 import { updateFlail } from './flail.js';
@@ -105,6 +106,7 @@ export class Replica {
       this.pickups.clear();
     }
     s.h.forEach((h, i) => { if (h) this.heroState[i] = h; });
+    this.mechState = s.mk || null; // Forma Final (robô gigante)
     if (this.pred && s.h[1]) this.pred.server(s.h[1][0], s.h[1][1], s.p2 || null);
     this.omens = s.om || [];
     this.applyEnemies(s.e || []);
@@ -452,7 +454,8 @@ export class Replica {
       if (p.shield !== sh) { p.shield = sh; shieldVisual(p); }
       if (p.weaponMul !== rm && p.syncWeaponSize) p.syncWeaponSize(rm);
       // Herói deste computador: responde na hora (predict.js); o anfitrião só corrige.
-      const pr = i === 1 && this.pred ? this.pred.drive(p, dt, f, this.snapHeroes) : null;
+      const mk = this.mechState ? this.mechState[i] : 0; // Forma Final: dentro do robô quem manda é o anfitrião
+      const pr = i === 1 && this.pred && !mk ? this.pred.drive(p, dt, f, this.snapHeroes) : null;
       if (pr) p.facing += wrap(pr.facing - p.facing) * smooth(dt, pr.local ? 22 : 14);
       else {
         if (this.snapHeroes) p.position.set(x, 0, z);
@@ -484,6 +487,7 @@ export class Replica {
       p.netDead = !!dead;
       p.anim.update(dt);
       p.aimForward(); // besta do Ladino apontada para a frente
+      try { mechNetDraw(this, p, mk, dt, i === 1 && !this.spectator); } catch (err) { /* o robô é só enfeite na tela do Jogador 2: nunca derruba o jogo */ }
       if (p.weapon && p.weapon.userData.flail) updateFlail(p.weapon, dt);
     });
     this.snapHeroes = false;

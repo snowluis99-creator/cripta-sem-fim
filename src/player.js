@@ -27,10 +27,24 @@ import { kunaiStartDodge, kunaiReset } from './kunaikit.js';
 import { clawPress, clawAirTick, clawLand, clawBeast, clawLeave, clawReset, clawLionCheck } from './clawkit.js';
 import { rapStartDodge, rapStepTick, rapPress, rapHoldCheck, rapStateTick, rapReset, rapRiposte } from './rapkit.js';
 import { applyRap2, rap2Reset, rap2Mul } from './rapkit2.js';
+import { flail2HoldCheck, flail2Press, flail2BlockPress, flail2StartDodge, flail2StateTick, flail2Reset, flail2Invuln } from './flailkit2.js';
 import { boltPlayerTick, boltPress, boltHoldCheck, boltRollShot, boltRollSave, boltRollResume, boltOverride, boltKicks, boltAbility, boltHasAbility, boltStateTick, boltReset } from './boltkit.js';
+import { kcAtkMul, kcOnStart, kcDodge, kcRollWall, kcStateTick, kcInvuln } from './kckit.js';
+import { mcDodge, mcReset } from './mckit.js';
+import { r2MoveMul, r2RollMul, r2CastMove, r2DodgeCancel, r2Override, r2JabPress, r2StartDodge, r2StepTick, r2Combo } from './r2kit.js';
+import { e2AtkMul, e2MoveMul, e2Invuln, e2CanDodge, e2Reset, e2StateTick } from './e2kit.js';
+import { mechOn, mechInvuln, mechPlayerTick, mechReset } from './mechkit.js';
+import { thorOverride, thorNoAxe, thorStartDodge, thorReset } from './thorkit.js'; // Bênção de Odin (lendária do Machado)
+import { broReset } from './brokit.js'; // Venham, Irmãos (lendária do Mangual)
+import { rexOn, rexInvuln, rexPlayerTick, rexReset } from './rexkit.js'; // Velocidade Rasga-Tempo (lendária da Lança)
+import { giantOnAttack, giantReset } from './giantkit.js';
+import { grimOverride, grimStartDodge, grimReset } from './grimkit.js'; // Grimório Ancestral (lendária do Cajado Arcano) // Gigante de Aço (lendária da Manopla)
+import { e1AtkMul, e1Invuln, e1CanDodge, e1HpBonus, e1Die, e1HoldCheck, e1StateTick, e1Frenzy, e1FrenzyMove } from './e1kit.js';
+import { krBlockMove, krAllSides, krAtkMul, krInvuln, krBlockPress, krBlockHold, krStartDodge, krStateTick } from './krkit.js';
+import { rcDodge, rcPickCombo, rcOnStart, rcAtkMul, rcMoveMul, rcReset } from './rckit.js';
 import { applyFist, fistReset, fistHoldCheck, fistHoldTick, fistMeatPress, fistPress, fistAirTick } from './fistkit.js';
 
-const NO_DODGE = new Set(['dodge', 'sled', 'horse', 'rooted', 'stagger', 'lanceVault', 'lanceLeap', 'fistDash', 'fistLeap', 'clawLion', 'clawRev', 'rapLunge', 'rapBow', 'rapRiposte', 'boltHook']);
+const NO_DODGE = new Set(['dodge', 'sled', 'horse', 'kcFly', 'kcDash', 'rooted', 'stagger', 'lanceVault', 'lanceLeap', 'fistDash', 'fistLeap', 'clawLion', 'clawRev', 'rapLunge', 'rapBow', 'rapRiposte', 'boltHook', 'flailSpin', 'flailFly', 'flailOrbit', 'flailDizzy', 'krBash', 'krSpin']);
 
 // Quando o herói está "congelado" (troca de sala, menus) ele ignora os controles.
 const NO_INPUT = {
@@ -66,6 +80,7 @@ const tmpScale = new THREE.Vector3();
 const WEAPON_TIP_Y = 1.41;
 
 function angleTo(dx, dz) { return Math.atan2(dx, dz); }
+function wrapAngle(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
 function lerpAngle(a, b, t) {
   let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
   if (d < -Math.PI) d += Math.PI * 2;
@@ -193,6 +208,12 @@ export class Player {
   setHero(heroId, wid) {
     if (!HEROES[heroId]) return false;
     if (heroId === this.heroId) return this.setWeapon(wid || this.hero.weaponId);
+    mechReset(this);
+    thorReset(this);
+    broReset(this);
+    rexReset(this);
+    giantReset(this);
+    grimReset(this);
     this.group.remove(this.model);
     if (this.wall) { this.group.remove(this.wall); this.wall = null; }
     kitReset(this);
@@ -201,7 +222,7 @@ export class Player {
     fistReset(this);
     arcReset(this);
     eleReset(this);
-    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); boltReset(this);
+    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); flail2Reset(this); boltReset(this);
     this.heroId = heroId;
     this.hero = applyWeaponMods(heroWith(heroId, wid), this.stats.w);
     const model = instance(this.hero.model);
@@ -250,13 +271,19 @@ export class Player {
   // Troca de arma (Taverna). Mantém vida, bênçãos e ouro.
   setWeapon(wid) {
     if (!wid || wid === this.hero.weaponId) return false;
+    mechReset(this);
+    thorReset(this);
+    broReset(this);
+    rexReset(this);
+    giantReset(this);
+    grimReset(this);
     kitReset(this);
     axeReset(this);
     lanceReset(this);
     fistReset(this);
     arcReset(this);
     eleReset(this);
-    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); boltReset(this);
+    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); flail2Reset(this); boltReset(this);
     for (const m of [this.weapon, this.shieldMesh, this.offhand]) if (m && m.parent) m.parent.remove(m);
     this.hero = applyWeaponMods(heroWith(this.heroId, wid), this.stats.w);
     this.glow = 0;
@@ -305,14 +332,14 @@ export class Player {
     this.spectralGlow.visible = m.opacity > 0.01;
   }
 
-  get maxHp() { return Math.max(10, this.hero.maxHp + this.stats.bonusHp + (this.rapCrown ? 30 : 0)); } // Xeque-Mate (Rapieira): coroa +30
+  get maxHp() { return Math.max(10, this.hero.maxHp + this.stats.bonusHp + (this.rapCrown ? 30 : 0) + e1HpBonus(this)); } // Sangue de Gigante (Machado) // Xeque-Mate (Rapieira): coroa +30
   // Ultimate: quantos inimigos derrotados enchem a barra (Pacto do Ceifador: 6).
   get ultNeed() { return Math.max(3, this.stats.ultNeed || 10); }
   // Bênçãos com efeito por tempo/condição (M4).
   get lowHp() { return this.hp < this.maxHp * 0.4; }
   // Reflexo: +30% durante o combo depois de escapar rolando. Fúria Desesperada: +30% com pouca vida.
-  get atkSpeed() { return (this.maestry ? 2 : 1) * (this.stats.attackSpeed + (this.reflexCombo === 'active' ? 0.3 : 0) + (this.stats.fury && this.lowHp ? 0.3 : 0) + (this.hasteT > 0 ? (this.stats.w.critHaste || 0) : 0)) * rap2Mul(this); } // Maestria (Machado): golpe 2× mais rápido
-  get moveMul() { return this.stats.speedMul * (this.bannerBoost || 1) * eleSpeedMul(this) * iceSpeedMul(this) * (this.clawScentMul || 1) * rap2Mul(this); } // Faro de Sangue (Garras) // Estandarte de Guerra (Lança)
+  get atkSpeed() { return (this.maestry ? 2 : 1) * (this.stats.attackSpeed + (this.reflexCombo === 'active' ? 0.3 : 0) + (this.stats.fury && this.lowHp ? 0.3 : 0) + (this.hasteT > 0 ? (this.stats.w.critHaste || 0) : 0)) * rap2Mul(this) * kcAtkMul(this) * rcAtkMul(this) * krAtkMul(this) * e1AtkMul(this) * e2AtkMul(this); } // Lua Cheia (Garras, épica) // Levante / Sangue de Gigante / Lenhador Obstinado (épicas) // Maestria (Machado): golpe 2× mais rápido // Embalo / Campeão / Esquiva Pesada (comuns do Cavaleiro)
+  get moveMul() { return this.stats.speedMul * (this.bannerBoost || 1) * eleSpeedMul(this) * iceSpeedMul(this) * (this.clawScentMul || 1) * rap2Mul(this) * rcMoveMul(this) * r2MoveMul(this) * e2MoveMul(this); } // Lua Cheia (Garras, épica) // Leveza (Rapieira, rara) // Faro de Sangue (Garras) // Estandarte de Guerra (Lança)
   get ctl() { return this.frozen || this.choosing ? NO_INPUT : this.input; }
 
   heal(n) {
@@ -365,11 +392,12 @@ export class Player {
     this.combo = 0;
     this.clearRoll();
     this.setGlow(0);
+    if (mechOn(this) || rexOn(this)) return; // Forma Final / T-Rex: o Cavaleiro continua montado
     if (this.state !== 'dead') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0, restart: true }); }
   }
 
   // ultTime: só a Fortaleza Dourada (Cavaleiro) deixa invulnerável. stealth: bomba de fumaça do Ladino.
-  get invulnerable() { return this.state === 'dodge' || this.state === 'sled' || this.state === 'horse' || this.iframes > 0 || (this.ultTime > 0 && this.heroId === 'knight') || this.stealth > 0 || this.vanishT > 0 || this.state === 'dead' || this.state === 'cine' || (this.counterInv && this.state === 'attack') || this.state === 'lanceVault' || this.state === 'lanceLeap' || this.state === 'fistDash' || this.state === 'fistLeap' || this.state === 'fistKick' || this.state === 'clawLion' || this.state === 'clawRev' || this.state === 'clawMount' || this.clawBeastT > 0; } // Reflexo (Mangual): contra-ataque sem levar dano
+  get invulnerable() { return this.state === 'dodge' || this.state === 'sled' || this.state === 'horse' || this.iframes > 0 || (this.ultTime > 0 && this.heroId === 'knight') || this.stealth > 0 || this.vanishT > 0 || this.state === 'dead' || this.state === 'cine' || (this.counterInv && this.state === 'attack') || this.state === 'lanceVault' || this.state === 'lanceLeap' || this.state === 'fistDash' || this.state === 'fistLeap' || this.state === 'fistKick' || this.state === 'clawLion' || this.state === 'clawRev' || this.state === 'clawMount' || this.clawBeastT > 0 || flail2Invuln(this) || kcInvuln(this) || krInvuln(this) || e1Invuln(this) || e2Invuln(this) || mechInvuln(this) || rexInvuln(this); } // Sniper / Destruição (Ladino, épicas) // Lenhador Obstinado / Meteoro (épicas) // Reflexo (Mangual): contra-ataque sem levar dano
 
   // Cena (morte do Rei Skullbone): sem controle e sem levar dano; quem mexe no herói é a cena.
   enterCine() {
@@ -399,6 +427,7 @@ export class Player {
   blocksFrom(x, z) {
     if (this.state !== 'block' && !(this.guardAtk && this.state === 'attack')) return false; // Equilíbrio (Mangual): ataca defendendo
     if (this.backToBack) return true; // co-op: de costas com o parceiro, os dois cobrem todos os lados
+    if (krAllSides(this)) return true; // Guarda Total (Espada, rara): bloqueia de qualquer lado
     const ang = Math.atan2(x - this.position.x, z - this.position.z) - this.facing;
     return Math.abs(Math.atan2(Math.sin(ang), Math.cos(ang))) <= THREE.MathUtils.degToRad(this.hero.block.arc / 2);
   }
@@ -476,6 +505,7 @@ export class Player {
   }
 
   die() {
+    if (!this.e1Dying && e1Die(this)) return; // Levante (Manopla, épica): tela preta e o botão de ataque
     if (this.stats.phoenix > 0) {
       // Coração de Fênix: volta com metade da vida.
       this.stats.phoenix--;
@@ -529,9 +559,19 @@ export class Player {
     fistReset(this);
     arcReset(this);
     eleReset(this);
-    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); boltReset(this);
+    fireReset(this); rogueReset(this); kunaiReset(this); clawReset(this); rapReset(this); rap2Reset(this); flail2Reset(this); boltReset(this);
     this.rebuildHero(); // sem bênçãos de arma
     this.hasteT = 0; this.wbDodgeT = 0; this.rampT = 0; this.rampStacks = 0; this.wbHealCd = 0;
+    this.kcs = null; this.kcFly = null; this.krs = null; this.krFly = null; this.r2s = null; this.r2Step = null; this.e1s = null; this.e1Dying = false; if (this.model) { this.model.scale.setScalar(1); this.model.position.y = 0; this.model.visible = true; } // épicas, lote 1 (e1kit.js) // raras, lote 2 (r2kit.js) // raras do Cavaleiro (krkit.js) // comuns do Cavaleiro (kckit.js)
+    e2Reset(this); // épicas, lote 2 (e2kit.js): crânio, mira, fera
+    mechReset(this); // Forma Final (lendária): tira o robô e libera de novo para a próxima partida
+    thorReset(this); // Bênção de Odin (lendária do Machado): volta a ser o Cavaleiro normal
+    broReset(this); // Venham, Irmãos (lendária do Mangual)
+    rexReset(this); // Velocidade Rasga-Tempo (lendária da Lança): tira o T-Rex
+    giantReset(this); // Gigante de Aço (lendária da Manopla): tira o robô
+    grimReset(this); // Grimório Ancestral (lendária do Cajado Arcano): tira o livro, devolve o cajado
+    mcReset(this); // comuns da Maga (mckit.js)
+    rcReset(this); // comuns do Ladino (rckit.js)
     this.syncWeaponSize(1);
     this.frozen = false;
     this.choosing = false;
@@ -568,23 +608,33 @@ export class Player {
       if (this.state === 'attack' || this.state === 'dodge') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0.15 }); }
       return false;
     }
+    // Bênção de Odin: o machado está voando (volta sozinho); não dá para golpear sem ele.
+    if (thorNoAxe(this) && !xs) {
+      this.combo = 0; this.queued = false;
+      if (this.state === 'attack' || this.state === 'dodge') { this.setState('idle'); this.anim.play(this.hero.anims.idle, { fade: 0.15 }); }
+      return false;
+    }
     // Saiu da fumaça atacando: volta a aparecer (o golpe sai crítico: sneakCrit).
     if (this.stealth > 0) this.stealth = 0;
     const prev = this.state;
     this.counterInv = false;
     this.maestry = !!this.maestryNext; this.maestryNext = false; // Maestria vale só para este golpe
     this.setState('attack');
-    this.xstep = xs || axe3Override(this) || lanceOverride(this) || boltOverride(this); // Besta: chutes (torre montada) / tiro da Recarga Perfeita
+    this.xstep = xs || grimOverride(this) || thorOverride(this, camera) || axe3Override(this) || lanceOverride(this) || boltOverride(this) || r2Override(this); // Proficiência (Duas Adagas): arremesso / socos // Besta: chutes (torre montada) / tiro da Recarga Perfeita
+    if (!this.xstep) rcPickCombo(this); // Dança Curta (Duas Adagas, comum): o 5º golpe vira o golpe forte
     const step = this.xstep || this.hero.combo[this.combo];
     if (this.combo === 0) this.newCombo();
+    kcOnStart(this, step); // comuns do Cavaleiro: Embalo do Lenhador, Esquiva Pesada
     this.axeFresh = !xs && (prev === 'idle' || prev === 'run'); // Arrastar a Lâmina / Machado como Escudo
     this.queued = false;
     this.hitDone = false;
     if (!this.frozen && !step.keepFacing) this.facing = this.aimAngle(camera);
     audio.play(step.heavy ? 'swingHeavy' : 'swing', this.position.x, this.position.z);
+    rcOnStart(this, step); // comuns do Ladino: Salto Felino, Cheiro de Sangue, Coleta Ligeira (velocidade deste golpe)
     this.anim.play(step.clip, { once: true, speed: step.speed * this.atkSpeed, restart: true, fade: 0.05 }); // golpe aparece mais rápido (era 0,08)
     axeOnStart(this, step); // Giro Voraz
     lanceOnStart(this, step); // Âncora
+    giantOnAttack(this); // Gigante de Aço: o robô copia o golpe
   }
 
   // Começo de um combo novo: Reflexo (vale para 1 combo) e Poder Acumulado (2 combos depois da ultimate).
@@ -596,16 +646,21 @@ export class Player {
 
   // Estados em que rolar é possível (sem contar a recarga). Também vai para a tela do Jogador 2 (coop.predInfo).
   canDodgeNow() {
-    return !this.axeAway && !NO_DODGE.has(this.state) && this.state !== 'dead' && this.state !== 'cine' && !this.frozen && !this.choosing;
+    return !this.axeAway && !NO_DODGE.has(this.state) && this.state !== 'dead' && this.state !== 'cine' && !this.frozen && !this.choosing && e1CanDodge(this) && e2CanDodge(this) && !mechOn(this) && !rexOn(this); // Forma Final: o robô não rola; o T-Rex também não
   }
 
   startDodge() {
     const h = this.hero;
     boltRollSave(this); // Tiro Acrobático (Besta): guarda quanto do disparo já armou
     clawLeave(this); // Montaria (Garras): rolar pula das costas do inimigo
+    if (grimStartDodge(this)) return; // Grimório Ancestral: o rolamento vira teleporte
+    if (thorStartDodge(this)) return; // Bênção de Odin: o rolamento vira um raio instantâneo
+    if (r2StartDodge(this)) return; // Gingado (Manopla, rara): passinho lateral que guarda o combo
+    if (krStartDodge(this)) return; // Investida de Escudo (Espada, rara): rolar bloqueando vira avanço com o escudo
     if (kit2StartDodge(this)) return; // Cavalo Fantasma: galopa em vez de rolar
     if (kitStartDodge(this)) return; // Trenó de Escudo: desliza em vez de rolar
     if (lanceStartDodge(this)) return; // Salto com Vara: pula por cima do inimigo
+    if (flail2StartDodge(this)) return; // Bola de Canhão (Mangual): joga a bola e é puxado até ela
     if (arcStartDodge(this)) return; // Piscar (Cajado Arcano): teletransporte
     if (eleStartDodge(this)) return; // Passo Relâmpago (Cajado Elétrico): avanço em forma de raio
     darkSwap(this); // Troca Sombria (Cajado das Trevas): troca de lugar com o morto-vivo mais perto e rola de lá
@@ -626,6 +681,9 @@ export class Player {
     audio.play('dodge', this.position.x, this.position.z);
     if (this.stats.w.dodgeDmg || this.stats.w.dodgeCrit) this.wbDodgeT = 1.8; // Pés Ligeiros / Dança das Lâminas (rolamento + 1,5 s)
     if (this.onDodge) this.onDodge(this, 'start');
+    kcDodge(this, 'start'); // Esquiva de Boxe (Manopla)
+    mcDodge(this, 'start'); // comuns da Maga: Descarga ao Rolar, Vento Úmido, Isqueiro
+    rcDodge(this, 'start'); // comuns do Ladino: atravessar inimigos/flechas, Assobio, Contorno
   }
 
   // Anda em passos curtos e checa a colisão a cada passo (sem isso, o rolamento rápido atravessa paredes).
@@ -713,6 +771,10 @@ export class Player {
     let targetFacing = this.facing;
     let turnRate = h.turnSpeed;
 
+    // Forma Final (lendária da Espada e Escudo): dentro do robô, quem anda, golpeia e defende é ele (mechkit.js).
+    if (this.mech && mechPlayerTick(this, dt, world, input, tmpMove, camera)) { this.anim.update(dt); return; }
+    // Velocidade Rasga-Tempo (lendária da Lança): montado no T-Rex, quem anda é ele; o Cavaleiro ataca lá de cima (rexkit.js).
+    if (this.rex && rexPlayerTick(this, dt, world, input, tmpMove, camera)) { this.anim.update(dt); return; }
     boltPlayerTick(this, dt, input, camera, world, moving); // Besta: barrinha da Recarga Perfeita, besta travada, Recuo, Mira de Atirador, torre
     // Esquiva tem prioridade sobre tudo (menos outra esquiva).
     if (this.state === 'cine') { this.anim.update(dt); this.aimForward(); return; } // a cena controla o herói
@@ -730,8 +792,9 @@ export class Player {
         // Arremesso Mortal: parado esperando o machado voltar.
         if (this.axeAway) { if (this.state !== 'idle') { this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.15 }); } break; }
         axe3Run(this, dt, tmpMove, moving); // Investida Bruta: correndo na mesma direção
+        if (e1Frenzy(this)) { this.combo = 0; this.startAttack(camera); if (moving) this.facing = angleTo(tmpMove.x, tmpMove.z); break; } // Lenhador Obstinado: o 1º golpe sem parar
         if (this.clawAuto != null) { const a = this.clawAuto; this.clawAuto = null; this.combo = 0; this.startAttack(camera); this.facing = a; break; } // Cair de Pé: já ataca
-        if ((input.attack() && !this.bEat) || clawBeast(this, moving)) { this.combo = 0; if (!axe3Press(this, camera) && !lancePress(this, camera) && !fistPress(this, camera) && !clawPress(this, camera) && !rapPress(this, camera) && !boltPress(this, camera)) this.startAttack(camera); break; } // Gancho (Besta) // Estocada Relâmpago (Rapieira) // Fúria da Fera: os golpes não param
+        if ((input.attack() && !this.bEat) || clawBeast(this, moving)) { this.combo = r2Combo(this); if (!axe3Press(this, camera) && !lancePress(this, camera) && !fistPress(this, camera) && !clawPress(this, camera) && !rapPress(this, camera) && !boltPress(this, camera) && !flail2Press(this)) this.startAttack(camera); break; } // Gancho (Besta) // Estocada Relâmpago (Rapieira) // Fúria da Fera: os golpes não param
         if (input.potion() && !this.noPotion && this.tryDrink()) break;
         if (abilPress && this.useAbility(camera)) break;
         if (input.blocking() && this.enterBlock(camera)) break;
@@ -754,11 +817,22 @@ export class Player {
           break;
         }
         // Bloqueio/aparar é instantâneo: corta o golpe na hora, em qualquer momento (pedido do dono).
-        if (!h.ability && input.blocking() && this.canGuard() && !this.guardAtk && !this.counterInv) { this.combo = 0; this.queued = false; this.setGlow(0); this.enterBlock(camera); break; }
+        if (!h.ability && input.blocking() && this.canGuard() && !this.guardAtk && !this.counterInv && !(this.xstep && this.xstep.flail2)) { this.combo = 0; this.queued = false; this.setGlow(0); this.enterBlock(camera); break; }
         if (abilPress && (h.ability === 'parry' || h.ability === 'riposte') && this.useAbility(camera)) { this.combo = 0; this.queued = false; this.setGlow(0); break; }
+        if (e1Frenzy(this) && !this.xstep) { // Lenhador Obstinado (Machado, épica): só o 1º golpe, sem parar; andar mira
+          if (this.combo !== 0) { this.combo = 0; this.startAttack(camera); if (moving) this.facing = angleTo(tmpMove.x, tmpMove.z); break; }
+          const fs = h.combo[0], fp = this.anim.progress();
+          if (moving) { this.move(tmpMove.x, tmpMove.z, h.moveSpeed * this.moveMul * e1FrenzyMove() * dt, world); this.facing += wrapAngle(angleTo(tmpMove.x, tmpMove.z) - this.facing) * Math.min(1, dt * 12); }
+          if (!this.hitDone && fp >= fs.hit) { this.hitDone = true; if (this.onHit) this.onHit(this, fs); }
+          if (this.hitDone && fp >= Math.max(fs.hit + 0.06, fs.window ?? 0.4)) { const keep = this.facing; this.startAttack(camera); if (moving) this.facing = keep; }
+          turnRate = 0;
+          break;
+        }
+        if (e1HoldCheck(this, input)) break; // Bastão do Rei Macaco (Lança, épica): segurar cresce a lança
         if (axe3HoldCheck(this, input)) break; // Machado: segurando o ataque (arrastar / guarda)
         if (fistHoldCheck(this, input)) break; // Manopla: Soco Carregado
         if (rapHoldCheck(this, input)) break; // Rapieira: Chuva de Estocadas
+        if (flail2HoldCheck(this, input)) break; // Mangual: Martelo Olímpico
         if (boltHoldCheck(this, input, camera)) break; // Besta: Chuva de Virotes
         darkHoldCheck(this, input); // Cajado das Trevas: Pacto de Sangue Sombrio (segurar o ataque; o golpe continua)
         if (eleHoldCheck(this, input)) break; // Cajado Elétrico: Arco Voltaico (segurar o ataque)
@@ -770,6 +844,7 @@ export class Player {
         const p = (step.end || 0) > 1
           ? this.stateTime * step.speed * this.atkSpeed / this.anim.current.getClip().duration
           : this.anim.progress();
+        if (moving && r2CastMove(this)) this.move(tmpMove.x, tmpMove.z, h.moveSpeed * this.moveMul * dt, world); // Conjuração Ágil (Cajado Arcano, rara): anda atacando
         // Avanço do golpe (só no começo).
         if (p < step.hit) {
           const v = (step.lunge * (h.lungeMul ?? 1) / (step.hit * this.anim.current.getClip().duration / (step.speed * this.atkSpeed)));
@@ -778,6 +853,7 @@ export class Player {
         if (!this.hitDone && p >= step.hit) {
           this.hitDone = true;
           if (this.onHit) this.onHit(this, step);
+          if (this.state !== 'attack') break; // o golpe virou outra coisa (Laço de Ferro, Bola no Poste)
         }
         const win = step.window ?? 0.4;
         if (input.attack() && !this.bEat) this.queued = true; // clique em qualquer momento do golpe fica guardado para o próximo (Recarga Perfeita come o clique)
@@ -811,6 +887,20 @@ export class Player {
         break;
       }
       case 'dodge': {
+        if (this.r2Step) { // Gingado (Manopla, rara): passinho lateral; o combo continua
+          const r = r2StepTick(this, dt, world, input);
+          if (r === 'attack') this.startAttack(camera);
+          else if (r === 'end') { this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.1 }); }
+          turnRate = 0;
+          break;
+        }
+        if (r2DodgeCancel(this) && this.stateTime >= h.dodge.time * r2DodgeCancel(this) && input.attack()) { // Conjuração Ágil (Cajado Arcano, rara): atira logo depois de rolar
+          this.clearRoll(); if (this.onDodge) this.onDodge(this, 'end');
+          this.dodgeCooldown = h.dodge.cooldown;
+          this.combo = 0; this.startAttack(camera);
+          turnRate = 0;
+          break;
+        }
         if (this.rapStep) { // Passo de Esgrima (Rapieira): passo curto, dá para atacar logo em seguida
           const r = rapStepTick(this, dt, world, input);
           if (r === 'attack') { this.combo = 0; this.startAttack(camera); }
@@ -820,12 +910,16 @@ export class Player {
         }
         boltRollShot(this, dt, camera); // Tiro Acrobático (Besta): a besta continua armando e atira no meio da rolagem
         if (input.attack() && (this.stats.w.maestry || this.stats.w.dragonLeap || this.input.apply) && this.stateTime > h.dodge.time * 0.4) this.axeDodgeAtk = true; // Maestria / Jogador 2 pela rede: apertou no fim do rolamento = golpe guardado
-        const speed = h.dodge.distance * this.stats.dodgeMul * (this.kRollMul || 1) / h.dodge.time; // Mãos Vazias (Kunais): o dobro
+        const speed = h.dodge.distance * this.stats.dodgeMul * (this.kRollMul || 1) * r2RollMul(this) / h.dodge.time; // Leveza (Rapieira, rara): o dobro // Mãos Vazias (Kunais): o dobro
         this.move(this.dodgeDir.x, this.dodgeDir.z, speed * dt, world);
+        if (kcRollWall(this, world)) { turnRate = 0; break; } // Ringue (Manopla): rolou na parede, voa até a do outro lado
         if (this.axeRoll) axeApplyRoll(this, this.stateTime / h.dodge.time); else this.applyRoll(this.stateTime / h.dodge.time);
         if (this.stateTime >= h.dodge.time) {
           this.clearRoll();
           if (this.onDodge) this.onDodge(this, 'end');
+          kcDodge(this, 'end'); // Esquiva Pesada (Mangual)
+          mcDodge(this, 'end');
+          rcDodge(this, 'end'); // Contorno (Rapieira): termina nas costas do inimigo
           this.dodgeCooldown = h.dodge.cooldown;
           this.axeSinceDodge = 0; // Pancada de Cabo
           this.lanceSinceDodge = 0; // Salto do Dragão
@@ -846,6 +940,30 @@ export class Player {
         const r = axe3HoldTick(this, dt, world, input, tmpMove, camera);
         if (r === 'heavy') { this.combo = Math.max(0, h.heavyIdx); this.startAttack(camera); }
         else if (r === 'end') { this.setGlow(0); this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
+        turnRate = 0;
+        break;
+      }
+      case 'krBash': case 'krSpin': { // Investida de Escudo (Espada) / Recuem! (Lança) — krkit.js
+        if (krStateTick(this, dt, world) === 'end') {
+          this.combo = 0;
+          if (input.blocking() && this.canGuard() && this.state === 'krBash' && this.enterBlock(camera)) break;
+          this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 });
+        }
+        turnRate = 0;
+        break;
+      }
+      case 'e1Staff': case 'e1Meteor': case 'e1Kick': { // épicas, lote 1: Bastão do Rei Macaco, Meteoro, Chute Espartano (e1kit.js)
+        if (e1StateTick(this, dt, world, input, tmpMove, camera) === 'end') { this.combo = 0; this.setGlow(0); this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
+        turnRate = 0;
+        break;
+      }
+      case 'e2Snipe': case 'e2Ghost': { // épicas, lote 2: Sniper (Besta), Destruição (Rapieira) — e2kit.js
+        if (e2StateTick(this, dt, world, input, tmpMove, camera) === 'end') { this.combo = 0; this.setGlow(0); this.model.rotation.y = 0; this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
+        turnRate = 0;
+        break;
+      }
+      case 'kcFly': case 'kcDash': { // Ringue (Manopla) / Determinação (Lança) — kckit.js
+        if (kcStateTick(this, dt, world) === 'end') { this.combo = 0; this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
         turnRate = 0;
         break;
       }
@@ -904,6 +1022,11 @@ export class Player {
       }
       case 'rapLunge': case 'rapFlurry': case 'rapBow': case 'rapRiposte': { // Rapieira: Estocada Relâmpago, Chuva de Estocadas, Bravata (rapkit.js)
         if (rapStateTick(this, dt, world, input, camera) === 'end') { this.combo = 0; this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
+        turnRate = 0;
+        break;
+      }
+      case 'flailSpin': case 'flailFly': case 'flailOrbit': case 'flailDizzy': { // Mangual: Laço, Martelo Olímpico, Bola de Canhão, Bola no Poste (flailkit2.js)
+        if (flail2StateTick(this, dt, world, input, tmpMove, camera) === 'end') { this.combo = 0; this.setState(moving ? 'run' : 'idle'); this.anim.play(moving ? h.anims.run : h.anims.idle, { fade: 0.15 }); }
         turnRate = 0;
         break;
       }
@@ -996,7 +1119,9 @@ export class Player {
       case 'block': {
         targetFacing = this.aimAngle(camera);
         turnRate = h.turnSpeed * 1.5;
+        const krWalk = h.blockMoveSpeed > 0 ? 0 : krBlockMove(this); // Passo de Guarda (Espada, rara)
         if (moving && h.blockMoveSpeed > 0) this.position.addScaledVector(tmpMove, h.blockMoveSpeed * dt);
+        else if (moving && krWalk > 0) this.move(tmpMove.x, tmpMove.z, krWalk * this.moveMul * dt, world);
         if (input.potion() && !this.noPotion && this.tryDrink()) break;
         if (!input.blocking() || !this.canGuard()) { this.setState('idle'); this.anim.play(h.anims.idle, { fade: 0.15 }); }
         else if (this.counterAtk) { // Reflexo (Mangual): bloqueou → lança a bola no inimigo mais distante
@@ -1006,8 +1131,14 @@ export class Player {
           turnRate = 0;
         }
         else if (kitBlockTick(this)) break; // Escudo Plantado: segurou o bloqueio, fincou o escudo
-        else if (input.attack() && fistMeatPress(this)) break; // Escudo de Carne (Manopla): atacar bloqueando agarra
-        else if (input.attack()) { this.combo = 0; this.startAttack(camera); }
+        else if (krBlockHold(this, input, dt, camera)) break; // Âncora de Ferro (Mangual, rara): carregando o lançamento
+        else if (input.attack()) { // (um teste só do clique: o controle de teste conta cada leitura)
+          if (r2JabPress(this)) break; // Jab de Guarda (Manopla, rara): soco sem baixar a guarda
+          if (fistMeatPress(this)) break; // Escudo de Carne (Manopla): atacar bloqueando agarra
+          if (krBlockPress(this)) break; // Âncora de Ferro (Mangual, rara): segurar o ataque carrega o lançamento
+          if (flail2BlockPress(this, camera)) break; // Sino da Catedral (Mangual): atacar bloqueando toca o sino
+          this.combo = 0; this.startAttack(camera);
+        }
         break;
       }
     }

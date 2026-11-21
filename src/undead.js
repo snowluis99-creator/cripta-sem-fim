@@ -35,6 +35,7 @@ export function markDark(combat, p, e) {
     combat.vfx.smoke(e.position, MARK_COLOR, 6);
   }
   if (combat.log) combat.log({ type: 'darkMark', enemy: e });
+  if (combat.mc) combat.mc.onMark(p, e); // Medo das Trevas (comum)
 }
 
 // Inimigo morreu (combat.killed): se estava marcado, levanta depois.
@@ -47,6 +48,7 @@ export function onEnemyKilled(combat, e) {
   });
   darkPlague(combat, e, markDark); // Praga: a marca passa para o inimigo mais perto
   if (combat.dark2) combat.dark2.onMarkedDeath(e); // Coletora de Almas
+  if (combat.mc) combat.mc.onMarkedDeath(e); // Marca Passada (comum)
 }
 
 // Alvo do morto-vivo: o inimigo mais perto que ainda dá para acertar. Ninguém: fica parado.
@@ -64,6 +66,7 @@ export function undeadTarget(combat, u) {
 // Golpe do morto-vivo num inimigo: dano com o crédito da Maga e o inimigo passa a revidar nele.
 export function undeadHit(combat, u, o, dmg) {
   if (!o.targetable || o.undead) return;
+  if (u.grimShade && combat.grim) { combat.grim.shadeHit(u, o); return; } // Exército das Sombras (Grimório): dano fixo, sem bênção
   const dx = o.position.x - u.position.x, dz = o.position.z - u.position.z, d = Math.hypot(dx, dz) || 1;
   o.provokedBy = u;
   // 1º ataque deste morto-vivo (pedido do dono, 31/10): todos os inimigos da sala passam a focar nele.
@@ -76,7 +79,9 @@ export function undeadHit(combat, u, o, dmg) {
   audio.play('hit', o.position.x, o.position.z);
   const by = u.undead && u.undead.hero ? u.undead : null;
   const w = (by && by.stats && by.stats.w) || {};
-  combat.bonusDamage(o, Math.max(1, Math.round(dmg * (1 + (w.undeadDmg || 0)))), dx / d, dz / d, 'dmg', by); // Fúria dos Mortos
+  const mcMul = combat.mc && by ? combat.mc.undeadDmgMul(u) : 1; // Comandante / Recrutador (comuns)
+  combat.bonusDamage(o, Math.max(1, Math.round(dmg * (1 + (w.undeadDmg || 0)) * mcMul)), dx / d, dz / d, 'dmg', by, !!u.bro); // Fúria dos Mortos // Venham, Irmãos: golpe de irmão não faz cambalear (senão 30 irmãos travam qualquer inimigo)
+  if (combat.mc && by) combat.mc.afterUndeadHit(u, o); // Vampiros (comum)
   darkFeast(combat, u, o); // Banquete
   if (combat.log) combat.log({ type: 'undeadHit', enemy: o, dmg });
 }
@@ -84,8 +89,10 @@ export function undeadHit(combat, u, o, dmg) {
 // Um inimigo (ou flecha) acertou o morto-vivo.
 export function hitUndead(combat, u, dmg, fromX, fromZ) {
   if (!u.alive) return;
+  if (u.bro && combat.bro && combat.bro.blocks(u, fromX, fromZ)) return; // Venham, Irmãos: irmão com escudo segura o golpe
   if (combat.dark2 && combat.dark2.guardBlocks(u, fromX, fromZ)) return; // Herança: o guarda segura com o escudo
   const dx = u.position.x - fromX, dz = u.position.z - fromZ, d = Math.hypot(dx, dz) || 1;
+  if (combat.mc && u.undead && u.undead.hero) dmg *= combat.mc.undeadTakenMul(u); // Recrutador (comum)
   const died = u.takeDamage(Math.max(1, Math.round(dmg)), dx / d, dz / d, 4, false);
   combat.text.add(String(Math.max(1, Math.round(dmg))), u.position, 'hurt small', 2.0);
   combat.vfx.sparks(new THREE.Vector3(u.position.x, 1.2, u.position.z), 0xffffff, 6);
@@ -103,6 +110,7 @@ export function undeadDied(combat, u) {
   audio.play('crunch', u.position.x, u.position.z);
   for (const o of combat.enemies) if (o.provokedBy === u) o.provokedBy = null;
   if (combat.dark2) combat.dark2.onUndeadDeath(u); // Último Suspiro
+  if (combat.mc && u.undead && u.undead.hero) combat.mc.onUndeadDeath(u); // Último Abraço (comum)
 }
 
 // A cada quadro (combat.update, antes dos inimigos andarem).
@@ -120,6 +128,7 @@ export function undeadTick(combat, dt) {
     u.hp = (r.hp || 1) + (r.carried ? 0 : (w.undeadHp || 0)); u.maxHp = Math.max(u.hp, u.maxHp); // Ossos Fortes (Pacto de Sangue: 10; Rei dos Mortos: a vida que tinha)
     if (r.carried) u.carried = true;
     if (combat.dark2) combat.dark2.onRise(u, r); // Herança, Mãos da Cova, Gigante de Ossos
+    if (combat.mc && u.undead && u.undead.hero) combat.mc.onRise(u); // Pacto Menor (comum)
     u.noGrave = true; u.noUltCharge = true;
     combat.vfx.smoke(u.position, MARK_COLOR, 12);
     combat.vfx.ring(new THREE.Vector3(u.position.x, 0, u.position.z), MARK_COLOR, 1.6);
@@ -132,7 +141,7 @@ export function undeadTick(combat, dt) {
       if (!u.alive) continue;
       const foe = combat.enemies.some((o) => !o.undead && o.alive);
       u.idleT = foe ? 0 : (u.idleT || 0) + dt;
-      if (u.idleT > IDLE_CRUMBLE && !u.vassal && !darkKeeps(u)) { u.die(); undeadDied(combat, u); } // Vassalo: fica até o fim da sala
+      if (u.idleT > IDLE_CRUMBLE && !u.vassal && !u.bro && !darkKeeps(u)) { u.die(); undeadDied(combat, u); } // Vassalo: fica até o fim da sala
       continue;
     }
     // Marca pulsando em cima da cabeça.
@@ -147,7 +156,8 @@ export function undeadTick(combat, dt) {
 // Depois de os inimigos se mexerem: brilho roxo e olhos verdes nos mortos-vivos.
 export function undeadLook(combat) {
   for (const u of combat.enemies) {
-    if (!u.undead || !u.alive) continue;
+    if (!u.undead || !u.alive || u.bro) continue; // Venham, Irmãos: cores próprias
+    if (u.grimShade) { if (!(u.flash > 0)) setFlash(u.bodyMats, 0.35, 0.35, 0.05, 0.7); setFlash(u.eyes, 3, 1, 0.1, 0.15); continue; } // Exército das Sombras: sombra escura, olhos vermelhos
     if (u.vassal) { if (!(u.flash > 0)) setFlash(u.bodyMats, 0); setFlash(u.eyes, 2.4, 0.45, 0.75, 1); continue; } // Vassalo: capa e ombreiras (vassalgear.js), olhos azuis
     if (!(u.flash > 0)) setFlash(u.bodyMats, 0.45, 0.45, 0.15, 0.9);
     setFlash(u.eyes, 3, 0.3, 1, 0.45);

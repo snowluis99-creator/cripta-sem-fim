@@ -32,13 +32,13 @@ export function* arcTests(g, out, flags) {
 
   // ---------------- 171) Lista ----------------
   out('171) Cajado Arcano: bênçãos do dono');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.cajado');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.cajado' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const by = (n) => mine.find((b) => b.name === n) || {};
   const want = ['Ponto de Estouro', 'Pancada de Cajado', 'Armadura Arcana', 'Bolha Arcana', 'Esfera Moedora', 'Mina Arcana', 'Órbita', 'Triângulo Arcano', 'Constelação',
     'Encolher', 'Levitar', 'Repulsor', 'Ressonância', 'Carga Paciente', 'Fusão', 'Devorador', 'Piscar', 'Gêmea Arcana', 'Caos Arcano'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   out(`  ${mine.length} bênçãos (5 antigas + 19) ${ok(mine.length === 24)} | as 19 da lista ${ok(!miss.length, miss.join(', '))} | Singularidade continua ${ok(!!by('Singularidade').id)}`);
-  out(`  raridades ${ok(by('Esfera Moedora').rarity === 'legendary' && by('Triângulo Arcano').rarity === 'legendary' && by('Piscar').rarity === 'legendary' && by('Gêmea Arcana').rarity === 'legendary'
+  out(`  raridades ${ok(by('Esfera Moedora').rarity === 'epic' && by('Triângulo Arcano').rarity === 'epic' && by('Piscar').rarity === 'epic' && by('Gêmea Arcana').rarity === 'epic'
     && by('Mina Arcana').rarity === 'rare' && by('Fusão').rarity === 'rare' && by('Armadura Arcana').rarity === 'epic' && by('Caos Arcano').rarity === 'epic')}`
     + ` | quem erra: só uma (Estouro/Mina/Órbita) ${ok(by('Mina Arcana').excludes.includes('w_caj11') && by('Mina Arcana').excludes.includes('w_caj17'))} | Bolha x Levitar ${ok(by('Bolha Arcana').excludes.includes('w_caj21'))} | Repulsor x Singularidade ${ok(by('Repulsor').excludes.includes('w_caj10'))}`);
 

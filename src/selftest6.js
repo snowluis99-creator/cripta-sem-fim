@@ -44,7 +44,7 @@ export function* shadowTests(g, out, flags) {
   const bed = run.pickups.find((p) => p.kind === 'bed');
   run.take(bed, player);
   out(`  descansar na cama conserta: escudo ${player.shield}/${shieldMax(player)} ${ok(player.shield === shieldMax(player))}`);
-  out(`  Eco do Golpe lendário: ${ok(BLESSING_BY_ID.eco.rarity === 'legendary')} | Ossos Explosivos e Corrente de Raios lendários ${ok(BLESSING_BY_ID.explosao.rarity === 'legendary' && BLESSING_BY_ID.raio.rarity === 'legendary')}`);
+  out(`  Eco do Golpe épico: ${ok(BLESSING_BY_ID.eco.rarity === 'epic')} | Ossos Explosivos e Corrente de Raios épicos ${ok(BLESSING_BY_ID.explosao.rarity === 'epic' && BLESSING_BY_ID.raio.rarity === 'epic')}`);
 
   // ---------------- 30) Rei Skullbone imune ----------------
   out('30) Rei Skullbone imune indo para o meio da sala');

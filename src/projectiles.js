@@ -110,6 +110,7 @@ export class Projectiles {
     const c = this.combat;
     this.updateRain(dt);
     if (c.arcane) c.arcane.prepass(dt); // Cajado Arcano: Fusão e Devorador
+    if (c.mc) c.mc.prepass(dt); // comuns da Maga: Corta-Flechas, Congelar Flechas
     if (this.bolts) for (const b of [...this.bolts]) if (!b.owner || !b.owner.alive) this.takeBolt(b); // dono morreu: o virote some
     for (let i = this.list.length - 1; i >= 0; i--) {
       const a = this.list[i];
@@ -129,6 +130,7 @@ export class Projectiles {
           if (r === 'hover') continue;
           if (r === 'keep') { this.detach(a); continue; }
         }
+        if (a.hits === 'spell' && !a.step.cast.blast && c.mc) c.mc.orbMiss(a); // Faísca Residual
         this.removeA(a); continue;
       }
       // Magia da Maga (Cajado, Gelo, Varinha): segue o inimigo dentro do alcance que ainda falta voar.
@@ -164,6 +166,7 @@ export class Projectiles {
             const r = !a.step.cast.blast && c.arcane ? c.arcane.miss(a, 'wall') : false; // Órbita / Mina
             if (r === 'keep') { this.detach(a); done = true; break; }
             if (!r) boltImpact(c, a, null);
+            if (!r && !a.step.cast.blast && c.mc) c.mc.orbMiss(a); // Faísca Residual
             this.removeA(a); done = true; break;
           }
           if (a.hits === 'reflected') { c.vfx.sparks(new THREE.Vector3(a.x, a.g.position.y, a.z), 0x9fd8ff, 6); this.remove(i); done = true; break; }
@@ -196,6 +199,7 @@ export class Projectiles {
             c.vfx.sparks(new THREE.Vector3(e.position.x, 1.2, e.position.z), 0x9fd8ff, 10);
             audio.play('hit', e.position.x, e.position.z);
             if (c.log) c.log({ type: 'reflectHit', enemy: e, dmg: a.damage, owner: a.owner });
+            if (c.r2 && a.r2Fire) c.r2.onReflectHit(a, e); // Defesa Ardente: queima quem acertar
             if (!this.list.includes(a)) { done = true; break; } // chefe morreu e a lista foi limpa
             // Ricochete: pula para outro inimigo perto
             if (a.bounces > 0) {
@@ -234,6 +238,7 @@ export class Projectiles {
           if (e) { c.merchantShot(e, a.damage, dx, dz); this.removeA(a); done = true; }
           continue;
         }
+        if (c.giant && c.giant.shot(a, dx, dz)) { this.remove(i); done = true; continue; } // Gigante de Aço: o robô leva a flecha/magia
         // Morto-vivo da Maga (Cajado das Trevas) no caminho: leva a flecha/magia.
         const ud = c.enemies.find((en) => en.undead && en.alive && en !== a.owner && Math.hypot(en.position.x - a.x, en.position.z - a.z) < en.data.radius + a.r);
         if (ud) { hitUndead(c, ud, a.damage, a.x - dx * 3, a.z - dz * 3); this.remove(i); done = true; continue; }
@@ -249,6 +254,7 @@ export class Projectiles {
             if (!(a.dodgedBy ||= new Set()).has(p)) { a.dodgedBy.add(p); c.text.add('Esquivou!', p.position, 'miss'); c.reflex(p); c.dodgeUlt(p); }
             continue;
           }
+          if (c.grim && c.grim.shot(p, a)) { done = true; break; } // Grimório Ancestral: escudo em 360° rebate tudo, sem gastar
           // Ripostar (Rapieira): a flecha/magia é negada e o dano fica guardado para devolver.
           if (c.rap && c.rap.riposteCatch(p, a.damage, a.owner && a.owner.position ? a.owner : null)) { this.remove(i); done = true; break; }
           // En Garde / Aparar em Cadeia (Rapieira): apara sozinho (Rebater: o tiro volta).
@@ -264,6 +270,7 @@ export class Projectiles {
           }
           // Barreira da Maga: rebate (flecha, orbe, onda do Ceifador...) de volta para quem atirou.
           if (p.reflects(a.x - dx * 3, a.z - dz * 3)) { this.reflect(a, p); done = true; break; }
+          if (c.kc && c.kc.mirror(p, a, dx, dz)) { this.reflect(a, p); done = true; break; } // Escudo Espelhado (Espada e Escudo)
           // Mãos Trocadas: a espada corta a flecha sozinha.
           if (kitSwordCut(c, p, a)) { this.remove(i); done = true; break; }
           // Machado como Escudo: a lâmina larga segura flechas e magias pela frente.
@@ -343,6 +350,7 @@ export class Projectiles {
     if (st.reflectHeal > 0) { const h = p.heal(st.reflectHeal); if (h) c.text.add(`+${h}`, p.position, 'heal'); }
     if (st.reflectCounter) p.counterReady = true;
     c.addHitstop(0.04);
+    if (c.r2) c.r2.onReflect(p, a); // Defesa Ardente (Cajado de Fogo, rara): volta pegando fogo
     if (c.log) c.log({ type: 'reflected', kind: a.kind, owner: o, p });
   }
 
@@ -387,7 +395,7 @@ export class Projectiles {
       for (const p of this.visual ? [] : c.players) {
         if (p.state === 'dead' || Math.hypot(p.position.x - d.x, p.position.z - d.z) >= d.r + p.hero.radius * 0.6) continue;
         const src = { position: new THREE.Vector3(d.x, 0, d.z - 0.01), alive: false, data: { boss: true } };
-        c.hitPlayer(src, d.damage, { push: 5, noRepel: true, bossSkill: true, target: p });
+        c.hitPlayer(src, d.damage, { push: 5, noRepel: true, bossSkill: true, magic: true, target: p });
         if (c.log) c.log({ type: 'rainHit' });
       }
       this.scene.remove(d.skull); this.scene.remove(d.sh); d.sh.geometry.dispose(); d.sh.material.dispose();

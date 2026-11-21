@@ -35,12 +35,12 @@ export function* iceTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('239) Cajado de Gelo: as 20 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.gelo');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.gelo' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const want = ['Curling', 'Estátua', 'Espelho de Gelo', 'Grudento', 'Floco Gigante', 'Quebra Fatal', 'Pista de Gelo', 'Parede de Gelo', 'Estalagmites', 'Granizo',
     'Iglu', 'Pele Gélida', 'Neblina', 'Cristais', 'Patins', 'Contágio Gélido', 'Encharcado', 'Avalanche Lenta', 'Boneco de Neve', 'Tempo Congelado'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (6 + 20) ${ok(mine.length === 26)} | as 20 ${ok(!miss.length, miss.join(', '))} | lendárias: Floco, Iglu, Tempo, Neblina, Granizo ${ok(['Floco Gigante', 'Iglu', 'Tempo Congelado', 'Neblina', 'Granizo'].every((n) => by(n).rarity === 'legendary'))} | Estátua x Boneco ${ok((by('Estátua').excludes || []).includes(by('Boneco de Neve').id))}`);
+  out(`  ${mine.length} bênçãos (6 + 20) ${ok(mine.length === 26)} | as 20 ${ok(!miss.length, miss.join(', '))} | lendárias: Floco, Iglu, Tempo, Neblina, Granizo ${ok(['Floco Gigante', 'Iglu', 'Tempo Congelado', 'Neblina', 'Granizo'].every((n) => by(n).rarity === 'epic'))} | Estátua x Boneco ${ok((by('Estátua').excludes || []).includes(by('Boneco de Neve').id))}`);
 
   out('240) Curling: congelado desliza e derruba quem está no caminho');
   fresh(); yield 0.1; give('w_gel11');

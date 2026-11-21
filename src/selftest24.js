@@ -33,11 +33,11 @@ export function* darkTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('215) Cajado das Trevas: bênçãos do dono (fáceis)');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.trevas');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.trevas' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const want = ['Tambores de Guerra', 'Praga', 'Dízimo', 'Banquete', 'Pacto de Sangue Sombrio', 'Rei dos Mortos'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (6 + 6 + 14) ${ok(mine.length === 26)} | as 6 ${ok(!miss.length, miss.join(', '))} | Rei lendária ${ok(by('Rei dos Mortos').rarity === 'legendary')} | Dízimo x Rei ${ok((by('Dízimo').excludes || []).includes('w_tre16'))}`);
+  out(`  ${mine.length} bênçãos (6 + 6 + 14) ${ok(mine.length === 26)} | as 6 ${ok(!miss.length, miss.join(', '))} | Rei lendária ${ok(by('Rei dos Mortos').rarity === 'epic')} | Dízimo x Rei ${ok((by('Dízimo').excludes || []).includes('w_tre16'))}`);
 
   out('216) Tambores de Guerra: golpe forte = todos os mortos-vivos atacam');
   fresh(); yield 0.1; give('w_tre11');

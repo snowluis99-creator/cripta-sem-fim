@@ -34,12 +34,11 @@ export function* kunaiTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('309) Kunais: as 20 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.kunai');
-  const want = ['Armadilha de Fio', 'Estrepes', 'Pregar a Sombra', 'Kunai Ímã', 'Relâmpago Amarelo', 'Troca de Lugar', 'Bumerangue', 'Fio de Aço', 'Quique na Parede', 'Faísca na Pegada', 'Pegada Heroica', 'Passar a Corrente', 'Kunai Fantasma', 'Sanguessuga', 'Mãos Vazias'];
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'rogue.kunai' && !b.id.startsWith('w_rc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns do Ladino (selftest37)
+  const want = ['Armadilha de Fio', 'Estrepes', 'Pregar a Sombra', 'Kunai Ímã', 'Troca de Lugar', 'Bumerangue', 'Fio de Aço', 'Quique na Parede', 'Faísca na Pegada', 'Pegada Heroica', 'Passar a Corrente', 'Kunai Fantasma', 'Sanguessuga', 'Mãos Vazias'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (23) ${ok(mine.length === 23)} | as 15 ${ok(!miss.length, miss.join(', '))} | lendárias 1 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 1)} | raras 7 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 7)} | épicas 7 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 7)}`);
-  out(`  Relâmpago Amarelo x Troca de Lugar não vêm juntas ${ok((by('Relâmpago Amarelo').excludes || []).includes('w_kun17'))}`);
+  out(`  ${mine.length} bênçãos (21) ${ok(mine.length === 21)} | as 14 ${ok(!miss.length, miss.join(', '))} | lendárias 0 ${ok(want.filter((n) => by(n).rarity === 'legendary').length === 0)} | raras 7 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 7)} | épicas 7 ${ok(want.filter((n) => by(n).rarity === 'epic').length === 7)}`);
 
   out('311) Armadilha de Fio: duas kunais caídas ligadas por um fio cortante');
   fresh(); yield 0.1; give('w_kun12');
@@ -71,14 +70,6 @@ export function* kunaiTests(g, out, flags) {
   yield 1;
   const d1 = Math.hypot(m1.x - player.position.x, m1.z - player.position.z);
   out(`  chegou mais perto ${ok(d0 - d1 > 2, (d0 - d1).toFixed(1))}`);
-
-  out('315) Relâmpago Amarelo: rolar teleporta até a kunai caída e pega ela');
-  fresh(); yield 0.1; give('w_kun16');
-  ground(5, -5); yield 0.1;
-  player.startDodge(); yield 0.05;
-  out(`  teleportou ${ok(Math.hypot(player.position.x - 5, player.position.z + 5) < 1, `${player.position.x.toFixed(1)}, ${player.position.z.toFixed(1)}`)} | pegou ${ok(player.ammo.length === 2 && ev('kFlash').length === 1)}`);
-  player.startDodge(); yield 0.05;
-  out(`  sem kunai no chão: rola normal ${ok(player.state === 'dodge')}`);
 
   out('316) Troca de Lugar: acertou e rolou logo depois = troca com o inimigo');
   fresh(); yield 0.1; give('w_kun17');

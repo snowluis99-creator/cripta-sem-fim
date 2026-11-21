@@ -29,11 +29,11 @@ export function* axe3Tests(g, out, flags) {
 
   // ---------------- 106) Lista ----------------
   out('106) Machado: 3ª leva de bênçãos');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.machado');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.machado' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const want = ['Imparável', 'Investida Bruta', 'Arrastar a Lâmina', 'Grito de Guerra', 'Maestria', 'Machado como Escudo', 'Arremesso Serra', 'Futebol de Crânio', 'Machado Faminto'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const rar = (n) => mine.find((b) => b.name === n)?.rarity;
-  out(`  ${mine.length} bênçãos ${ok(mine.length === 27)} | as 9 novas ${ok(!miss.length, miss.join(', '))} | raridades ${ok(rar('Imparável') === 'epic' && rar('Investida Bruta') === 'rare' && rar('Arremesso Serra') === 'legendary' && rar('Futebol de Crânio') === 'rare' && rar('Machado Faminto') === 'epic' && rar('Grito de Guerra') === 'legendary')}`);
+  out(`  ${mine.length} bênçãos ${ok(mine.length === 27)} | as 9 novas ${ok(!miss.length, miss.join(', '))} | raridades ${ok(rar('Imparável') === 'epic' && rar('Investida Bruta') === 'rare' && rar('Arremesso Serra') === 'epic' && rar('Futebol de Crânio') === 'rare' && rar('Machado Faminto') === 'epic' && rar('Grito de Guerra') === 'epic')}`);
 
   // ---------------- 107) Imparável ----------------
   out('107) Imparável');

@@ -33,13 +33,13 @@ export function* fistTests(g, out, flags) {
 
   // ---------------- 149) Lista ----------------
   out('149) Manopla: bênçãos do dono');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.manopla');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.manopla' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const by = (n) => mine.find((b) => b.name === n) || {};
   const want = ['Arremesso', 'Suplex', 'Escudo de Carne', 'Quebra-Escudo', 'Strike', 'Pinball', 'Soco Sísmico', 'Soco de Vento', 'Punho Foguete', 'Investida de Punho',
     'Corrente de Nocautes', 'Pegar no Ar', 'Contragolpe Relâmpago', 'Soco Carregado', 'Contador de Combo', 'Pavio', 'Desmontar', 'Duelo', 'Saco de Pancadas'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   out(`  ${mine.length} bênçãos ${ok(mine.length === 19)} | as 19 da lista ${ok(!miss.length, miss.join(', '))}`);
-  out(`  raridades ${ok(by('Arremesso').rarity === 'rare' && by('Suplex').rarity === 'epic' && by('Punho Foguete').rarity === 'legendary' && by('Corrente de Nocautes').rarity === 'legendary' && by('Contador de Combo').rarity === 'legendary' && by('Saco de Pancadas').rarity === 'legendary' && by('Desmontar').rarity === 'rare')}`
+  out(`  raridades ${ok(by('Arremesso').rarity === 'rare' && by('Suplex').rarity === 'epic' && by('Punho Foguete').rarity === 'epic' && by('Corrente de Nocautes').rarity === 'epic' && by('Contador de Combo').rarity === 'epic' && by('Saco de Pancadas').rarity === 'epic' && by('Desmontar').rarity === 'rare')}`
     + ` | Arremesso não vem com Suplex/Sísmico/Foguete ${ok(['w_mnp12', 'w_mnp17', 'w_mnp19'].every((id) => by('Arremesso').excludes.includes(id)))} | Carne x Carregado ${ok(by('Escudo de Carne').excludes.includes('w_mnp25'))}`);
 
   // ---------------- 150) Arremesso ----------------

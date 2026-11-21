@@ -209,6 +209,7 @@ export class KunaiKit {
       const st = Math.min(0.3, left); left -= st;
       it.x += nx * st; it.z += nz * st;
       this.c.smashProjectiles(it.owner, it.x, it.z, 0.55);
+      if (it.rcWhistle) continue; // Assobio (comum): volta sem cortar ninguém
       for (const e of this.foes()) {
         if (it.hitSet.has(e) || Math.hypot(e.position.x - it.x, e.position.z - it.z) > e.data.radius + 0.35) continue;
         it.hitSet.add(e);

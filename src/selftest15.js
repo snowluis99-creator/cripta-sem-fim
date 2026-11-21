@@ -28,12 +28,12 @@ export function* kitTests(g, out, flags) {
 
   // ---------------- 73) Lista ----------------
   out('73) Espada e Escudo: lista nova de bênçãos');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.espada');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'knight.espada' && !b.id.startsWith('w_kc') && !b.id.startsWith('w_kr') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1')); // sem as comuns de 11/11 (selftest35)
   const names = mine.map((b) => b.name);
   const gone = ['Fio Afiado', 'Golpe do Juramento', 'Investida Firme', 'Escudo Pesado', 'Estilhaços', 'Rebate Brutal'].filter((n) => names.includes(n));
   out(`  ${mine.length} bênçãos ${ok(mine.length === 24)} | removidas ${ok(gone.length === 0, gone.join(', '))} | todas com raridade e texto ${ok(mine.every((b) => b.rarity && b.desc(1).length > 10))}`);
   const fl = mine.find((b) => b.name === 'Escudo Flamejante');
-  out(`  Escudo Plantado saiu ${ok(!names.includes('Escudo Plantado'))} | Escudo Flamejante lendária ${ok(fl && fl.rarity === 'legendary')}`);
+  out(`  Escudo Plantado saiu ${ok(!names.includes('Escudo Plantado'))} | Escudo Flamejante épica ${ok(fl && fl.rarity === 'epic')}`);
   out(`  Mesa Virada saiu ${ok(!names.includes('Mesa Virada'))} | Demolidor entrou ${ok(names.includes('Demolidor'))}`);
   // Trenó e Cavalo não vêm juntos (04/11).
   const hero = player.hero;
@@ -82,7 +82,7 @@ export function* kitTests(g, out, flags) {
   give('w_esp18', 3);
   const bz = dummy(0, 0.8);
   for (let i = 0; i < 30; i++) combat.playerStrike(player, player.hero.combo[0]);
-  out(`  Lâmina Afiada ×3 (30%): 30 golpes, sangramento ×${bz.bleedStacks || 0} ${ok((bz.bleedStacks || 0) >= 3)}`);
+  out(`  Lâmina Afiada ×3 (45%): 30 golpes, sangramento ×${bz.bleedStacks || 0} ${ok((bz.bleedStacks || 0) >= 3)}`);
 
   // ---------------- 76) Arremesso ----------------
   out('76) Arremesso: 4º golpe joga o escudo');
@@ -285,7 +285,7 @@ export function* kitTests(g, out, flags) {
   out('  -> pilar caindo (screenshot)');
   yield 'hold';
   yield* until(() => ev('demolishHit').length > 0, 2000);
-  out(`  esmagou 3 (50% da vida máx.) ${ok(ev('demolishHit')[0] && ev('demolishHit')[0].hits === 3 && g1.hp <= 500 && g2.hp <= 500 && g3.hp <= 500, 999 - g1.hp)} | o sozinho não ${ok(lone.hp === 999)}`);
+  out(`  esmagou 3 e os comuns morreram ${ok(ev('demolishHit')[0] && ev('demolishHit')[0].hits === 3 && !g1.alive && !g2.alive && !g3.alive, 999 - g1.hp)} | o sozinho não ${ok(lone.hp === 999)}`);
   yield 2.2;
   out(`  o pilar sumiu depois ${ok(!pil.obj.visible)}`);
   fresh(); yield 0.1;

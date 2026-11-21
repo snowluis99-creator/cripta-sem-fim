@@ -17,6 +17,9 @@ import { Combat } from './combat.js';
 import { WaveManager } from './waves.js';
 import { Hud } from './hud.js';
 import { BLESSINGS, RARITY, setCoopBlessings } from './blessings.js';
+import { mechZoom } from './mechkit.js';
+import { rexZoom } from './rexkit.js'; // Velocidade Rasga-Tempo: câmera mais longe para o T-Rex caber
+import { giantZoom } from './giantkit.js'; // Gigante de Aço: câmera um pouco mais longe para o robô caber
 import { createSelfTest } from './selftest.js';
 import { Ui } from './ui.js';
 import { Run, PLAYER_COLORS } from './run.js';
@@ -169,6 +172,7 @@ async function start() {
       vfx.dust(h.position, h.dodgeDir, phase === 'start' ? 7 : 4);
       if (phase === 'start' && h.stats.iceTrail) h.iceTimer = 0.3;
     };
+    p.onScene = (o) => ult.scene(o); // Levante (Manopla, épica): a tela preta do desafio congela o jogo igual à ultimate
     p.onRevive = (h) => { // Coração de Fênix: cena com a fênix (phoenix.js)
       if (h === player) hud.setBlessings(h.blessings, BLESSINGS, RARITY);
       h.ux.shake(0.4);
@@ -482,6 +486,26 @@ async function start() {
       run.openDoors(true);
     }
     if (e.code === 'KeyH') god = !god;
+    // Backspace (apagar) = Forma Final na hora (lendária da Espada e Escudo): dá a bênção ao Cavaleiro para testar o robô.
+    if (e.code === 'Backspace' && run.built && !run.inTavern) {
+      const fb = BLESSINGS.find((x) => x.id === 'w_l1e1'), ob = BLESSINGS.find((x) => x.id === 'w_l1m1'); // Machado: Bênção de Odin
+      const vb = BLESSINGS.find((x) => x.id === 'w_l1f1'); // Mangual: Venham, Irmãos
+      const xb = BLESSINGS.find((x) => x.id === 'w_l1l1'); // Lança: Velocidade Rasga-Tempo (T-Rex)
+      const gb = BLESSINGS.find((x) => x.id === 'w_l1g1'); // Manopla: Gigante de Aço
+      const cb = BLESSINGS.find((x) => x.id === 'w_l1c1'); // Cajado Arcano: Grimório Ancestral
+      if (player.heroId === 'mage' && player.weaponId === 'cajado') {
+        if (!player.blessings.w_l1c1 && cb) { player.addBlessing(cb); hud.setBlessings(player.blessings, BLESSINGS, RARITY); } else hud.banner('Grimório Ancestral já recebido', 'small');
+      } else if (player.heroId === 'knight' && player.weaponId === 'manopla') {
+        if (!player.blessings.w_l1g1 && gb) { player.addBlessing(gb); hud.setBlessings(player.blessings, BLESSINGS, RARITY); } else hud.banner('Gigante de Aço já recebido', 'small');
+      } else if (player.heroId === 'knight' && player.weaponId === 'lanca') {
+        if (!player.blessings.w_l1l1 && xb) { player.addBlessing(xb); hud.setBlessings(player.blessings, BLESSINGS, RARITY); } else hud.banner('Velocidade Rasga-Tempo já usada nesta partida', 'small');
+      } else if (player.heroId === 'knight' && player.weaponId === 'mangual') {
+        if (!player.blessings.w_l1f1 && vb) { player.addBlessing(vb); hud.setBlessings(player.blessings, BLESSINGS, RARITY); } else hud.banner('Venham, Irmãos já recebida', 'small');
+      } else if (player.heroId === 'knight' && player.weaponId === 'machado') {
+        if (!player.blessings.w_l1m1 && ob) { player.addBlessing(ob); hud.setBlessings(player.blessings, BLESSINGS, RARITY); } else hud.banner('Bênção de Odin já recebida', 'small');
+      } else if (player.heroId === 'knight' && player.weaponId === 'espada' && !player.blessings.w_l1e1 && fb) { player.addBlessing(fb); hud.setBlessings(player.blessings, BLESSINGS, RARITY); }
+      else hud.banner(player.blessings.w_l1e1 ? 'Forma Final já usada nesta partida' : 'Só o Cavaleiro de Espada e Escudo, de Machado, de Mangual, de Lança ou de Manopla, ou a Maga de Cajado Arcano', 'small');
+    }
     // K = Rei Skullbone com 1 de vida na frente do herói (para ver a cena de morte).
     if (e.code === 'KeyK' && run.built) {
       const b = combat.spawn('guardian', player.position.x, player.position.z - 6, { awake: true, facing: 0 });
@@ -550,7 +574,7 @@ async function start() {
     pickMusic(combat.enemies.filter((e) => e.data.boss && (e.alive || e.finale)), hud.deathVisible || (mode === 'solo' && player.state === 'dead'), combat.aliveCount > 0, simTime, run.inTavern ? 'tavern' : 'dungeon');
     // Câmera no herói deste computador (caído: no parceiro).
     const follow = ult.cine ? ult.cine.p : player.state === 'dead' && p2 && p2.state !== 'dead' ? p2 : player;
-    let followPos = ult.cine && ult.cine.focus ? ult.cine.focus : follow.position; // cena do Vassalo: meio dos dois
+    let followPos = ult.cine && ult.cine.focus ? ult.cine.focus : (follow.camFocus || follow.position); // camFocus: Sniper (Besta, épica) olha a mira // cena do Vassalo: meio dos dois
     if (mode === 'local' && p2 && !ult.cine) { // co-op local: câmera no meio dos dois e afasta quando se separam
       const alive = players.filter((p) => p.state !== 'dead' && p.group.visible);
       if (alive.length === 2) {
@@ -559,6 +583,7 @@ async function start() {
         cam.setSpread(Math.min(1.7, Math.max(1, 1 + (d - 7) / 22)));
       } else cam.setSpread(1);
     }
+    cam.setMech(Math.max(mechZoom(follow), rexZoom(follow), giantZoom(follow))); // Forma Final: câmera mais longe para o robô caber
     cam.follow(run.unlock.active ? run.unlock.focus : followPos, dt, run.unlock.active ? 2.5 : 5); // cena da Taverna: câmera no meio
     if (run.built) run.built.updateFrontWall([...(ult.cine ? [{ x: 0, z: 1e6 }] : []), ...players.filter((p) => p.group.visible).map((p) => p.position), ...combat.enemies.filter((e) => e.alive).map((e) => e.position)], dt);
     combat.text.update(dt, cam.camera);

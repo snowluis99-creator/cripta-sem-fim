@@ -32,12 +32,12 @@ export function* fireTests(g, out, flags) {
   const errs0 = (window.__game.errors || []).length;
 
   out('261) Cajado de Fogo: as 20 bênçãos novas');
-  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.fogo');
+  const mine = WEAPON_BLESSINGS.filter((b) => b.weapon === 'mage.fogo' && !b.id.startsWith('w_mc') && !b.id.startsWith('w_r2') && !b.id.startsWith('w_e1') && !b.id.startsWith('w_e2') && !b.id.startsWith('w_l1'));
   const want = ['Pânico', 'Fogo Azul', 'Faísca Saltitante', 'Derreter', 'Reação em Cadeia', 'Tochas Vivas', 'Vulcão', 'Fumaça', 'Fogos de Artifício',
     'Rastro de Chamas', 'Liberação Ardente', 'Filha do Fogo', 'Anel de Chamas', 'Chama Interior', 'Sopro do Dragão', 'Salamandra', 'Cinzas'];
   const miss = want.filter((n) => !mine.some((b) => b.name === n));
   const by = (n) => mine.find((b) => b.name === n) || {};
-  out(`  ${mine.length} bênçãos (22) ${ok(mine.length === 22)} | as 17 ${ok(!miss.length, miss.join(', '))} | lendárias: Reação, Cinzas ${ok(['Reação em Cadeia', 'Cinzas'].every((n) => by(n).rarity === 'legendary'))} | raras: 6 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 6)} | sem Pavio Curto ${ok(!mine.some((b) => b.name === 'Pavio Curto'))}`);
+  out(`  ${mine.length} bênçãos (22) ${ok(mine.length === 22)} | as 17 ${ok(!miss.length, miss.join(', '))} | lendárias: Reação, Cinzas ${ok(['Reação em Cadeia', 'Cinzas'].every((n) => by(n).rarity === 'epic'))} | raras: 6 ${ok(want.filter((n) => by(n).rarity === 'rare').length === 6)} | sem Pavio Curto ${ok(!mine.some((b) => b.name === 'Pavio Curto'))}`);
 
   out('262) Pânico: quem pega fogo corre sem rumo e põe fogo em quem encosta');
   fresh(); yield 0.1; give('w_fog11');

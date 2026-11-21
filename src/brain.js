@@ -145,7 +145,7 @@ export function stepToward(e, ctx, dt, tx, tz, speedMul = 1) {
   const p = ctx.player;
   const dir = navDir(e, ctx.world, tx, tz, p.position, dt);
   if (!dir) return false;
-  const k = e.data.speed * speedMul * (e.slow > 0 ? 0.45 : 1) * dt;
+  const k = e.data.speed * speedMul * (e.slow > 0 ? (e.rcIceT > 0 ? 0.2 : 0.45) : 1) * dt; // Kunai Gelada (comum): MUITO lento
   const left = Math.hypot(tx - e.position.x, tz - e.position.z);
   const step = Math.min(k, left);
   e.position.x += dir[0] * step; e.position.z += dir[1] * step;

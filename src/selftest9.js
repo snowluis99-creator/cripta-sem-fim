@@ -301,7 +301,7 @@ export function* newTests(g, out, flags) {
   fresh();
   player.setHero('mage', WEAPONS.mage[0].id);
   yield 0.2;
-  for (const id of ['u_dupla', 'u_acida', 'u_acida', 'u_forte']) player.addBlessing(BLESSING_BY_ID[id]);
+  for (const id of ['u_dupla', 'u_acida', 'u_forte']) player.addBlessing(BLESSING_BY_ID[id]);
   const mf = [dummy(-7, -6, 'warrior'), dummy(7, 5, 'warrior')];
   mf.forEach((e) => { e.hp = e.maxHp = 999; });
   player.ult = player.ultNeed;
@@ -310,10 +310,19 @@ export function* newTests(g, out, flags) {
   yield () => flags.events.filter((e) => e.type === 'ultStrike').length >= 2;
   yield 0.05;
   const lostM = 999 - mf[0].hp;
-  out(`  Chuva Dupla: caiu 2 vezes ${ok(flags.events.filter((e) => e.type === 'ultStrike').length === 2)} | Tempestade + Chuva Ácida ×2: ${lostM} de dano (27 + 35 marcado) ${ok(lostM === 62)} | marcados ${ok(mf.every((e) => e.acidT > 0 && e.acidMul === 0.3))}`);
+  out(`  Chuva Dupla: caiu 2 vezes ${ok(flags.events.filter((e) => e.type === 'ultStrike').length === 2)} | Tempestade + Chuva Ácida (dobro): ${lostM} de dano (27 + 54 marcado) ${ok(lostM === 81)} | marcados ${ok(mf.every((e) => e.acidT > 0 && e.acidMul === 1))}`);
   yield 0.2;
   out('  -> chuva ácida: CONGELADO (T continua)');
   yield 'hold';
+  // Ladino: Mira Demorada dobra a Precisão Invejável (11/11).
+  combat.clear(); fresh();
+  player.setHero('rogue', WEAPONS.rogue[0].id);
+  yield 0.2;
+  player.addBlessing(BLESSING_BY_ID.u_mira);
+  player.ult = player.ultNeed;
+  press('KeyR');
+  yield 0.1;
+  out(`  Mira Demorada: Precisão Invejável ${player.ultTime.toFixed(1)} s ${ok(player.ultTime > 9.5)}`);
   player.setHero('knight', WEAPONS.knight[0].id);
   combat.clear();
 }

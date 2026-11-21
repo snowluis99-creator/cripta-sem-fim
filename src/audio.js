@@ -5,7 +5,7 @@ import { settings } from './settings.js';
 
 const VOL = { master: 0.9, music: 0.36, sfx: 0.6, voice: 0.25 }; // 31/10: efeitos um pouco mais baixos para combinar com as músicas (antes sfx 0,75 e voz 0,3)
 // Ajuste fino de volume por efeito (os sopros e chiados saem mais baixos que os impactos).
-const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4, thunder: 1.5 };
+const GAIN = { swing: 2.4, swingHeavy: 1.5, dodge: 2.8, miss: 2.2, rise: 2.6, spin: 2.6, creak: 3, summon: 2, clear: 2, win: 2, heal: 1.6, orb: 1.4, thunder: 1.5, horn: 1.8, hornFar: 1.6, rexWhirl: 1.8, rexLick: 1.6, wingFlap: 1.5 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const mtof = (m) => 440 * 2 ** ((m - 69) / 12);
 
@@ -258,6 +258,117 @@ export const SFX = {
     metal(A, t + 0.12, 1400, 0.25, 0.35, o);
     [0, 4, 7, 12].forEach((s, i) => tone(A, t + 0.3 + i * 0.12, 'triangle', mtof(67 + s), mtof(67 + s), 0.5, 0.25, o, 0.01));
     [0, 4, 7, 12, 16].forEach((s) => tone(A, t + 0.8, 'sine', mtof(67 + s), mtof(67 + s), 1.4, 0.12, o, 0.02));
+  },
+  // Forma Final (robô gigante, lendária da Espada e Escudo)
+  mechCall: (A, t, o) => {      // o Cavaleiro chama: trompa grave subindo + brilho
+    [0, 7, 12].forEach((s, i) => tone(A, t + i * 0.22, 'sawtooth', mtof(38 + s), mtof(38 + s) * 1.01, 1.1, 0.16, o, 0.12));
+    hiss(A, t, 'bandpass', 400, 2400, 2, 1.1, 0.25, o, 0.5);
+    [0, 7, 12, 19].forEach((s, i) => tone(A, t + 0.5 + i * 0.09, 'sine', mtof(74 + s), mtof(74 + s), 0.5, 0.08, o, 0.01));
+  },
+  mechFall: (A, t, o) => { hiss(A, t, 'bandpass', 3000, 250, 1.5, 0.5, 0.8, o, 0.3); tone(A, t, 'sawtooth', 420, 60, 0.5, 0.2, o, 0.2); },
+  mechLand: (A, t, o) => {
+    tone(A, t, 'sine', 70, 22, 1.2, 1.2, o, 0.004); tone(A, t, 'triangle', 130, 30, 0.6, 0.7, o, 0.004);
+    hiss(A, t, 'lowpass', 1400, 90, 0.8, 1.0, 1.1, o); metal(A, t + 0.02, 180, 1.2, 0.35, o);
+    hiss(A, t + 0.15, 'bandpass', 900, 300, 1, 0.9, 0.3, o, 0.1);
+  },
+  horn: (A, t, o) => {          // Venham, Irmãos: corneta de guerra (duas notas e uma longa)
+    [[50, 0, 0.32], [57, 0.3, 0.3], [62, 0.58, 1.1]].forEach(([m, d, len]) => {
+      tone(A, t + d, 'sawtooth', mtof(m) * 0.985, mtof(m), len, 0.17, o, 0.05);
+      tone(A, t + d, 'square', mtof(m - 12), mtof(m - 12), len, 0.06, o, 0.06);
+      tone(A, t + d, 'triangle', mtof(m + 12), mtof(m + 12), len * 0.9, 0.05, o, 0.04);
+    });
+    hiss(A, t, 'bandpass', 700, 900, 2, 1.6, 0.06, o, 0.1);
+  },
+  hornFar: (A, t, o) => {       // as cornetas dos irmãos respondendo, longe
+    [[57, 0, 0.5], [62, 0.18, 0.9], [55, 0.42, 0.8]].forEach(([m, d, len]) => tone(A, t + d, 'sawtooth', mtof(m), mtof(m), len, 0.05, o, 0.12));
+  },
+  broLand: Object.assign((A, t, o) => { tone(A, t, 'sine', 95, 35, 0.25, 0.7, o, 0.004); hiss(A, t, 'lowpass', 900, 120, 0.8, 0.2, 0.6, o); metal(A, t + 0.01, 520, 0.2, 0.08, o); }, { max: 2 }),
+  mechPower: (A, t, o) => {     // motores ligando
+    tone(A, t, 'sawtooth', 40, 160, 1.5, 0.16, o, 0.5); tone(A, t, 'square', 80, 320, 1.5, 0.05, o, 0.6);
+    hiss(A, t, 'bandpass', 300, 3000, 3, 1.4, 0.22, o, 0.7);
+    for (let i = 0; i < 4; i++) tone(A, t + 0.2 + i * 0.16, 'square', 660 + i * 110, 660 + i * 110, 0.05, 0.06, o, 0.002);
+  },
+  mechRoar: (A, t, o) => {      // buzina de guerra do robô
+    for (const f of [55, 82.5, 110, 164]) tone(A, t, 'sawtooth', f, f * 0.94, 1.5, 0.2, o, 0.06);
+    tone(A, t, 'square', 220, 205, 1.3, 0.07, o, 0.08);
+    hiss(A, t, 'lowpass', 1800, 300, 1, 1.4, 0.4, o, 0.05);
+    [0, 4, 7, 12].forEach((s, i) => tone(A, t + 0.25 + i * 0.07, 'triangle', mtof(62 + s), mtof(62 + s), 0.9, 0.12, o, 0.02));
+  },
+  ringBell: (A, t, o) => {      // Gigante de Aço: sino de boxe (DING! DING!)
+    for (const d of [0, 0.32]) { metal(A, t + d, 1180, 1.4, 0.32, o); metal(A, t + d, 1772, 0.9, 0.12, o); tone(A, t + d, 'sine', 2360, 2340, 0.6, 0.05, o, 0.002); }
+  },
+  clang: (A, t, o) => {         // luva de aço batendo no punho do Cavaleiro
+    metal(A, t, 420, 0.55, 0.35, o); metal(A, t + 0.01, 690, 0.4, 0.15, o); hiss(A, t, 'bandpass', 2600, 1200, 2, 0.12, 0.4, o, 0.002);
+  },
+  giantKO: (A, t, o) => {       // robô nocauteado: motores desligando + queda
+    tone(A, t, 'sawtooth', 300, 40, 1.4, 0.16, o, 0.02); tone(A, t, 'square', 150, 25, 1.3, 0.06, o, 0.02);
+    metal(A, t + 0.75, 160, 0.6, 0.35, o); tone(A, t + 0.75, 'sine', 80, 28, 0.6, 0.8, o, 0.004); hiss(A, t + 0.75, 'lowpass', 900, 100, 0.8, 0.5, 0.6, o);
+  },
+  mechStep: Object.assign((A, t, o) => { tone(A, t, 'sine', 85, 30, 0.3, 0.7, o, 0.004); hiss(A, t, 'lowpass', 500, 90, 0.8, 0.22, 0.5, o); metal(A, t, 240, 0.25, 0.05, o); }, { max: 1 }),
+  mechServo: (A, t, o) => { tone(A, t, 'sawtooth', 160, 320, 0.22, 0.07, o, 0.03); hiss(A, t, 'bandpass', 1200, 2600, 4, 0.2, 0.12, o, 0.04); },
+  mechSwing: (A, t, o) => {     // lâmina enorme cortando o ar
+    hiss(A, t, 'bandpass', 250, 1500, 1.1, 0.4, 1.0, o, 0.1); hiss(A, t, 'highpass', 3000, 6000, 1, 0.3, 0.2, o, 0.1);
+    tone(A, t, 'sawtooth', 90, 240, 0.34, 0.14, o, 0.1); tone(A, t, 'sine', 700, 1500, 0.3, 0.06, o, 0.08);
+  },
+  mechHit: (A, t, o) => { tone(A, t, 'sine', 110, 34, 0.4, 1.0, o); hiss(A, t, 'lowpass', 2400, 250, 0.8, 0.3, 0.9, o); metal(A, t, 620, 0.5, 0.2, o); },
+  mechSlam: (A, t, o) => {
+    tone(A, t, 'sine', 80, 24, 1.0, 1.2, o, 0.004); hiss(A, t, 'lowpass', 1600, 100, 0.8, 0.8, 1.1, o);
+    metal(A, t, 300, 0.9, 0.3, o); hiss(A, t + 0.08, 'bandpass', 2000, 500, 1.5, 0.6, 0.35, o, 0.05);
+    tone(A, t + 0.05, 'sawtooth', 200, 50, 0.5, 0.2, o, 0.01);
+  },
+  mechBlock: (A, t, o) => { metal(A, t, 260, 0.9, 0.5, o); metal(A, t, 392, 0.7, 0.25, o); tone(A, t, 'sine', 120, 50, 0.25, 0.6, o); hiss(A, t, 'highpass', 4000, 6000, 1, 0.08, 0.3, o); },
+  mechHurt: (A, t, o) => { metal(A, t, 190, 0.35, 0.35, o); tone(A, t, 'square', 150, 60, 0.18, 0.25, o); hiss(A, t, 'bandpass', 1800, 600, 2, 0.15, 0.5, o); },
+  mechDown: (A, t, o) => {      // sistemas falhando: alarme + motor morrendo
+    tone(A, t, 'sawtooth', 220, 35, 1.3, 0.22, o, 0.02);
+    for (let i = 0; i < 5; i++) tone(A, t + i * 0.24, 'square', 880, 660, 0.12, 0.09, o, 0.004);
+    hiss(A, t, 'bandpass', 2500, 300, 2, 1.2, 0.35, o, 0.05);
+  },
+  mechExplode: (A, t, o) => {
+    tone(A, t, 'sine', 100, 18, 1.8, 1.3, o, 0.004); tone(A, t, 'triangle', 160, 30, 1.0, 0.8, o, 0.004);
+    hiss(A, t, 'lowpass', 3000, 80, 0.7, 1.6, 1.3, o); hiss(A, t + 0.1, 'bandpass', 1200, 200, 1, 1.4, 0.5, o, 0.1);
+    metal(A, t + 0.05, 150, 1.6, 0.3, o);
+    for (let i = 0; i < 5; i++) metal(A, t + 0.3 + i * 0.17, 500 + Math.random() * 900, 0.3, 0.12, o);
+  },
+  // Velocidade Rasga-Tempo (T-Rex, lendária da Lança)
+  rexWhirl: (A, t, o) => {      // a lança girando cada vez mais rápido (assobio subindo)
+    for (let i = 0; i < 10; i++) hiss(A, t + i * 0.12, 'bandpass', 500 + i * 160, 900 + i * 260, 3, 0.14, 0.5 + i * 0.05, o, 0.03);
+    tone(A, t, 'sine', 300, 1800, 1.25, 0.08, o, 0.2);
+  },
+  rexCrack: (A, t, o) => {      // vidro trincando + estalo do tempo rasgando
+    for (let i = 0; i < 7; i++) metal(A, t + i * 0.025 + Math.random() * 0.02, 2200 + Math.random() * 3000, 0.25, 0.16, o);
+    hiss(A, t, 'highpass', 3000, 7000, 1, 0.5, 0.6, o, 0.002);
+    tone(A, t, 'sine', 120, 40, 0.6, 0.9, o, 0.004);
+    tone(A, t + 0.05, 'sawtooth', 1800, 200, 0.5, 0.08, o, 0.01);
+  },
+  portalOpen: (A, t, o) => {    // portal abrindo: zumbido grave + brilho subindo
+    tone(A, t, 'sawtooth', 55, 110, 1.4, 0.12, o, 0.3); tone(A, t, 'sine', 220, 440, 1.2, 0.1, o, 0.2);
+    hiss(A, t, 'bandpass', 400, 3000, 2, 1.3, 0.3, o, 0.3);
+    [0, 5, 9, 12, 17].forEach((s, i) => tone(A, t + 0.2 + i * 0.08, 'triangle', mtof(72 + s), mtof(72 + s), 0.7, 0.07, o, 0.02));
+  },
+  rexStep: Object.assign((A, t, o) => { tone(A, t, 'sine', 75, 28, 0.35, 0.8, o, 0.004); hiss(A, t, 'lowpass', 450, 80, 0.8, 0.25, 0.55, o); }, { max: 1 }),
+  rexRoar: (A, t, o) => {       // rugido: várias vozes graves desafinadas + rosnado de ruído
+    for (const [f, d] of [[70, 0], [94, 0.03], [128, 0.05], [182, 0.02]]) tone(A, t + d, 'sawtooth', f * 1.25, f * 0.8, 1.5, 0.2, o, 0.08);
+    tone(A, t, 'square', 48, 36, 1.4, 0.1, o, 0.1);
+    hiss(A, t, 'bandpass', 900, 350, 1.2, 1.5, 0.8, o, 0.06); hiss(A, t, 'lowpass', 2500, 400, 1, 1.4, 0.45, o, 0.05);
+  },
+  rexLick: (A, t, o) => {       // "slurp"
+    hiss(A, t, 'bandpass', 600, 2400, 6, 0.35, 0.6, o, 0.03); tone(A, t, 'sine', 300, 900, 0.3, 0.2, o, 0.02);
+    tone(A, t + 0.3, 'sine', 700, 250, 0.15, 0.12, o, 0.01);
+  },
+  rexBite: Object.assign((A, t, o) => { tone(A, t, 'square', 180, 70, 0.08, 0.3, o, 0.002); hiss(A, t, 'bandpass', 1500, 600, 2, 0.1, 0.6, o, 0.002); SFX.bones(A, t + 0.02, o); }, { max: 2 }),
+  rexShred: (A, t, o) => { hiss(A, t, 'bandpass', 1200, 500, 1.5, 0.2, 0.7, o, 0.005); tone(A, t, 'sawtooth', 120, 60, 0.2, 0.25, o, 0.01); SFX.bones(A, t, o); },
+  rexHurt: (A, t, o) => { tone(A, t, 'sawtooth', 160, 90, 0.3, 0.2, o, 0.01); hiss(A, t, 'bandpass', 900, 400, 2, 0.2, 0.4, o, 0.01); },
+  rexMorph: (A, t, o) => {      // escuridão: grave descendo + coro sinistro
+    tone(A, t, 'sawtooth', 110, 30, 1.6, 0.25, o, 0.1); tone(A, t, 'square', 55, 27, 1.6, 0.1, o, 0.2);
+    [0, 3, 6, 10].forEach((s, i) => tone(A, t + 0.1 + i * 0.12, 'triangle', mtof(50 + s), mtof(49 + s), 1.3, 0.08, o, 0.1));
+    hiss(A, t, 'lowpass', 600, 2400, 1, 1.5, 0.4, o, 0.4);
+  },
+  wingFlap: Object.assign((A, t, o) => { hiss(A, t, 'lowpass', 500, 150, 1, 0.25, 0.7, o, 0.04); tone(A, t, 'sine', 90, 50, 0.2, 0.3, o, 0.02); }, { max: 1 }),
+  fireSpit: (A, t, o) => { hiss(A, t, 'bandpass', 700, 300, 1, 0.45, 0.9, o, 0.02); tone(A, t, 'sawtooth', 160, 70, 0.35, 0.15, o, 0.02); hiss(A, t, 'highpass', 2500, 1200, 1, 0.3, 0.25, o, 0.01); },
+  rexExplode: (A, t, o) => {
+    tone(A, t, 'sine', 95, 18, 2.0, 1.3, o, 0.004); tone(A, t, 'triangle', 150, 28, 1.2, 0.8, o, 0.004);
+    hiss(A, t, 'lowpass', 3200, 80, 0.7, 1.8, 1.3, o); hiss(A, t + 0.1, 'bandpass', 900, 200, 1, 1.6, 0.6, o, 0.1);
+    for (const [f, d] of [[90, 0.15], [120, 0.18]]) tone(A, t + d, 'sawtooth', f, f * 0.5, 1.2, 0.12, o, 0.05);
   },
   boom: (A, t, o) => { tone(A, t, 'sine', 90, 30, 0.7, 1.0, o, 0.005); hiss(A, t, 'lowpass', 900, 120, 0.8, 0.6, 0.9, o); },
   spin: (A, t, o) => { for (let i = 0; i < 4; i++) hiss(A, t + i * 0.18, 'bandpass', 500, 1500, 1, 0.16, 0.45, o, 0.05); },

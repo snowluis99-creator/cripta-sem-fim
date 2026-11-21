@@ -9,6 +9,8 @@ import { fistOnHit, fistOnSwing } from './fistkit.js';
 import { rapDamage } from './rapkit.js';
 
 const W = (p) => (p && p.stats && p.stats.w) || {};
+let combat0 = null; // combate da partida (wbDamage não recebe o combate)
+export const wbSetCombat = (c) => { combat0 = c; };
 const healP = (combat, p, n) => {
   if (!(n > 0) || p.state === 'dead') return;
   const got = p.heal(Math.round(n));
@@ -23,7 +25,13 @@ const healCd = (combat, p, n) => { // cura limitada (no máximo a cada 0,3 s)
 // Multiplicador de dano e crítico extra para um acerto do herói p no inimigo e.
 export function wbDamage(p, e, step, ctx) {
   const w = W(p);
-  let mul = 1;
+  const kc = combat0 && combat0.kc ? combat0.kc.damage(p, e, step) : null; // comuns do Cavaleiro (kckit.js)
+  const mc = combat0 && combat0.mc ? combat0.mc.damage(p, e, step, ctx) : null; // comuns da Maga (mckit.js)
+  const rc = combat0 && combat0.rc ? combat0.rc.damage(p, e, step, ctx) : null; // comuns do Ladino (rckit.js)
+  const kr = combat0 && combat0.kr ? combat0.kr.damage(p, e, step) : null; // raras do Cavaleiro (krkit.js): Adaptação
+  const e1 = combat0 && combat0.e1 ? combat0.e1.damage(p, e, step) : null; // épicas, lote 1 (e1kit.js): Levante, Sangue de Gigante
+  const e2 = combat0 && combat0.e2 ? combat0.e2.damage(p, e, step) : null; // épicas, lote 2 (e2kit.js): Disfarce
+  let mul = (kc ? kc.mul : 1) * (mc ? mc.mul : 1) * (rc ? rc.mul : 1) * (kr ? kr.mul : 1) * (e1 ? e1.mul : 1) * (e2 ? e2.mul : 1);
   if (e.markT > 0) mul *= 1 + (e.markMul || 0); // Marca Arcana / Maldição (vale para todos os heróis)
   if (w.vsStun && (e.state === 'hurt' || e.offBalanceT > 0 || e.frozenT > 0)) mul *= 1 + w.vsStun;
   if (w.vsFull && e.hp >= e.maxHp) mul *= 1 + w.vsFull;
@@ -44,7 +52,7 @@ export function wbDamage(p, e, step, ctx) {
   if (ld) mul *= ld.mul;
   const rd = rapDamage(p, e, step); // Rapieira: Ponto Fraco
   if (rd) mul *= rd.mul;
-  return { mul, critMul: w.critDmg || 0, forceCrit: !!(w.dodgeCrit && p.wbDodgeT > 0) || !!(ld && ld.forceCrit) || !!(rd && rd.forceCrit), pushOnly: !!(ld && ld.pushOnly) };
+  return { mul, critMul: w.critDmg || 0, forceCrit: !!(kc && kc.crit) || !!(mc && mc.crit) || !!(rc && rc.crit) || !!(w.dodgeCrit && p.wbDodgeT > 0) || !!(ld && ld.forceCrit) || !!(rd && rd.forceCrit), pushOnly: !!(ld && ld.pushOnly) };
 }
 
 // Depois do dano: curas, sangramento, marca, lentidão, raio, 2º impacto...
@@ -54,6 +62,12 @@ export function wbOnHit(combat, p, e, step, r) {
   if (combat.claw2) combat.claw2.onHit(p, e, step, r); // Garras (clawkit.js)
   if (combat.rap) combat.rap.onHit(p, e, step, r); // Rapieira (rapkit.js)
   if (combat.rap2) combat.rap2.onHit(p, e, step, r); // Rapieira, 3ª leva (rapkit2.js)
+  if (combat.flail2) combat.flail2.onHit(p, e, step, r); // Mangual, 2ª leva (flailkit2.js) — Algemas valem para todos
+  if (combat.kc) combat.kc.onHit(p, e, step, r); // comuns do Cavaleiro (kckit.js)
+  if (combat.mc) combat.mc.onHit(p, e, step, r); // comuns da Maga (mckit.js)
+  if (combat.rc) combat.rc.onHit(p, e, step, r); // comuns do Ladino (rckit.js)
+  if (combat.e1) combat.e1.onHit(p, e, step, r); // épicas, lote 1 (e1kit.js): Lenhador, Newton, Chute
+  if (combat.e2) combat.e2.onHit(p, e, step, r); // épicas, lote 2 (e2kit.js): Disfarce, Lua Cheia, Destruição, Ponto Vital
   if (!Object.keys(w).length) return;
   const { dmg, died, crit, spell, nx, nz } = r;
   if (p.wbDodgeT > 0 && (w.dodgeDmg || w.dodgeCrit)) p.wbDodgeT = Math.min(p.wbDodgeT, w.dodgeCrit ? p.wbDodgeT : 0.05); // Pés Ligeiros: vale para este golpe
@@ -102,6 +116,8 @@ export function addBleed(combat, p, e, n) {
 // No momento do golpe (corpo a corpo), antes de procurar quem acertou.
 export function wbOnSwing(combat, p, step) {
   p.swingSeq = (p.swingSeq || 0) + 1;
+  combat0 = combat;
+  if (combat.kc) combat.kc.onSwing(p, step); // comuns do Cavaleiro (kckit.js)
   const w = W(p);
   if (combat.rogue2) combat.rogue2.onSwing(p, step); // Duas Adagas: Leque de Facas, Golpe de Misericórdia
   if (combat.claw2) combat.claw2.onSwing(p, step); // Garras: Rugido, Cortes de Vento, Marcas, Tigre, Afiar
@@ -119,8 +135,13 @@ export function wbOnSwing(combat, p, step) {
 // Inimigo destruído pelo herói.
 export function wbOnKill(combat, e, by) {
   const w = W(by);
+  if (combat.rc) combat.rc.onKill(e, by); // comuns do Ladino (rckit.js) — antes das Duas Adagas (o veneno ainda está no inimigo)
   if (combat.rogue2) combat.rogue2.onKill(e, by); // Duas Adagas: adaga cravada, marca, cobra, sumir, frasco
   if (combat.claw2) combat.claw2.onKill(e, by); // Garras: Matilha
+  if (combat.kc) combat.kc.onKill(e, by); // comuns do Cavaleiro (kckit.js)
+  if (combat.mc) combat.mc.onKill(e, by); // comuns da Maga (mckit.js)
+  if (combat.e1) combat.e1.onKill(e, by); // épicas, lote 1 (e1kit.js): Sangue de Gigante, Meteoro
+  if (combat.e2) combat.e2.onKill(e, by); // épicas, lote 2 (e2kit.js): Disfarce, Lua Cheia, Sniper
   axeOnKill(combat, e, by); // Sede de Batalha, Racha-Crânios
   axe3OnKill(combat, e, by); // Grito de Guerra, Futebol de Crânio
   lanceOnKill(combat, e, by); // Lança: Cemitério de Lanças, Lança de Troféus
@@ -145,6 +166,7 @@ export function wbOnKill(combat, e, by) {
 export function wbOnShatter(combat, p, e) {
   const w = W(p);
   if (combat.ice2) combat.ice2.onShatter(p, e); // Floco Gigante, Estalagmites, Cristais
+  if (combat.mc) combat.mc.onShatter(p, e); // Lascas (comum)
   if (!w.frostNova) return;
   const at = new THREE.Vector3(e.position.x, 0, e.position.z);
   combat.vfx.ring(at, 0x8fe3ff, 2.6);

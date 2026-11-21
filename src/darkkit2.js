@@ -417,7 +417,7 @@ export class DarkKit2 {
     return true;
   }
   betrayHit(e, t, dmg) {
-    const c = this.c, by = e.darkMark && e.darkMark.hero ? e.darkMark : null;
+    const c = this.c, by = e.darkMark && e.darkMark.hero ? e.darkMark : (e.e2Love && e.e2Love.by) || null; // Flecha do Cupido: o abate é do Ladino
     const dx = t.position.x - e.position.x, dz = t.position.z - e.position.z, d = Math.hypot(dx, dz) || 1;
     c.vfx.sparks(v3(t.position.x, 1.2, t.position.z), PURPLE, 8);
     audio.play('hit', t.position.x, t.position.z);

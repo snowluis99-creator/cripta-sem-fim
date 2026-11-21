@@ -14,6 +14,8 @@ import { ORB_STATES, arcEnemyTick, arcLeaveState } from './arcstates.js';
 import { ELE_STATES, eleEnemyTick, eleLeaveState } from './elestates.js';
 import { FIRE_STATES, fireEnemyTick, fireLeaveState } from './firestates.js';
 import { ROGUE_STATES, rogueEnemyTick, rogueLeaveState } from './roguestates.js';
+import { KC_STATES, kcEnemyTick, kcLeaveState } from './kcstates.js';
+import { E1_STATES, e1EnemyTick, e1LeaveState } from './e1states.js';
 
 export const AXE2 = {
   fissure: { len: 9, speed: 20, width: 0.9, damage: 18, air: 0.75, height: 2.4, land: 0.5, fade: 1.6 },
@@ -32,7 +34,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 const BITE = { clip: 'Melee_1H_Attack_Stab', speed: 1.3, hit: 0.45, aim: 0.3, end: 0.85, reach: 1.9, arc: 90, lunge: 1.0, bite: true };
 
 // Estados próprios do esqueleto (enemies.js chama axeEnemyTick).
-export const AXE_STATES = new Set(['headless', 'axeAir', ...AXE3_STATES, ...LANCE_STATES, ...FIST_STATES, ...ORB_STATES, ...ELE_STATES, ...FIRE_STATES, ...ROGUE_STATES]); // + Investida Bruta (derrubado) e Grito de Guerra (com medo)
+export const AXE_STATES = new Set(['headless', 'axeAir', ...AXE3_STATES, ...LANCE_STATES, ...FIST_STATES, ...ORB_STATES, ...ELE_STATES, ...FIRE_STATES, ...ROGUE_STATES, ...KC_STATES, ...E1_STATES]); // + Investida Bruta (derrubado) e Grito de Guerra (com medo)
 
 // ---------- Decapitar (antes do dano: o golpe arranca a cabeça em vez de ferir) ----------
 export function axeDecap(c, p, e, step) {
@@ -129,6 +131,8 @@ export function axeEnemyTick(e, dt, ctx) {
   if (ELE_STATES.includes(e.state)) return eleEnemyTick(e, dt, ctx); // Cajado Elétrico: Blecaute / Marionete
   if (FIRE_STATES.includes(e.state)) return fireEnemyTick(e, dt, ctx); // Cajado de Fogo: Pânico
   if (ROGUE_STATES.includes(e.state)) return rogueEnemyTick(e, dt, ctx); // Duas Adagas: Bomba de Fumaça / Areia nos Olhos
+  if (KC_STATES.includes(e.state)) return kcEnemyTick(e, dt, ctx); // Machado: Aliado dos Ventos (levantado)
+  if (E1_STATES.includes(e.state)) return e1EnemyTick(e, dt, ctx); // Lança: Chute Espartano (no poço)
   return axe3EnemyTick(e, dt, ctx);
 }
 
@@ -213,9 +217,11 @@ export function axeLeaveState(e, from) {
   lanceLeaveState(e, from);
   fistLeaveState(e, from);
   arcLeaveState(e, from);
+  kcLeaveState(e, from);
   eleLeaveState(e, from);
   fireLeaveState(e, from);
   rogueLeaveState(e, from);
+  e1LeaveState(e, from);
 }
 
 // ---------- Coisas na sala ----------

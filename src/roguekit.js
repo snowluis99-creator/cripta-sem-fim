@@ -93,7 +93,7 @@ export class RogueKit2 {
     e.rogueSt = { t, ang: Math.random() * Math.PI * 2, turn: 0.3, swing: 0.35, swinging: 0 };
     e.setState('rogueBlind');
   }
-  blindSwing(e) { this.log({ type: 'rogueBlindSwing', enemy: e }); audio.play('swing', e.position.x, e.position.z, { v: 0.5 }); }
+  blindSwing(e) { this.log({ type: 'rogueBlindSwing', enemy: e }); audio.play('swing', e.position.x, e.position.z, { v: 0.5 }); if (this.c.rc) this.c.rc.blindSwing(e); } // Virote Brilhante (comum): pode acertar outro inimigo
 
   // ---------- Inimigo atacando o herói: cego erra, desarmado só empurra ----------
   foeMiss(e, p, opts) {

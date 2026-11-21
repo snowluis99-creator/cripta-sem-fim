@@ -148,7 +148,7 @@ export class Ultimates {
       audio.play('blessing', p.position.x, p.position.z);
       this.flash('#ffd24a', 0.15);
     } else if (kind === 'rogue') {
-      p.ultTime = ROGUE_ULT.time + (st.aimTime || 0);
+      p.ultTime = (ROGUE_ULT.time + (st.aimTime || 0)) * (st.aimDouble ? 2 : 1); // Mira Demorada: dobra o tempo
       say(`${ROGUE_ULT.name}!`);
       this.vfx.burst(p.position.clone(), 0xff4a3a);
       this.vfx.ring(p.position.clone(), 0xffd24a, 2.4);

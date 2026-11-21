@@ -334,7 +334,7 @@ const BLEED_ON = new Set(['attack', 'leapWind', 'chargeWind', 'spinWind', 'shot'
 
 export class Enemy {
   constructor(type, x, z, opts = {}) {
-    let data = ENEMIES[type];
+    let data = opts.data || ENEMIES[type]; // opts.data: Venham, Irmãos (cada irmão tem dados próprios)
     // Morto-vivo da Maga (Cajado das Trevas): luta como quando estava vivo (salto, investida, tiros...), só que contra os inimigos.
     if (opts.undead) data = { ...data, attackRange: data.ranged ? data.attackRange : Math.max(data.attackRange || 0, 2.0), voice: undefined };
     this.undead = opts.undead || null;
@@ -405,7 +405,7 @@ export class Enemy {
     m.opacity += (want - m.opacity) * Math.min(1, dt * 10);
     this.bubble.visible = m.opacity > 0.01;
   }
-  get targetable() { return !this.undead && this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'hop' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && this.state !== 'headless' && this.state !== 'lanceHeld' && this.state !== 'lanceFly' && this.state !== 'fistHeld' && this.state !== 'fistFly' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
+  get targetable() { return !this.undead && this.alive && this.state !== 'rage' && this.state !== 'roll' && this.state !== 'hop' && this.state !== 'held' && this.state !== 'thrown' && this.state !== 'tpOut' && this.state !== 'tpIn' && this.state !== 'headless' && this.state !== 'lanceHeld' && this.state !== 'lanceFly' && this.state !== 'fistHeld' && this.state !== 'fistFly' && this.state !== 'e1Pit' && !HIDDEN_STATES.has(this.state) && (this.state !== 'spawn' || this.anim.progress() > 0.6); }
 
   setState(s) {
     if (this.tele) hideTelegraphs(this);
@@ -566,6 +566,7 @@ export class Enemy {
       setFlash(this.bodyMats, 0);
       if (ctx.combat) ctx.combat.vfx.sparks(new THREE.Vector3(this.position.x, 1.0, this.position.z), 0xbff0ff, 8);
       if (ctx.combat && ctx.combat.ice2 && this.alive) ctx.combat.ice2.onThaw(this); // Encharcado (Cajado de Gelo)
+      if (ctx.combat && ctx.combat.mc && this.alive && !this.undead) ctx.combat.mc.onThaw(this); // Poça de Gelo (comum)
       return false;
     }
     setFlash(this.bodyMats, 0.45, 0.45, 0.8, 1);
@@ -588,7 +589,7 @@ export class Enemy {
     if (combat && combat.ice2 && this.alive && combat.ice2.stopped(this)) return; // Tempo Congelado (Cajado de Gelo): tudo parado
     if (this.frozenT > 0 && this.state !== 'dead' && this.updateFrozen(dt, ctx)) return;
     this.t += dt;
-    this.cooldown -= dt * (this.slow > 0 ? 0.5 : 1);
+    this.cooldown -= dt * (this.slow > 0 ? 0.5 * (combat && combat.mc ? combat.mc.chillMul : 1) : 1); // Calafrio (Cajado de Gelo): lentos atacam mais devagar
     if (this.slow > 0) this.slow -= dt;
     if (this.offBalanceT > 0) this.offBalanceT -= dt;
     if (this.markT > 0) this.markT -= dt;
@@ -669,7 +670,7 @@ export class Enemy {
       case 'hurt':
         if (this.t >= this.stunTime) { this.setState('chase'); this.anim.play(d.anims.idle, { fade: 0.15 }); }
         break;
-      case 'headless': case 'axeAir': case 'axeDown': case 'axeFear': case 'axeFetch': case 'lanceHeld': case 'lanceFly': case 'fistHeld': case 'fistFly': case 'fistSit': case 'orbFloat': case 'orbBubble': case 'eleLost': case 'elePuppet': case 'firePanic': case 'rogueLost': case 'rogueBlind': // Manopla (fistkit2.js) / Machado: Decapitar / Fenda / Investida / Grito (axekit2.js, axekit3.js)
+      case 'headless': case 'axeAir': case 'axeDown': case 'axeFear': case 'axeFetch': case 'lanceHeld': case 'lanceFly': case 'fistHeld': case 'fistFly': case 'fistSit': case 'orbFloat': case 'orbBubble': case 'eleLost': case 'elePuppet': case 'firePanic': case 'rogueLost': case 'rogueBlind': case 'kcLift': case 'e1Pit': // Manopla (fistkit2.js) / Machado: Decapitar / Fenda / Investida / Grito (axekit2.js, axekit3.js)
         axeEnemyTick(this, dt, ctx);
         break;
       case 'block':

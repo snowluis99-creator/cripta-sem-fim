@@ -4,10 +4,10 @@ import { COOP_BLESSINGS } from './coopbless.js';
 // stats = números que o resto do jogo lê (dano, velocidade, etc.). Cada bênção pode ser pega várias vezes até "max".
 
 export const RARITY = {
-  common: { name: 'Comum', color: '#e9e4d8', weight: 55, price: 200 },
-  rare: { name: 'Rara', color: '#5fb0ff', weight: 30, price: 300 },
-  epic: { name: 'Épica', color: '#c27bff', weight: 12, price: 400 },
-  legendary: { name: 'Lendária', color: '#ffc24a', weight: 3, price: 500 },
+  common: { name: 'Comum', color: '#e9e4d8', weight: 70, price: 200 },
+  rare: { name: 'Rara', color: '#5fb0ff', weight: 21, price: 300 },
+  epic: { name: 'Épica', color: '#c27bff', weight: 8, price: 500 },
+  legendary: { name: 'Lendária', color: '#ffc24a', weight: 1, price: 1200 },
   // Arriscada: sempre a 4ª carta (borda vermelha). Muito forte, mas com uma contrapartida. Não é vendida.
   risky: { name: 'Arriscada', color: '#ff4a4a', weight: 0, price: 0 },
   // Da sala "Bênção da Ultimate": melhoram a ultimate. Só saem lá (não vendem nem aparecem nas outras escolhas).
@@ -28,7 +28,7 @@ export function baseStats() {
     potionMul: 1, ultNeed: 10,
     // Bênçãos da Ultimate (ultimate.js):
     ultHeal: 0, ultBlast: 0, ultRefund: 0, domeTime: 0, domeBurn: 0, domeFury: false, rainRepeat: 0, rainFreeze: 0, rainDamage: 0, rainAcid: 0,
-    aimTime: 0, lethalCrit: false, ultSmoke: false, // Ladino (Precisão Invejável)
+    aimTime: 0, aimDouble: false, lethalCrit: false, ultSmoke: false, // Ladino (Precisão Invejável)
     // Barreira da Maga (rebate projéteis):
     reflectMul: 1, reflectArc: 0, reflectBounce: 0, reflectHeal: 0, reflectCounter: false,
     // Bênçãos gerais novas (versão 115):
@@ -47,14 +47,14 @@ export const BLESSINGS = [
     desc: () => '+20 de vida máxima e cura 20 agora.',
     apply: (s, p) => { s.bonusHp += 20; p && p.heal(20); } },
   { id: 'maos', name: 'Mãos Leves', icon: '»', rarity: 'common', max: 5,
-    desc: (n) => `Golpes 15% mais rápidos. (total: +${n * 15}%)`,
-    apply: (s) => { s.attackSpeed += 0.15; } },
+    desc: (n) => `Golpes 20% mais rápidos. (total: +${n * 20}%)`,
+    apply: (s) => { s.attackSpeed += 0.2; } },
   { id: 'pele', name: 'Pele de Ferro', icon: '⛨', rarity: 'common', max: 3,
     desc: () => 'Recebe 15% menos dano.',
     apply: (s) => { s.damageTaken *= 0.85; } },
   { id: 'alcance', name: 'Sem Limites', icon: '↔', rarity: 'common', max: 2,
-    desc: (n) => `Os golpes alcançam 15% mais longe. (total: +${n * 15}%)`,
-    apply: (s) => { s.rangeMul += 0.15; } },
+    desc: (n) => `Os golpes alcançam 20% mais longe. (total: +${n * 20}%)`,
+    apply: (s) => { s.rangeMul += 0.2; } },
   { id: 'ganancia', name: 'Ganância', icon: '¤', rarity: 'common', max: 2,
     desc: () => 'Ganha 50% mais ouro.',
     apply: (s) => { s.goldMul += 0.5; } },
@@ -65,18 +65,18 @@ export const BLESSINGS = [
     desc: (n) => `Cura 10 de vida agora e ${n * 10} ao entrar em cada sala nova.`,
     apply: (s, p) => { s.roomHeal += 10; p && p.heal(10); } },
   { id: 'habil', name: 'Habilidoso', icon: '✧', rarity: 'common', max: 3,
-    desc: (n) => `+10% de chance de golpe crítico. (total: +${n * 10}%)`,
-    apply: (s) => { s.critChance += 0.1; } },
+    desc: (n) => `+20% de chance de golpe crítico. (total: +${n * 20}%)`,
+    apply: (s) => { s.critChance += 0.2; } },
   { id: 'furtivo', name: 'Furtivo', icon: '☁', rarity: 'common', max: 3,
-    desc: (n) => `${n * 10}% de chance de desviar de qualquer golpe.`,
-    apply: (s) => { s.evade += 0.1; } },
+    desc: (n) => `${n * 15}% de chance de desviar de qualquer golpe.`,
+    apply: (s) => { s.evade += 0.15; } },
   // ---- Raras ----
   { id: 'frenesi', name: 'Frenesi', icon: 'ϟ', rarity: 'rare', max: 2,
-    desc: (n) => `Inimigos acertados pelo último golpe do combo ficam ${n * 25}% mais tempo atordoados.`,
-    apply: (s) => { s.heavyStun += 0.25; } },
+    desc: (n) => `Inimigos acertados pelo último golpe do combo ficam ${n * 40}% mais tempo atordoados.`,
+    apply: (s) => { s.heavyStun += 0.4; } },
   { id: 'carrasco', name: 'Olho do Carrasco', icon: '◎', rarity: 'rare', max: 3,
-    desc: (n) => `Golpes críticos causam ${n * 15}% mais dano.`,
-    apply: (s) => { s.critDmgMul += 0.15; } },
+    desc: (n) => `Golpes críticos causam ${n * 40}% mais dano.`,
+    apply: (s) => { s.critDmgMul += 0.4; } },
   { id: 'execucao', name: 'Execução', icon: '†', rarity: 'rare', max: 2,
     desc: (n) => `+${n * 50}% de dano em esqueletos com menos de 30% de vida.`,
     apply: (s) => { s.execute += 0.5; } },
@@ -84,8 +84,8 @@ export const BLESSINGS = [
     desc: () => 'Ganha 1 poção agora. Beber uma poção dá uma proteção que anula o próximo dano recebido.',
     apply: (s, p) => { s.potionGuard = true; if (p) p.potions += 1; } },
   { id: 'furia2', name: 'Fúria', icon: '☄', rarity: 'rare', max: 2,
-    desc: (n) => `Com menos de 50% de vida: +${n * 25}% de dano.`,
-    apply: (s) => { s.rage += 0.25; } },
+    desc: (n) => `Com menos de 50% de vida: +${n * 50}% de dano.`,
+    apply: (s) => { s.rage += 0.5; } },
   { id: 'quebragelo', name: 'Quebra-Gelo', icon: '❄', rarity: 'rare', max: 1,
     desc: () => 'Em cada sala, o primeiro combo que acertar causa o dobro do dano, e todos os golpes desse combo são críticos.',
     apply: (s) => { s.opener += 1; } },
@@ -103,37 +103,37 @@ export const BLESSINGS = [
     desc: () => 'A cada 12 s ganha uma proteção que anula o próximo golpe recebido.',
     apply: (s) => { s.spectral = true; } },
   { id: 'perfect', name: 'Perfect', icon: '✪', rarity: 'epic', max: 2,
-    desc: (n) => `Cada golpe que acerta soma +${n * 2} de dano aos próximos (até +${n * 30}), até você tomar dano.`,
+    desc: (n) => `Cada golpe que acerta soma +${n * 2} de dano aos próximos, sem limite, até você tomar dano.`,
     apply: (s) => { s.perfect += 2; } },
   { id: 'premiada', name: 'Poção Premiada', icon: '⚗', rarity: 'epic', max: 2,
-    desc: (n) => `${n * 15}% de chance de a poção não ser gasta ao beber.`,
-    apply: (s) => { s.potionSave += 0.15; } },
+    desc: (n) => `${n * 25}% de chance de a poção não ser gasta ao beber.`,
+    apply: (s) => { s.potionSave += 0.25; } },
   { id: 'sorte', name: 'Sorte Grande', icon: '☘', rarity: 'epic', max: 1,
     desc: () => 'Objetos quebrados têm 25% de chance de soltar moedas, e baús 25% de soltar poção.',
     apply: (s) => { s.luck = true; } },
   // ---- Lendárias ----
-  { id: 'sede', name: 'Sede de Sangue', icon: '✚', rarity: 'legendary', max: 1,
+  { id: 'sede', name: 'Sede de Sangue', icon: '✚', rarity: 'epic', max: 1,
     desc: () => 'Cura 3 de vida a cada esqueleto destruído.',
     apply: (s) => { s.lifeOnKill += 3; } },
-  { id: 'eco', name: 'Eco do Golpe', icon: '◗', rarity: 'legendary', max: 1,
+  { id: 'eco', name: 'Eco do Golpe', icon: '◗', rarity: 'epic', max: 1,
     desc: () => 'O último golpe do combo solta uma rajada que atravessa os esqueletos à frente (25 de dano).',
     apply: (s) => { s.echo += 25; } },
-  { id: 'raio', name: 'Corrente de Raios', icon: '↯', rarity: 'legendary', max: 1,
+  { id: 'raio', name: 'Corrente de Raios', icon: '↯', rarity: 'epic', max: 1,
     desc: () => 'Golpes críticos soltam um raio que pula para 3 esqueletos perto (12 de dano).',
     apply: (s) => { s.chain += 2; } },
-  { id: 'explosao', name: 'Ossos Explosivos', icon: '✹', rarity: 'legendary', max: 1,
+  { id: 'explosao', name: 'Ossos Explosivos', icon: '✹', rarity: 'epic', max: 1,
     desc: () => 'Esqueletos destruídos explodem e causam 20 de dano em volta.',
     apply: (s) => { s.boneBlast += 20; } },
-  { id: 'furia', name: 'Fúria Desesperada', icon: '☄', rarity: 'legendary', max: 1,
+  { id: 'furia', name: 'Fúria Desesperada', icon: '☄', rarity: 'epic', max: 1,
     desc: () => 'Com menos de 40% de vida: +60% de dano e golpes 30% mais rápidos.',
     apply: (s) => { s.fury = true; } },
-  { id: 'ceifador', name: 'Ceifador', icon: '☠', rarity: 'legendary', max: 1,
+  { id: 'ceifador', name: 'Ceifador', icon: '☠', rarity: 'epic', max: 1,
     desc: () => 'Cada esqueleto destruído dá +2% de dano até o fim da partida (máx. +75%).',
     apply: (s) => { s.reaper = true; } },
   { id: 'negociador', name: 'Negociador', icon: '⚖', rarity: 'epic', max: 1,
     desc: () => 'A primeira compra em cada visita ao mercador é grátis (comprada no mercador, a próxima compra já sai de graça).',
     apply: (s) => { s.freeBuy = true; } },
-  { id: 'fenix', name: 'Coração de Fênix', icon: '✺', rarity: 'legendary', max: 1,
+  { id: 'fenix', name: 'Coração de Fênix', icon: '✺', rarity: 'epic', max: 1,
     desc: () => 'Ao morrer, volta uma vez com metade da vida e fica invencível por 3 s.',
     apply: (s) => { s.phoenix += 1; } },
 ];
@@ -185,16 +185,16 @@ export const ULT_BLESSINGS = [
   { id: 'u_dupla', hero: 'mage', name: 'Chuva Dupla', icon: '↯', rarity: 'ult', max: 1,
     desc: () => 'A Chuva Arcana cai mais uma vez logo depois.',
     apply: (s) => { s.rainRepeat = 1; } },
-  { id: 'u_acida', hero: 'mage', name: 'Chuva Ácida', icon: '☣', rarity: 'ult', max: 2,
-    desc: (n) => `A Chuva Arcana marca os inimigos por 6 s: marcados sofrem ${n * 15}% mais dano.`,
-    apply: (s) => { s.rainAcid += 0.15; } },
+  { id: 'u_acida', hero: 'mage', name: 'Chuva Ácida', icon: '☣', rarity: 'ult', max: 1, // dobro de dano (pedido do dono, 11/11)
+    desc: () => 'A Chuva Arcana marca os inimigos por 6 s: marcados sofrem o dobro de dano.',
+    apply: (s) => { s.rainAcid = 1; } },
   { id: 'u_forte', hero: 'mage', name: 'Tempestade Arcana', icon: '✦', rarity: 'ult', max: 2,
     desc: (n) => `Cada raio da Chuva Arcana causa +12 de dano. (total: ${15 + n * 12})`,
     apply: (s) => { s.rainDamage += 12; } },
   // Ladino (Precisão Invejável)
-  { id: 'u_mira', hero: 'rogue', name: 'Mira Demorada', icon: '◎', rarity: 'ult', max: 2,
-    desc: (n) => `A Precisão Invejável dura +2 s. (total: ${5 + n * 2} s)`,
-    apply: (s) => { s.aimTime += 2; } },
+  { id: 'u_mira', hero: 'rogue', name: 'Mira Demorada', icon: '◎', rarity: 'ult', max: 1, // dobra o tempo (pedido do dono, 11/11)
+    desc: () => 'A Precisão Invejável dura o dobro do tempo. (total: 10 s)',
+    apply: (s) => { s.aimDouble = true; } },
   { id: 'u_letal', hero: 'rogue', name: 'Golpe Letal', icon: '†', rarity: 'ult', max: 1,
     desc: () => 'Durante a Precisão Invejável, os críticos causam o triplo de dano (em vez do dobro).',
     apply: (s) => { s.lethalCrit = true; } },
@@ -249,6 +249,16 @@ const fits = (b, block) => {
   const k = block === true ? 'none' : block === false || block === undefined ? 'shield' : block;
   return !(b.shield && k !== 'shield') && !(b.reflect && k !== 'reflect');
 };
+// Sorteio por raridade (pedido do dono, 12/11): primeiro sorteia a raridade pela chance dela (70/21/8/1%),
+// só entre as raridades que ainda têm bênção disponível; depois uma bênção qualquer daquela raridade.
+function pickByTier(pool, rng) {
+  const tiers = ORDER.filter((t) => pool.some((b) => b.rarity === t));
+  const total = tiers.reduce((a, t) => a + RARITY[t].weight, 0);
+  let r = rng() * total, tier = tiers[tiers.length - 1];
+  for (const t of tiers) { r -= RARITY[t].weight; if (r <= 0) { tier = t; break; } }
+  const same = pool.filter((b) => b.rarity === tier);
+  return same[Math.floor(rng() * same.length)];
+}
 export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math.random, block = 'shield') {
   const min = ORDER.indexOf(minRarity);
   const can = (b) => b.rarity !== 'risky' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned);
@@ -256,33 +266,25 @@ export function rollBlessings(owned, count = 3, minRarity = 'common', rng = Math
   if (pool.length < count) pool = BLESSINGS.filter(can);
   const picks = [];
   while (picks.length < count && pool.length) {
-    const total = pool.reduce((a, b) => a + RARITY[b.rarity].weight, 0);
-    let r = rng() * total;
-    let i = 0;
-    for (; i < pool.length - 1; i++) { r -= RARITY[pool[i].rarity].weight; if (r <= 0) break; }
-    picks.push(pool[i]);
-    pool = pool.filter((_, j) => j !== i);
+    const b = pickByTier(pool, rng);
+    picks.push(b);
+    pool = pool.filter((x) => x !== b);
   }
   // Nunca 3 cartas do pior nível (todas comuns): a última vira uma rara ou melhor (pedido do dono, 30/10).
   if (picks.length >= 3 && picks.every((b) => b.rarity === 'common')) {
     const up = pool.filter((b) => b.rarity !== 'common');
-    if (up.length) {
-      const total = up.reduce((a, b) => a + RARITY[b.rarity].weight, 0);
-      let r = rng() * total, i = 0;
-      for (; i < up.length - 1; i++) { r -= RARITY[up[i].rarity].weight; if (r <= 0) break; }
-      picks[picks.length - 1] = up[i];
-    }
+    if (up.length) picks[picks.length - 1] = pickByTier(up, rng);
   }
   return picks;
 }
 
-// Sala do chefe: garante pelo menos 1 lendária entre as cartas (troca a última que não for lendária).
-export function ensureLegendary(picks, owned, rng = Math.random, block = 'shield') {
-  if (picks.some((b) => b.rarity === 'legendary')) return picks;
-  const pool = BLESSINGS.filter((b) => b.rarity === 'legendary' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned) && !picks.includes(b));
+// Sala do chefe: garante pelo menos 1 épica entre as cartas (troca a última se nenhuma for épica). Lendária não é mais garantida.
+export function ensureEpic(picks, owned, rng = Math.random, block = 'shield') {
+  if (picks.some((b) => b.rarity === 'epic')) return picks;
+  const pool = BLESSINGS.filter((b) => b.rarity === 'epic' && !b.ult && (owned[b.id] || 0) < b.max && fits(b, block) && !blocked(b, owned) && !picks.includes(b));
   if (!pool.length) return picks;
-  const leg = pool[Math.floor(rng() * pool.length)];
-  if (picks.length < 3) picks.push(leg); else picks[picks.length - 1] = leg;
+  const ep = pool[Math.floor(rng() * pool.length)];
+  if (picks.length < 3) picks.push(ep); else picks[picks.length - 1] = ep;
   return picks;
 }
 
