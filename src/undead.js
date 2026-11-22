@@ -66,7 +66,7 @@ export function undeadTarget(combat, u) {
 // Golpe do morto-vivo num inimigo: dano com o crédito da Maga e o inimigo passa a revidar nele.
 export function undeadHit(combat, u, o, dmg) {
   if (!o.targetable || o.undead) return;
-  if (u.grimShade && combat.grim) { combat.grim.shadeHit(u, o); return; } // Exército das Sombras (Grimório): dano fixo, sem bênção
+  if ((u.grimShade || u.grimConvert) && combat.grim) { combat.grim.shadeHit(u, o); return; } // Exército das Sombras / Conversão (Grimório): dano fixo, sem bênção
   const dx = o.position.x - u.position.x, dz = o.position.z - u.position.z, d = Math.hypot(dx, dz) || 1;
   o.provokedBy = u;
   // 1º ataque deste morto-vivo (pedido do dono, 31/10): todos os inimigos da sala passam a focar nele.
@@ -158,6 +158,7 @@ export function undeadLook(combat) {
   for (const u of combat.enemies) {
     if (!u.undead || !u.alive || u.bro) continue; // Venham, Irmãos: cores próprias
     if (u.grimShade) { if (!(u.flash > 0)) setFlash(u.bodyMats, 0.35, 0.35, 0.05, 0.7); setFlash(u.eyes, 3, 1, 0.1, 0.15); continue; } // Exército das Sombras: sombra escura, olhos vermelhos
+    if (u.grimConvert) { if (!(u.flash > 0)) setFlash(u.bodyMats, 0.5, 1, 0.8, 0.3); setFlash(u.eyes, 3, 1, 0.85, 0.3); if (u.grimHalo) u.grimHalo.halo.rotation.z += 0.03; continue; } // Conversão (Grimório): dourado com auréola
     if (u.vassal) { if (!(u.flash > 0)) setFlash(u.bodyMats, 0); setFlash(u.eyes, 2.4, 0.45, 0.75, 1); continue; } // Vassalo: capa e ombreiras (vassalgear.js), olhos azuis
     if (!(u.flash > 0)) setFlash(u.bodyMats, 0.45, 0.45, 0.15, 0.9);
     setFlash(u.eyes, 3, 0.3, 1, 0.45);

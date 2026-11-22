@@ -30,7 +30,7 @@
 
 // Cajado Arcano — Grimório Ancestral (pedido do dono, 12/11/2026): um livro antigo desce do teto, o cajado se desfaz e a
 // Maga passa a conjurar com as mãos (sempre sai um círculo mágico das mãos). Cada ataque solta 1 magia sorteada entre
-// as do livro (50 no final; o lote 1 tem 10), sem mostrar qual vem. Regras em grimkit.js (combat.grim), visual em
+// as 50 do livro, sem mostrar qual vem. Regras em grimkit.js (combat.grim), visual em
 // grimlook.js, magias em grimspells.js. Decisões do dono: dura o resto da partida; nenhuma outra bênção vale; escudo
 // sempre ativo em 360°: flechas, virotes, orbes e magias voltam em quem atirou (sem gastar), só golpe corpo a corpo
 // machuca; o rolamento vira teleporte. Pode ser absurdamente forte.
@@ -85,6 +85,17 @@ export const L1 = {
     fog: { dur: 7, tick: 0.5, dmg: 22, rise: 1 },                                                        // Névoa Venenosa
     swarm: { n: 48, dur: 5, tick: 0.25, bite: 2 },                                                       // Enxame (mordida por morcego)
     golem: { rise: 1.2, speed: 4.6, turn: 6, reach: 2.8, punch: 130, slamEvery: 4, slam: 220, slamR: 3.8, cd: 0.8, max: 2, scale: 1.35 }, // Golem Ancestral
+    // Lote 5 (22/11/2026): as absurdas
+    mini: { shrink: 0.7, scale: 0.35, dmgMul: 0.2, boss: 0.2, bossScale: 0.75, bossDur: 6 },          // Miniatura (1 de vida; chefe perde 20%)
+    puppet: { dur: 6, boss: 2, h: 5.2 },                                                                // Marionetes (golpe ×3 como o Eclipse)
+    convert: { beam: 0.5, hpMul: 2, dmg: 80, boss: 250 },                                               // Conversão (golpe fixo do convertido)
+    bomb: { fuse: 2, dmg: 300, boss: 250, r: 3.5, splash: 120 },                                        // Bomba-Relógio
+    ceiling: { n: 14, over: 1.8, fall: 0.55, stay: 1.6, r: 2.4, dmg: 240 },                             // Teto Desabando
+    hammer: { fall: 0.9, stay: 0.9, dmg: 450, r: 6, dazeR: 12, daze: 1.5 },                             // Martelo dos Deuses
+    doom: { warn: 0.5, speed: 10, w: 2.4, dmg: 400, boss: 300 },                                        // Dia do Juízo
+    fount: { waves: 3, every: 0.5, r: 13, speed: 14, dmg: 120 },                                        // Fonte da Vida
+    chaos: { spin: 1.0, n: 3, gap: 0.3 },                                                               // Roleta do Caos
+    apoc: { dur: 6.2, final: 350, finalBoss: 250 },                                                     // APOCALIPSE
   },
   giant: {
     hp: 300, ko: 30, dmg: 60,           // vida; segundos de nocaute; dano de cada soco (fixo)

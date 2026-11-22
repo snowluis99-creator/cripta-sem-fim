@@ -1,6 +1,6 @@
 // Grimório Ancestral (lendária do Cajado Arcano, 12/11/2026): combat.grim = GrimKit. Números em l1bless.js (L1.grim),
 // visual em grimlook.js, magias em grimspells.js (lote 1), grimspells2.js e grimspells3.js (lote 2), grimspells4.js e
-// grimspells5.js (lote 3), grimspells6.js e grimspells7.js (lote 4).
+// grimspells5.js (lote 3), grimspells6.js e grimspells7.js (lote 4), grimspells8.js e grimspells9.js (lote 5).
 // - Fases: (pegou a bênção) -> intro (cena: o livro desce do teto, abre, as páginas voam, o cajado se desfaz) -> play.
 // - Atacar: o golpe vira uma conjuração (grimOverride); no impacto sai 1 magia sorteada do livro (strike). As magias saem
 //   de um "saco" embaralhado: todas aparecem antes de alguma repetir. Nada avisa qual vem (decisão do dono).
@@ -21,10 +21,12 @@ import { SPELLS4 } from './grimspells4.js';
 import { SPELLS5 } from './grimspells5.js';
 import { SPELLS6 } from './grimspells6.js';
 import { SPELLS7 } from './grimspells7.js';
+import { SPELLS8 } from './grimspells8.js';
+import { SPELLS9 } from './grimspells9.js';
 import { VIOLET, GOLD, PALE, grimTex, makeBook, setBookOpen, bookTick, grimDress, grimUndress, grimLookTick, grimShieldFlash, castCircle, flipPage, flyingPage, handsPoint } from './grimlook.js';
 
 const G = L1.grim;
-export const SPELLS = [...SPELLS1, ...SPELLS2, ...SPELLS3, ...SPELLS4, ...SPELLS5, ...SPELLS6, ...SPELLS7]; // lotes 1 a 4 (40 magias)
+export const SPELLS = [...SPELLS1, ...SPELLS2, ...SPELLS3, ...SPELLS4, ...SPELLS5, ...SPELLS6, ...SPELLS7, ...SPELLS8, ...SPELLS9]; // lotes 1 a 5 (50 magias)
 const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const W = (p) => (p && p.stats && p.stats.w) || {};
@@ -108,6 +110,7 @@ export class GrimKit {
     this.striking = false;
     this.clock = 0; this.lastCast = -99; // tempo de jogo (as fotos de teste usam)
     this.fallen = [];    // inimigos que morreram nesta sala (Exército das Sombras)
+    this.spells = SPELLS; // Roleta do Caos e APOCALIPSE soltam outras magias
   }
   get vfx() { return this.c.vfx; }
   get scene() { return this.c.vfx.scene; }
@@ -382,12 +385,12 @@ export class GrimKit {
     this.fallen.push({ type: e.type, x: e.position.x, z: e.position.z, facing: e.facing });
     if (this.fallen.length > 40) this.fallen.shift();
   }
-  shadeHit(u, o) { // golpe de uma sombra: dano fixo, sem bênção, e o inimigo passa a brigar com ela
+  shadeHit(u, o) { // golpe de uma sombra (ou de um convertido): dano fixo, sem bênção, e o inimigo passa a brigar com ela
     const p = u.undead, dx = o.position.x - u.position.x, dz = o.position.z - u.position.z, d = Math.hypot(dx, dz) || 1;
     o.provokedBy = u;
     this.vfx.sparks(v3(o.position.x, 1.2, o.position.z), VIOLET, 6);
     audio.play('hit', o.position.x, o.position.z, { v: 0.6 });
-    this.hurt(o, L1.grim.army.dmg, dx / d, dz / d, 'dmg', p && p.hero ? p : null);
+    this.hurt(o, u.grimConvert ? L1.grim.convert.dmg : L1.grim.army.dmg, dx / d, dz / d, 'dmg', p && p.hero ? p : null);
     this.log({ type: 'grimShadeHit', enemy: o });
   }
   blindTarget(e, dt = 1 / 60) { // combat.pickTarget: cego ataca o inimigo mais perto (troca de vez em quando); sozinho, anda à toa
