@@ -74,6 +74,17 @@ export const L1 = {
     stars: { dur: 4, every: 0.06, fall: 0.35, r: 2, dmg: 75, aimed: 0.55 },                             // Chuva de Estrelas
     portal: { r: 5, pull: 9, dur: 1.5, h: 8.5, dmg: 260, landR: 2.2, landDmg: 80, boss: 220 },        // Portal
     zero: { rise: 1, dur: 4, h: 3.2, dmg: 300, r: 2.4, splash: 60, boss: 180 },                         // Gravidade Zero
+    // Lote 4 (22/11/2026)
+    crush: { dur: 2.2, pulses: 3, squash: 0.3, dmg: 380, boss: 260 },                                  // Gravidade Esmagadora
+    mirror: { n: 6, r: 3, dur: 8, every: 0.55, dmg: 50, speed: 24, range: 15, shatter: 80, shatterR: 3 }, // Salão de Espelhos
+    rift: { open: 0.35, stay: 1.1, w: 1.5, dmg: 420, close: 140, pull: 5 },                             // Rasgo na Realidade
+    ring: { dur: 6, n: 9, r: 3.4, spin: 3.4, dmg: 70, cd: 0.35, push: 9, boom: 110, boomR: 2.4 },        // Anel Planetário
+    quake: { tremors: 3, every: 0.4, tremorDmg: 35, sink: 0.9, hold: 0.5, dmg: 380, boss: 240 },        // Terremoto
+    roots: { grow: 0.5, hold: 2.2, squeezes: 3, dmg: 360, boss: 240 },                                  // Raízes Ancestrais
+    wave: { speed: 12, h: 4.5, dmg: 320, boss: 220 },                                                    // Tsunami
+    fog: { dur: 7, tick: 0.5, dmg: 22, rise: 1 },                                                        // Névoa Venenosa
+    swarm: { n: 48, dur: 5, tick: 0.25, bite: 2 },                                                       // Enxame (mordida por morcego)
+    golem: { rise: 1.2, speed: 4.6, turn: 6, reach: 2.8, punch: 130, slamEvery: 4, slam: 220, slamR: 3.8, cd: 0.8, max: 2, scale: 1.35 }, // Golem Ancestral
   },
   giant: {
     hp: 300, ko: 30, dmg: 60,           // vida; segundos de nocaute; dano de cada soco (fixo)

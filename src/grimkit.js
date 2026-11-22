@@ -1,6 +1,6 @@
 // Grimório Ancestral (lendária do Cajado Arcano, 12/11/2026): combat.grim = GrimKit. Números em l1bless.js (L1.grim),
 // visual em grimlook.js, magias em grimspells.js (lote 1), grimspells2.js e grimspells3.js (lote 2), grimspells4.js e
-// grimspells5.js (lote 3).
+// grimspells5.js (lote 3), grimspells6.js e grimspells7.js (lote 4).
 // - Fases: (pegou a bênção) -> intro (cena: o livro desce do teto, abre, as páginas voam, o cajado se desfaz) -> play.
 // - Atacar: o golpe vira uma conjuração (grimOverride); no impacto sai 1 magia sorteada do livro (strike). As magias saem
 //   de um "saco" embaralhado: todas aparecem antes de alguma repetir. Nada avisa qual vem (decisão do dono).
@@ -19,10 +19,12 @@ import { SPELLS2 } from './grimspells2.js';
 import { SPELLS3 } from './grimspells3.js';
 import { SPELLS4 } from './grimspells4.js';
 import { SPELLS5 } from './grimspells5.js';
+import { SPELLS6 } from './grimspells6.js';
+import { SPELLS7 } from './grimspells7.js';
 import { VIOLET, GOLD, PALE, grimTex, makeBook, setBookOpen, bookTick, grimDress, grimUndress, grimLookTick, grimShieldFlash, castCircle, flipPage, flyingPage, handsPoint } from './grimlook.js';
 
 const G = L1.grim;
-export const SPELLS = [...SPELLS1, ...SPELLS2, ...SPELLS3, ...SPELLS4, ...SPELLS5]; // lotes 1, 2 e 3 (30 magias)
+export const SPELLS = [...SPELLS1, ...SPELLS2, ...SPELLS3, ...SPELLS4, ...SPELLS5, ...SPELLS6, ...SPELLS7]; // lotes 1 a 4 (40 magias)
 const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const W = (p) => (p && p.stats && p.stats.w) || {};

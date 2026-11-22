@@ -1,11 +1,13 @@
 // Teste automático, parte 47 (12/11/2026): bênção LENDÁRIA Grimório Ancestral (Cajado Arcano), lotes 1 e 2 das magias
-// (717 = lote 2, 13/11/2026: grimspells2.js / grimspells3.js; 718 = lote 3, 14/11/2026: grimspells4.js / grimspells5.js).
+// (717 = lote 2, 13/11/2026: grimspells2.js / grimspells3.js; 718 = lote 3, 14/11/2026: grimspells4.js / grimspells5.js;
+// 719 = lote 4, 22/11/2026: grimspells6.js / grimspells7.js).
 // l1bless.js / grimkit.js / grimlook.js / grimspells.js. Tecla 3 do numérico (corrido) / 4 do numérico (com pausas de
 // screenshot); roda também no fim da parte 46 (teclas * / . + - 1 2 do numérico e no fim do Y).
 import { BLESSINGS } from './blessings.js';
 import { WEAPON_BLESSINGS } from './weaponbless.js';
 import { L1 } from './l1bless.js';
 import { grimOn, SPELLS } from './grimkit.js';
+import { grimGolems } from './grimspells7.js';
 
 const ok = (c, extra = '') => (c ? `✔${extra ? ` ${extra}` : ''}` : `ERRO${extra ? ` (${extra})` : ''}`);
 
@@ -39,7 +41,7 @@ export function* grimTests(g, out, flags) {
   // ---------- 709) Lista ----------
   out('709) Lendária Grimório Ancestral (Cajado Arcano)');
   const b = WEAPON_BLESSINGS.find((x) => x.id === 'w_l1c1');
-  out(`  existe ${ok(!!b)} | só do Cajado Arcano ${ok(b && b.weapon === 'mage.cajado')} | lendária, máx. 1 ${ok(b && b.rarity === 'legendary' && b.max === 1)} | magias no livro: ${SPELLS.length} ${ok(SPELLS.length === 30)} | sem nome repetido ${ok(new Set(SPELLS.map((x) => x.id)).size === SPELLS.length)}`);
+  out(`  existe ${ok(!!b)} | só do Cajado Arcano ${ok(b && b.weapon === 'mage.cajado')} | lendária, máx. 1 ${ok(b && b.rarity === 'legendary' && b.max === 1)} | magias no livro: ${SPELLS.length} ${ok(SPELLS.length === 40)} | sem nome repetido ${ok(new Set(SPELLS.map((x) => x.id)).size === SPELLS.length)}`);
 
   // ---------- 710) Transformação ----------
   out('710) Pegou: o livro desce, abre, as páginas voam, o cajado se desfaz');
@@ -176,6 +178,38 @@ export function* grimTests(g, out, flags) {
   yield G.zero.dur;
   out(`  Gravidade Zero: despencaram ${ok([zg.a, zg.b].every((e) => lost(e) >= G.zero.dmg && e.position.y === 0 && e.state !== 'lanceFly'), `${lost(zg.a)}/${lost(zg.b)}`)} | ${errs()}`);
   killAll(); combat.grim.clear(); yield 0.4;
+
+  // ---------- 719) Lote 4 ----------
+  out('719) As 10 magias do lote 4');
+  let cr = null;
+  yield* spellTest('esmagadora', () => (cr = { a: dummy(-3, -4), b: dummy(3, -2, 'warrior') }),
+    (c) => `achatados no chão ${ok(c.a.group.scale.y < 0.7 && c.b.group.scale.y < 0.7 && c.a.state === 'lanceFly', `${c.a.group.scale.y.toFixed(2)}/${c.b.group.scale.y.toFixed(2)}`)}`, 1.3);
+  yield G.crush.dur - 1.0;
+  out(`  Gravidade Esmagadora: esmagou ${ok([cr.a, cr.b].every((e) => lost(e) >= G.crush.dmg && e.state !== 'lanceFly' && Math.abs(e.group.scale.y - 1) < 0.01), `${lost(cr.a)}/${lost(cr.b)}`)}`);
+  yield* spellTest('espelhos', () => ({ list: [dummy(-5, -3), dummy(0, -6), dummy(5, -2)] }),
+    (c) => `6 cópias ${ok((ev('grimMirror')[0] || {}).n === G.mirror.n)} | atiraram em todos ${ok(c.list.every((e) => lost(e) >= G.mirror.dmg * 3), c.list.map((e) => lost(e)).join('/'))}`, G.mirror.dur);
+  yield* spellTest('rasgo', () => ({ a: dummy(0, -3), b: dummy(0.5, -8), side: dummy(9, 3) }),
+    (c) => `partiu a linha ${ok(lost(c.a) >= G.rift.dmg + G.rift.close && lost(c.b) >= G.rift.dmg, `${lost(c.a)}/${lost(c.b)}`)} | do lado não ${ok(c.side.hp === 5000)}`, G.rift.open + G.rift.stay + 0.5);
+  yield* spellTest('anel', () => ({ a: dummy(3.4, 4), b: dummy(-1, 0.8), far: dummy(-9, -9) }),
+    (c) => `rochas batendo ${ok(lost(c.a) >= G.ring.dmg * 3 && lost(c.b) >= G.ring.dmg * 3, `${lost(c.a)}/${lost(c.b)}`)}`, G.ring.dur + 0.9);
+  yield* spellTest('terremoto', () => ({ weak: dummy(-2, -4, 'minion', 300), strong: dummy(2, -4, 'warrior', 5000) }),
+    (c) => `engoliu o fraco (sem corpo) ${ok(!c.weak.alive && !c.weak.group.visible)} | o forte escapou ${ok(c.strong.alive && lost(c.strong) >= G.quake.dmg + G.quake.tremorDmg * 3 && c.strong.position.y === 0 && c.strong.state !== 'lanceFly' && c.strong.group.visible, String(lost(c.strong)))}`, G.quake.every * G.quake.tremors + G.quake.sink + G.quake.hold + 0.95);
+  yield* spellTest('raizes', () => ({ a: dummy(-3, -4), b: dummy(3, -3, 'warrior') }),
+    (c) => `prendeu e espremeu ${ok([c.a, c.b].every((e) => lost(e) >= G.roots.dmg && e.state !== 'lanceFly' && e.position.y === 0), `${lost(c.a)}/${lost(c.b)}`)}`, G.roots.grow + G.roots.hold + 0.8);
+  let ts = null;
+  yield* spellTest('tsunami', () => (ts = { a: dummy(-3, -1), b: dummy(4, -4), hp: player.hp }),
+    (c) => `levou até a parede ${ok([c.a, c.b].every((e) => lost(e) >= G.wave.dmg && e.state !== 'lanceFly' && e.position.y === 0 && e.position.z < -combat.grim.bounds().z + 3.5), `${lost(c.a)}/${lost(c.b)} z ${c.a.position.z.toFixed(1)}`)} | a Maga não apanhou ${ok(player.hp === c.hp)}`, 3.4);
+  yield* spellTest('nevoa', () => ({ list: [dummy(-7, -6), dummy(7, 5), dummy(0, -8)] }),
+    (c) => `envenenou a sala ${ok(c.list.every((e) => lost(e) >= G.fog.dmg * 12), c.list.map((e) => lost(e)).join('/'))}`, G.fog.dur);
+  yield* spellTest('enxame', () => ({ list: [dummy(-4, -4), dummy(4, -5), dummy(0, -8)] }),
+    (c) => `morcegos morderam todos ${ok(c.list.every((e) => lost(e) >= 120), c.list.map((e) => lost(e)).join('/'))}`, G.swarm.dur + 0.8);
+  let gl = null;
+  yield* spellTest('golem', () => (gl = { a: dummy(0, -5), b: dummy(2, -6) }),
+    (c) => `subiu do chão ${ok(grimGolems().length === 1)}`, 0.2);
+  yield 7;
+  out(`  Golem Ancestral: socou ${ok(ev('grimGolemHit').length >= 3 && lost(gl.a) + lost(gl.b) >= G.golem.punch * 3, `${ev('grimGolemHit').length} golpes, ${lost(gl.a)}/${lost(gl.b)}`)} | pancada no chão ${ok(ev('grimGolemHit').some((x) => x.slam))} | ${errs()}`);
+  killAll(); combat.grim.clear(); yield 0.4;
+  out(`  Golem Ancestral: some no fim da sala ${ok(grimGolems().length === 0)} | ${errs()}`);
 
   // ---------- 712) Sorteio ----------
   out(`712) Sorteio: as ${SPELLS.length} saem antes de alguma repetir`);
